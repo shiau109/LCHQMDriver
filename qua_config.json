@@ -53,12 +53,12 @@
                 "1": {
                     "gain_db": 0,
                     "shareable": false,
-                    "offset": 0.01453923828125
+                    "offset": 0.0
                 },
                 "2": {
                     "gain_db": 0,
                     "shareable": false,
-                    "offset": 0.012482938232421876
+                    "offset": 0.0
                 }
             }
         }
@@ -94,7 +94,7 @@
             },
             "intermediate_frequency": -225850000.0,
             "smearing": 0,
-            "time_of_flight": 248,
+            "time_of_flight": 32,
             "RF_outputs": {
                 "port": [
                     "oct1",
@@ -149,7 +149,7 @@
             },
             "intermediate_frequency": -104800000.0,
             "smearing": 0,
-            "time_of_flight": 248,
+            "time_of_flight": 32,
             "RF_outputs": {
                 "port": [
                     "oct1",

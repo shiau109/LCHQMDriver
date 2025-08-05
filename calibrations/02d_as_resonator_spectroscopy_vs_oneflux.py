@@ -14,7 +14,7 @@ from qualang_tools.units import unit
 
 from qualibrate import QualibrationNode
 from quam_config import Quam
-from calibration_utils.resonator_spectroscopy_vs_oneflux import (
+from calibration_utils.as_resonator_spectroscopy_vs_oneflux import (
     Parameters,
     process_raw_dataset,
     fit_raw_data,
@@ -54,7 +54,7 @@ State update:
 
 # Be sure to include [Parameters, Quam] so the node has proper type hinting
 node = QualibrationNode[Parameters, Quam](
-    name="02d_resonator_spectroscopy_vs_oneflux",  # Name should be unique
+    name="02d_as_resonator_spectroscopy_vs_oneflux",  # Name should be unique
     description=description,  # Describe what the node is doing, which is also reflected in the QUAlibrate GUI
     parameters=Parameters(),  # Node parameters defined under quam_experiment/experiments/node_name
 )
