@@ -92,7 +92,7 @@
             "operations": {
                 "readout": "q0.resonator.readout.pulse"
             },
-            "intermediate_frequency": -147400000.0,
+            "intermediate_frequency": -100000000.0,
             "smearing": 0,
             "time_of_flight": 32,
             "RF_outputs": {
@@ -135,7 +135,7 @@
                 "y90": "q1.xy.y90_DragCosine.pulse",
                 "-y90": "q1.xy.-y90_DragCosine.pulse"
             },
-            "intermediate_frequency": 100000000.0,
+            "intermediate_frequency": -100000000.0,
             "RF_inputs": {
                 "port": [
                     "oct1",
@@ -147,7 +147,7 @@
             "operations": {
                 "readout": "q1.resonator.readout.pulse"
             },
-            "intermediate_frequency": -239700000.0,
+            "intermediate_frequency": -100000000.0,
             "smearing": 0,
             "time_of_flight": 32,
             "RF_outputs": {
@@ -1593,7 +1593,7 @@
         "oct1": {
             "RF_outputs": {
                 "1": {
-                    "LO_frequency": 4800000000,
+                    "LO_frequency": 6000000000,
                     "LO_source": "internal",
                     "gain": -20.0,
                     "output_mode": "always_on",
@@ -1608,7 +1608,7 @@
                     ]
                 },
                 "2": {
-                    "LO_frequency": 5000000000.0,
+                    "LO_frequency": 5300000000.0,
                     "LO_source": "internal",
                     "gain": 8.5,
                     "output_mode": "always_on",
@@ -1623,7 +1623,7 @@
                     ]
                 },
                 "4": {
-                    "LO_frequency": 5000000000.0,
+                    "LO_frequency": 5300000000.0,
                     "LO_source": "internal",
                     "gain": 8.5,
                     "output_mode": "always_on",
@@ -1657,7 +1657,7 @@
             "RF_inputs": {
                 "1": {
                     "RF_source": "RF_in",
-                    "LO_frequency": 4800000000,
+                    "LO_frequency": 6000000000,
                     "LO_source": "internal",
                     "IF_mode_I": "direct",
                     "IF_mode_Q": "direct"

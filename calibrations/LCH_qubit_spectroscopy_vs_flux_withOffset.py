@@ -1,62 +1,50 @@
 # %% {Imports}
+import warnings
+from dataclasses import asdict
+
 import matplotlib.pyplot as plt
 import numpy as np
 import xarray as xr
-from dataclasses import asdict
-import warnings
-
 from qm.qua import *
-
 from qualang_tools.loops import from_array
 from qualang_tools.multi_user import qm_session
 from qualang_tools.results import progress_counter
 from qualang_tools.units import unit
-
 from qualibrate import QualibrationNode
 from quam_config import Quam
-from calibration_utils.as_resonator_spectroscopy_vs_oneflux import (
+from calibration_utils.LCH_qubit_spectroscopy_vs_flux_withOffset import (
     Parameters,
-    process_raw_dataset,
     fit_raw_data,
     log_fitted_results,
     plot_raw_data_with_fit,
+    process_raw_dataset,
 )
 from qualibration_libs.parameters import get_qubits
 from qualibration_libs.runtime import simulate_and_plot
 from qualibration_libs.data import XarrayDataFetcher
 
-
-# %% {Initialisation}
+# %% {Description}
 description = """
-        RESONATOR SPECTROSCOPY VERSUS FLUX
-This sequence involves measuring the resonator by sending a readout pulse and demodulating the signals to
-extract the 'I' and 'Q' quadratures. This is done across various readout frequencies and flux biases.
-The resonator frequency as a function of flux bias is then extracted and fitted in order to extract the relevant 
-flux biases and corresponding readout frequency.
-
-This information can then be used to adjust the readout frequency for the maximum and minimum frequency points.
-The flux point parameter (qubit.z.flux_point) is used in order to decide to update the independent or joint offset.
+        QUBIT SPECTROSCOPY VERSUS FLUX
+This sequence involves doing a qubit spectroscopy for several flux biases in order to exhibit the qubit frequency
+versus flux response.
 
 Prerequisites:
-    - Having calibrated the resonator frequency (nodes 02a, 02b and/or 02c).
+    - Having calibrated the mixer or the Octave (nodes 01a or 01b).
+    - Having calibrated the readout parameters (nodes 02a, 02b and/or 02c).
+    - Having calibrated the qubit frequency (node 03a_qubit_spectroscopy.py).
     - Having specified the desired flux point (qubit.z.flux_point).
 
-
 State update:
-    - The readout frequency for the chosen flux bias: qubit.resonator.f_01 & qubit.resonator.RF_frequency
-    - The joint or independent offset depending on the chosen flux point: qubit.z.
-    - The min offset: qubit.z.min_offset
-    - The relevant flux offset: qubit.z.independent_offset or qubit.z.joint_offset 
-    - The min offset: qubit.z.min_offset
-    - phi0: qubit.z.phi0_voltage and qubit.z.phi0_current
+    - The qubit 0->1 frequency at the set flux point: qubit.f_01 & qubit.xy.RF_frequency
+    - The flux bias corresponding to the set flux point: q.z.independent_offset or q.z.joint_offset.
 """
 
 
-# Be sure to include [Parameters, Quam] so the node has proper type hinting
 node = QualibrationNode[Parameters, Quam](
-    name="02d_as_resonator_spectroscopy_vs_oneflux",  # Name should be unique
-    description=description,  # Describe what the node is doing, which is also reflected in the QUAlibrate GUI
-    parameters=Parameters(),  # Node parameters defined under quam_experiment/experiments/node_name
+    name="LCH_qubit_spectroscopy_vs_flux_withOffset",
+    description=description,
+    parameters=Parameters(),
 )
 
 
@@ -64,9 +52,9 @@ node = QualibrationNode[Parameters, Quam](
 # These parameters are ignored when run through the GUI or as part of a graph
 @node.run_action(skip_if=node.modes.external)
 def custom_param(node: QualibrationNode[Parameters, Quam]):
-    """Allow the user to locally set the node parameters for debugging purposes, or execution in the Python IDE."""
     # You can get type hinting in your IDE by typing node.parameters.
-    # node.parameters.qubits = ["q1", "q2"]
+    # node.parameters.qubits = ["q1", "q3"]
+
     pass
 
 
@@ -86,72 +74,92 @@ def create_qua_program(node: QualibrationNode[Parameters, Quam]):
     # Check if the qubits have a z-line attached
     if any([q.z is None for q in qubits]):
         warnings.warn("Found qubits without a flux line. Skipping")
-    # Extract the sweep parameters and axes from the node parameters
+
+    operation = node.parameters.operation  # The qubit operation to play
     n_avg = node.parameters.num_shots
-    # Flux bias sweep in V
-    dcs = np.linspace(
-        node.parameters.min_flux_offset_in_v,
-        node.parameters.max_flux_offset_in_v,
-        node.parameters.num_flux_points,
-    )
-    # The frequency sweep around the resonator resonance frequency
+    # Adjust the pulse duration and amplitude to drive the qubit into a mixed state - can be None
+    operation_len = node.parameters.operation_len_in_ns
+    # pre-factor to the value defined in the config - restricted to [-2; 2)
+    operation_amp = node.parameters.operation_amplitude_factor
+    # Qubit detuning sweep with respect to their resonance frequencies
     span = node.parameters.frequency_span_in_mhz * u.MHz
     step = node.parameters.frequency_step_in_mhz * u.MHz
     dfs = np.arange(-span / 2, +span / 2, step)
-    z_source_qubit_id = node.parameters.z_source_qubit
-
-    for multiplexed_qubits in qubits.batch():
-        for i, qubit in multiplexed_qubits.items(): 
-            if qubit.id == z_source_qubit_id:
-                z_source_qubit = qubit
-                break
-
+    # Flux bias sweep in V
+    span = node.parameters.flux_offset_span_in_v * u.V
+    num = node.parameters.num_flux_points
+    dcs = np.linspace(-span / 2, +span / 2, num)
+    offset = node.parameters.flux_offset_in_v
+    # Register the sweep axes to be added to the dataset when fetching data
     node.namespace["sweep_axes"] = {
         "qubit": xr.DataArray(qubits.get_names()),
+        "detuning": xr.DataArray(dfs, attrs={"long_name": "qubit frequency", "units": "Hz"}),
         "flux_bias": xr.DataArray(dcs, attrs={"long_name": "flux bias", "units": "V"}),
-        "detuning": xr.DataArray(dfs, attrs={"long_name": "readout frequency", "units": "Hz"}),
     }
 
-    # The QUA program stored in the node namespace to be transfer to the simulation and execution run_actions
     with program() as node.namespace["qua_program"]:
+        # Macro to declare I, Q, n and their respective streams for a given number of qubit
         I, I_st, Q, Q_st, n, n_st = node.machine.declare_qua_variables()
-        dc = declare(fixed)  # QUA variable for the flux bias
-        df = declare(int)  # QUA variable for the readout frequency detuning
+        df = declare(int)  # QUA variable for the qubit frequency
+        dc = declare(fixed)  # QUA variable for the flux dc level
+
 
         for multiplexed_qubits in qubits.batch():
             # Initialize the QPU in terms of flux points (flux tunable transmons and/or tunable couplers)
             for qubit in multiplexed_qubits.values():
                 node.machine.initialize_qpu(target=qubit)
+                # Flux sweeping by tuning the OPX dc offset associated with the flux_line element
+                qubit.z.set_dc_offset(offset)
             align()
 
             with for_(n, 0, n < n_avg, n + 1):
                 save(n, n_st)
-                with for_(*from_array(dc, dcs)):
-                    # Flux sweeping by tuning the OPX dc offset associated with the flux_line element
-                    z_source_qubit.z.set_dc_offset(dc)
-                    z_source_qubit.z.settle()
-                    z_source_qubit.align()
-                    
-                    for i, qubit in multiplexed_qubits.items():
-                        rr = qubit.resonator
-                        print(f"Qubit {rr.name}")
+                with for_(*from_array(df, dfs)):
+                    with for_(*from_array(dc, dcs)):
+                        # Qubit initialization
+                        for i, qubit in multiplexed_qubits.items():
+                            # Update the qubit frequency
+                            qubit.xy.update_frequency(df + qubit.xy.intermediate_frequency)
+                            # Wait for the qubits to decay to the ground state
+                            qubit.reset_qubit_thermal()
+                            # Flux sweeping for a qubit
+                            duration = (
+                                operation_len * u.ns
+                                if operation_len is not None
+                                else qubit.xy.operations[operation].length * u.ns
+                            )
+                        align()
 
-                        with for_(*from_array(df, dfs)):
-                            # Update the resonator frequencies for resonator
-                            rr.update_frequency(df + rr.intermediate_frequency)
-                            # readout the resonator
-                            rr.measure("readout", qua_vars=(I[i], Q[i]))
-                            # wait for the resonator to deplete
-                            rr.wait(rr.depletion_time * u.ns)
+                        # Qubit manipulation
+                        for i, qubit in multiplexed_qubits.items():
+                            # Bring the qubit to the desired point during the saturation pulse
+                            qubit.z.play(
+                                "const", amplitude_scale=dc / qubit.z.operations["const"].amplitude, duration=duration
+                            )
+                            # Apply saturation pulse to all qubits
+                            qubit.xy.play(
+                                operation,
+                                amplitude_scale=operation_amp,
+                                duration=duration,
+                            )
+                        align()
+
+                        # Qubit readout
+                        for i, qubit in multiplexed_qubits.items():
+                            qubit.resonator.measure("readout", qua_vars=(I[i], Q[i]))
                             # save data
                             save(I[i], I_st[i])
                             save(Q[i], Q_st[i])
 
+            # Measure sequentially
+            if not node.parameters.multiplexed:
+                align()
+
         with stream_processing():
             n_st.save("n")
-            for i in range(num_qubits):
-                I_st[i].buffer(len(dfs)).buffer(len(dcs)).average().save(f"I{i + 1}")
-                Q_st[i].buffer(len(dfs)).buffer(len(dcs)).average().save(f"Q{i + 1}")
+            for i, qubit in enumerate(qubits):
+                I_st[i].buffer(len(dcs)).buffer(len(dfs)).average().save(f"I{i + 1}")
+                Q_st[i].buffer(len(dcs)).buffer(len(dfs)).average().save(f"Q{i + 1}")
 
 
 # %% {Simulate}
@@ -203,7 +211,9 @@ def load_data(node: QualibrationNode[Parameters, Quam]):
     node.load_from_id(node.parameters.load_data_id)
     node.parameters.load_data_id = load_data_id
     # Get the active qubits from the loaded node parameters
-    node.namespace["qubits"] = get_qubits(node)
+    # node.namespace["qubits"] = get_qubits(node)
+    # ds_processed = process_raw_dataset(node.results["ds_raw"], node)
+    # ds_processed.IQ_abs.plot()
 
 
 # %% {Analyse_data}
@@ -242,22 +252,15 @@ def update_state(node: QualibrationNode[Parameters, Quam]):
         for q in node.namespace["qubits"]:
             if node.outcomes[q.name] == "failed":
                 continue
-
-            fit_results = node.results["fit_results"][q.name]
-
-            # Update the idle offset
-            if q.z.flux_point == "independent":
-                q.z.independent_offset = fit_results["idle_offset"]
             else:
-                q.z.joint_offset = fit_results["idle_offset"]
-            # Update the min offset
-            if node.parameters.update_flux_min:
-                q.z.min_offset = fit_results["min_offset"]
-            # Update the readout frequency for the given flux point
-            q.resonator.f_01 += fit_results["frequency_shift"]
-            q.resonator.RF_frequency += fit_results["frequency_shift"]
-            q.phi0_voltage = fit_results["dv_phi0"]
-            q.phi0_current = fit_results["phi0_current"]
+                fit_results = node.results["fit_results"][q.name]
+                if q.z.flux_point == "independent":
+                    q.z.independent_offset = fit_results["idle_offset"]
+                elif q.z.flux_point == "joint":
+                    q.z.joint_offset += fit_results["idle_offset"]
+                q.xy.RF_frequency = fit_results["qubit_frequency"]
+                q.f_01 = fit_results["qubit_frequency"]
+                # q.freq_vs_flux_01_quad_term = fit_results["quad_term"]
 
 
 # %% {Save_results}
