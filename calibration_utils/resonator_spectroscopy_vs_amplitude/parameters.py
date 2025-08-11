@@ -1,7 +1,7 @@
 from qualibrate import NodeParameters
 from qualibrate.parameters import RunnableParameters
 from qualibration_libs.parameters import QubitsExperimentNodeParameters, CommonNodeParameters
-
+from customized.common_parameters import CommonFluxParameters
 
 class NodeSpecificParameters(RunnableParameters):
     num_shots: int = 100
@@ -24,7 +24,7 @@ class NodeSpecificParameters(RunnableParameters):
     """Size of the window in number of points corresponding to the rolling average (number of points). Default is 10."""
     moving_average_filter_window_num_points: int = 10
     """Size of the moving average filter window (number of points). Default is 5."""
-    buffer_from_crossing_threshold_in_dbm: int = 1
+    buffer_from_crossing_threshold_in_dbm: int = 5
     """Buffer from the crossing threshold in dBm - the optimal readout power will be set to be this number in Db below
     the threshold. Default is 1 dBm."""
 
@@ -34,5 +34,6 @@ class Parameters(
     CommonNodeParameters,
     NodeSpecificParameters,
     QubitsExperimentNodeParameters,
+    CommonFluxParameters,
 ):
     pass
