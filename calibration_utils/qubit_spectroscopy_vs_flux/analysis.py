@@ -8,6 +8,8 @@ from qualibrate import QualibrationNode
 from qualibration_libs.analysis import fit_oscillation, peaks_dips
 from qualibration_libs.data import add_amplitude_and_phase, convert_IQ_to_V
 
+from calibration_utils.time_of_flight import node
+
 
 @dataclass
 class FitParameters:
@@ -51,10 +53,12 @@ def log_fitted_results(fit_results: Dict, log_callable=None):
 def process_raw_dataset(ds: xr.Dataset, node: QualibrationNode):
     """Processes the raw dataset by converting the 'I' and 'Q' quadratures to V, or adding the RF_frequency as a coordinate for instance."""
 
+    if not node.parameters.use_state_discrimination:
     # Convert the 'I' and 'Q' quadratures from demodulation units to V.
-    ds = convert_IQ_to_V(ds, node.namespace["qubits"])
-    # Add the amplitude and phase to the raw dataset
-    ds = add_amplitude_and_phase(ds, "detuning", subtract_slope_flag=True)
+        ds = convert_IQ_to_V(ds, node.namespace["qubits"])
+        # Add the amplitude and phase to the raw dataset
+        ds = add_amplitude_and_phase(ds, "detuning", subtract_slope_flag=True)
+
     # Add the RF frequency as a coordinate of the raw dataset
     full_freq = np.array([ds.detuning + q.xy.RF_frequency for q in node.namespace["qubits"]])
     ds = ds.assign_coords(full_freq=(["qubit", "detuning"], full_freq))
@@ -89,8 +93,11 @@ def fit_raw_data(ds: xr.Dataset, node: QualibrationNode) -> Tuple[xr.Dataset, di
     xr.Dataset
         Dataset containing the fit results.
     """
+    if not node.parameters.use_state_discrimination:
+        peak_freq = peaks_dips(ds.IQ_abs, dim="detuning", prominence_factor=5)
+    else:
+        peak_freq = peaks_dips(ds.state, dim="detuning", prominence_factor=5)
 
-    peak_freq = peaks_dips(ds.IQ_abs, dim="detuning", prominence_factor=5)
     # Fit to a cosine using the qiskit function: a * np.cos(2 * np.pi * f * t + phi) + offset
     fit_results_da = fit_oscillation(peak_freq.position.dropna(dim="flux_bias"), "flux_bias")
     fit_results_ds = xr.merge([fit_results_da.rename("fit_results"), peak_freq.position.rename("peak_freq")])

@@ -89,6 +89,7 @@ def create_qua_program(node: QualibrationNode[Parameters, Quam]):
     span = node.parameters.flux_offset_span_in_v * u.V
     num = node.parameters.num_flux_points
     dcs = np.linspace(-span / 2, +span / 2, num)
+    flux_idle_case = node.parameters.flux_idle_case
 
     # Register the sweep axes to be added to the dataset when fetching data
     node.namespace["sweep_axes"] = {
@@ -102,11 +103,14 @@ def create_qua_program(node: QualibrationNode[Parameters, Quam]):
         I, I_st, Q, Q_st, n, n_st = node.machine.declare_qua_variables()
         df = declare(int)  # QUA variable for the qubit frequency
         dc = declare(fixed)  # QUA variable for the flux dc level
+        if node.parameters.use_state_discrimination:
+            state = [declare(int) for _ in range(num_qubits)]
+            state_st = [declare_stream() for _ in range(num_qubits)]
 
         for multiplexed_qubits in qubits.batch():
             # Initialize the QPU in terms of flux points (flux tunable transmons and/or tunable couplers)
             for qubit in multiplexed_qubits.values():
-                node.machine.initialize_qpu(target=qubit)
+                node.machine.initialize_qpu(target=qubit, flux_point=flux_idle_case)
             align()
 
             with for_(n, 0, n < n_avg, n + 1):
@@ -141,12 +145,17 @@ def create_qua_program(node: QualibrationNode[Parameters, Quam]):
                             )
                         align()
 
-                        # Qubit readout
+                        # Measure the state of the resonators
                         for i, qubit in multiplexed_qubits.items():
-                            qubit.resonator.measure("readout", qua_vars=(I[i], Q[i]))
-                            # save data
-                            save(I[i], I_st[i])
-                            save(Q[i], Q_st[i])
+                            if node.parameters.use_state_discrimination:
+                                qubit.readout_state(state[i])
+                                save(state[i], state_st[i])
+                            else:
+                                qubit.resonator.measure("readout", qua_vars=(I[i], Q[i]))
+                                # save data
+                                save(I[i], I_st[i])
+                                save(Q[i], Q_st[i])
+
 
             # Measure sequentially
             if not node.parameters.multiplexed:
@@ -154,9 +163,13 @@ def create_qua_program(node: QualibrationNode[Parameters, Quam]):
 
         with stream_processing():
             n_st.save("n")
-            for i, qubit in enumerate(qubits):
-                I_st[i].buffer(len(dcs)).buffer(len(dfs)).average().save(f"I{i + 1}")
-                Q_st[i].buffer(len(dcs)).buffer(len(dfs)).average().save(f"Q{i + 1}")
+            for i in range(num_qubits):
+                if node.parameters.use_state_discrimination:
+                    state_st[i].buffer(len(dcs)).buffer(len(dfs)).average().save(f"state{i + 1}")
+                else:
+                    I_st[i].buffer(len(dcs)).buffer(len(dfs)).average().save(f"I{i + 1}")
+                    Q_st[i].buffer(len(dcs)).buffer(len(dfs)).average().save(f"Q{i + 1}")
+
 
 
 # %% {Simulate}
@@ -233,7 +246,11 @@ def analyse_data(node: QualibrationNode[Parameters, Quam]):
 @node.run_action(skip_if=node.parameters.simulate)
 def plot_data(node: QualibrationNode[Parameters, Quam]):
     """Plot the raw and fitted data in specific figures whose shape is given by qubit.grid_location."""
-    fig_raw_fit = plot_raw_data_with_fit(node.results["ds_raw"], node.namespace["qubits"], node.results["ds_fit"])
+    if node.parameters.use_state_discrimination:
+        da = node.results["ds_raw"]["state"]
+    else:
+        da = node.results["ds_raw"]["IQ_abs"]
+    fig_raw_fit = plot_raw_data_with_fit(da, node.namespace["qubits"], node.results["ds_fit"])
     plt.show()
     # Store the generated figures
     node.results["figures"] = {
@@ -251,9 +268,9 @@ def update_state(node: QualibrationNode[Parameters, Quam]):
                 continue
             else:
                 fit_results = node.results["fit_results"][q.name]
-                if q.z.flux_point == "independent":
-                    q.z.independent_offset = fit_results["idle_offset"]
-                elif q.z.flux_point == "joint":
+                if node.parameters.flux_idle_case == "independent":
+                    q.z.independent_offset += fit_results["idle_offset"]
+                elif node.parameters.flux_idle_case == "joint":
                     q.z.joint_offset += fit_results["idle_offset"]
                 q.xy.RF_frequency = fit_results["qubit_frequency"]
                 q.f_01 = fit_results["qubit_frequency"]

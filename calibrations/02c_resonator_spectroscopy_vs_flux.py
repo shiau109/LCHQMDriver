@@ -98,6 +98,7 @@ def create_qua_program(node: QualibrationNode[Parameters, Quam]):
     span = node.parameters.frequency_span_in_mhz * u.MHz
     step = node.parameters.frequency_step_in_mhz * u.MHz
     dfs = np.arange(-span / 2, +span / 2, step)
+    flux_idle_case = node.parameters.flux_idle_case
 
     # Register the sweep axes to be added to the dataset when fetching data
     node.namespace["sweep_axes"] = {
@@ -115,7 +116,7 @@ def create_qua_program(node: QualibrationNode[Parameters, Quam]):
         for multiplexed_qubits in qubits.batch():
             # Initialize the QPU in terms of flux points (flux tunable transmons and/or tunable couplers)
             for qubit in multiplexed_qubits.values():
-                node.machine.initialize_qpu(target=qubit)
+                node.machine.initialize_qpu(target=qubit, flux_point=flux_idle_case)
             align()
 
             with for_(n, 0, n < n_avg, n + 1):
@@ -237,9 +238,9 @@ def update_state(node: QualibrationNode[Parameters, Quam]):
             fit_results = node.results["fit_results"][q.name]
 
             # Update the idle offset
-            if q.z.flux_point == "independent":
+            if node.parameters.flux_idle_case == "independent":
                 q.z.independent_offset = fit_results["idle_offset"]
-            else:
+            elif node.parameters.flux_idle_case == "joint":
                 q.z.joint_offset = fit_results["idle_offset"]
             # Update the min offset
             if node.parameters.update_flux_min:

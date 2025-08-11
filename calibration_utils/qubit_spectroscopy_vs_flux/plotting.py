@@ -10,7 +10,7 @@ from quam_builder.architecture.superconducting.qubit import AnyTransmon
 u = unit(coerce_to_integer=True)
 
 
-def plot_raw_data_with_fit(ds: xr.Dataset, qubits: List[AnyTransmon], fits: xr.Dataset):
+def plot_raw_data_with_fit(ds: xr.DataArray, qubits: List[AnyTransmon], fits: xr.Dataset):
     """
     Plots the raw data with fitted curves for the given qubits.
 
@@ -43,7 +43,7 @@ def plot_raw_data_with_fit(ds: xr.Dataset, qubits: List[AnyTransmon], fits: xr.D
     return grid.fig
 
 
-def plot_individual_raw_data_with_fit(ax: Axes, ds: xr.Dataset, qubit: dict[str, str], fit: xr.Dataset = None):
+def plot_individual_raw_data_with_fit(ax: Axes, ds: xr.DataArray, qubit: dict[str, str], fit: xr.Dataset = None):
     """
     Plots individual qubit data on a given axis with optional fit.
 
@@ -63,8 +63,9 @@ def plot_individual_raw_data_with_fit(ax: Axes, ds: xr.Dataset, qubit: dict[str,
     - If the fit dataset is provided, the fitted curve is plotted along with the raw data.
     """
     ax2 = ax.twiny()
+
     # Plot using the attenuated current x-axis
-    ds.assign_coords(freq_GHz=ds.full_freq / 1e9).loc[qubit].IQ_abs.plot(
+    ds.assign_coords(freq_GHz=ds.full_freq / 1e9).loc[qubit].plot(
         ax=ax2,
         add_colorbar=False,
         x="attenuated_current",
@@ -78,7 +79,7 @@ def plot_individual_raw_data_with_fit(ax: Axes, ds: xr.Dataset, qubit: dict[str,
     ax2.set_zorder(ax.get_zorder() - 1)
     ax.patch.set_visible(False)
     # Plot using the flux x-axis
-    ds.assign_coords(freq_GHz=ds.full_freq / 1e9).loc[qubit].IQ_abs.plot(
+    ds.assign_coords(freq_GHz=ds.full_freq / 1e9).loc[qubit].plot(
         ax=ax, add_colorbar=False, x="flux_bias", y="freq_GHz", robust=True
     )
     if fit.fit_results.success.values:
