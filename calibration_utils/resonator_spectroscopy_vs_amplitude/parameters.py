@@ -12,10 +12,10 @@ class NodeSpecificParameters(RunnableParameters):
     """Step size for frequency sweep in MHz. Default is 0.1 MHz."""
     max_power_dbm: int = -25
     """Maximum power level in dBm. Default is -25 dBm."""
-    min_power_dbm: int = -50
-    """Minimum power level in dBm. Default is -50 dBm."""
-    num_power_points: int = 100
-    """Number of points of the readout power axis. Default is 100."""
+    min_power_dbm: int = -55
+    """Minimum power level in dBm. Default is -55 dBm."""
+    num_power_points: int = 20
+    """Number of points of the readout power axis. Default is 20."""
     max_amp: float = 0.1
     """Maximum readout amplitude for the experiment. Default is 0.1."""
     derivative_crossing_threshold_in_hz_per_dbm: int = -50_000
