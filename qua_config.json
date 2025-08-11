@@ -80,7 +80,7 @@
                 "y90": "q0.xy.y90_DragCosine.pulse",
                 "-y90": "q0.xy.-y90_DragCosine.pulse"
             },
-            "intermediate_frequency": 230000000.0,
+            "intermediate_frequency": -100000000.0,
             "RF_inputs": {
                 "port": [
                     "oct1",
@@ -92,7 +92,7 @@
             "operations": {
                 "readout": "q0.resonator.readout.pulse"
             },
-            "intermediate_frequency": -225850000.0,
+            "intermediate_frequency": -147400000.0,
             "smearing": 0,
             "time_of_flight": 32,
             "RF_outputs": {
@@ -135,7 +135,7 @@
                 "y90": "q1.xy.y90_DragCosine.pulse",
                 "-y90": "q1.xy.-y90_DragCosine.pulse"
             },
-            "intermediate_frequency": -63000000.0,
+            "intermediate_frequency": 100000000.0,
             "RF_inputs": {
                 "port": [
                     "oct1",
@@ -147,7 +147,7 @@
             "operations": {
                 "readout": "q1.resonator.readout.pulse"
             },
-            "intermediate_frequency": -104800000.0,
+            "intermediate_frequency": -239700000.0,
             "smearing": 0,
             "time_of_flight": 32,
             "RF_outputs": {
@@ -916,7 +916,7 @@
         },
         "q0.resonator.readout.wf.I": {
             "type": "constant",
-            "sample": 0.0316227766016838
+            "sample": 0.01778279410038923
         },
         "q0.resonator.readout.wf.Q": {
             "type": "constant",
@@ -1476,7 +1476,7 @@
         },
         "q1.resonator.readout.wf.I": {
             "type": "constant",
-            "sample": 0.0316227766016838
+            "sample": 0.01778279410038923
         },
         "q1.resonator.readout.wf.Q": {
             "type": "constant",
@@ -1593,7 +1593,7 @@
         "oct1": {
             "RF_outputs": {
                 "1": {
-                    "LO_frequency": 6000000000,
+                    "LO_frequency": 4800000000,
                     "LO_source": "internal",
                     "gain": -20.0,
                     "output_mode": "always_on",
@@ -1608,9 +1608,9 @@
                     ]
                 },
                 "2": {
-                    "LO_frequency": 4350000000.0,
+                    "LO_frequency": 5000000000.0,
                     "LO_source": "internal",
-                    "gain": -1.5,
+                    "gain": 8.5,
                     "output_mode": "always_on",
                     "input_attenuators": "off",
                     "I_connection": [
@@ -1623,9 +1623,9 @@
                     ]
                 },
                 "4": {
-                    "LO_frequency": 4950000000.0,
+                    "LO_frequency": 5000000000.0,
                     "LO_source": "internal",
-                    "gain": -1.5,
+                    "gain": 8.5,
                     "output_mode": "always_on",
                     "input_attenuators": "off",
                     "I_connection": [
@@ -1657,7 +1657,7 @@
             "RF_inputs": {
                 "1": {
                     "RF_source": "RF_in",
-                    "LO_frequency": 6000000000,
+                    "LO_frequency": 4800000000,
                     "LO_source": "internal",
                     "IF_mode_I": "direct",
                     "IF_mode_Q": "direct"

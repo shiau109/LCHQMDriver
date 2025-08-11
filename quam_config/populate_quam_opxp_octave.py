@@ -67,13 +67,13 @@ def get_octave_gain_and_amplitude(desired_power: float, max_amplitude: float = 0
 # Please refer to https://docs.quantum-machines.co/latest/docs/Guides/octave/ for more details
 
 # Resonator frequencies
-rr_freq = np.array([5.77415,5.8952]) * u.GHz
-rr_LO = 6.0 * u.GHz
+rr_freq = np.array([4.6526,4.5603]) * u.GHz
+rr_LO = 4.8 * u.GHz
 rr_if = rr_freq - rr_LO  # The intermediate frequency is inferred from the LO and readout frequencies
 assert np.all(np.abs(rr_if) < 400 * u.MHz), "The resonator intermediate frequency must be within [-400; 400] MHz."
 
 # Desired output power in dBm - Must be within [-80, 16] dBm
-readout_power = -40
+readout_power = -45
 # Get the Octave gain and IF amplitude corresponding to the desired powers
 rr_gain, rr_amplitude = get_octave_gain_and_amplitude(readout_power, max_amplitude=0.125 / len(machine.qubits))
 
@@ -98,15 +98,15 @@ for k, qubit in enumerate(machine.qubits.values()):
 # Please refer to https://docs.quantum-machines.co/latest/docs/Guides/octave/ for more details
 
 # Qubit drive frequencies
-xy_freq = np.array([4.58, 4.887]) * u.GHz
-xy_LO = np.array([4.35, 4.95]) * u.GHz
+xy_freq = np.array([4.9, 5.1]) * u.GHz
+xy_LO = np.array([5.0, 5.0]) * u.GHz
 xy_if = xy_freq - xy_LO  # The intermediate frequency is inferred from the LO and qubit frequencies
 assert np.all(np.abs(xy_if) < 400 * u.MHz), "The xy intermediate frequency must be within [-400; 400] MHz."
 # Transmon anharmonicity
 anharmonicity = np.array([200,200]) * u.MHz
 
 # Desired output power in dBm
-drive_power = -10
+drive_power = 0
 # Get the Octave gain and IF amplitude corresponding to the desired powers
 xy_gain, xy_amplitude = get_octave_gain_and_amplitude(drive_power)
 

@@ -21,9 +21,9 @@ from quam_config import Quam
 ########################################################################################################################
 # %%                                              Define static parameters
 ########################################################################################################################
-host_ip = "192.168.1.113"  # QOP IP address
+host_ip = "192.168.1.126"  # QOP IP address
 port = None  # QOP Port
-cluster_name = "Cluster_2"  # Name of the cluster
+cluster_name = "Cluster_1"  # Name of the cluster
 calibration_db_path = None  # "/path/to/some/config/folder"
 
 ########################################################################################################################
@@ -38,6 +38,7 @@ instruments.add_octave(indices=1)
 ########################################################################################################################
 qubits = [0, 1]
 qubit_pairs = [(qubits[i], qubits[i + 1]) for i in range(len(qubits) - 1)]
+# qubit_pairs = []#[(qubits[i], qubits[i + 1]) for i in range(len(qubits) - 1)]
 
 ########################################################################################################################
 # %%                                 Define any custom/hardcoded channel addresses
@@ -46,6 +47,7 @@ qubit_pairs = [(qubits[i], qubits[i + 1]) for i in range(len(qubits) - 1)]
 q1_res_ch = octave_spec(index=1, rf_out=1, rf_in=1)
 q0_drive_ch = octave_spec(index=1, rf_out=2)
 q1_drive_ch = opx_iq_octave_spec(out_port_i=7, out_port_q=8, rf_out=4)
+# q2_drive_ch = opx_iq_octave_spec(out_port_i=7, out_port_q=8, rf_out=4)
 
 ########################################################################################################################
 # %%                 Allocate the wiring to the connectivity object based on the available instruments
@@ -56,6 +58,7 @@ connectivity.add_resonator_line(qubits=qubits, constraints=q1_res_ch)
 # The individual xy drive lines
 connectivity.add_qubit_drive_lines(qubits=[0], constraints=q0_drive_ch)
 connectivity.add_qubit_drive_lines(qubits=[1], constraints=q1_drive_ch)
+# connectivity.add_qubit_drive_lines(qubits=[2], constraints=q2_drive_ch)
 
 # The flux lines for the individual qubits
 connectivity.add_qubit_flux_lines(qubits=qubits)
