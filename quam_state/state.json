@@ -70,7 +70,7 @@
                     "x180_DragCosine": {
                         "length": 40,
                         "axis_angle": 0,
-                        "amplitude": 0.12011287281280782,
+                        "amplitude": 0.11776259679941435,
                         "alpha": 0.0,
                         "anharmonicity": 200000000.0,
                         "__class__": "quam.components.pulses.DragCosinePulse"
@@ -79,7 +79,7 @@
                         "length": "#../x180_DragCosine/length",
                         "digital_marker": "#../x180_DragCosine/digital_marker",
                         "axis_angle": 0,
-                        "amplitude": 0.06005643640640391,
+                        "amplitude": 0.058881298399707176,
                         "alpha": "#../x180_DragCosine/alpha",
                         "anharmonicity": "#../x180_DragCosine/anharmonicity",
                         "detuning": "#../x180_DragCosine/detuning",
@@ -143,21 +143,21 @@
                 "f_01": 5911800000.0,
                 "confusion_matrix": [
                     [
-                        0.959,
-                        0.041
+                        0.9588,
+                        0.0412
                     ],
                     [
-                        0.0745,
-                        0.9255
+                        0.10045,
+                        0.89955
                     ]
                 ],
                 "operations": {
                     "readout": {
                         "length": 1000,
-                        "amplitude": 0.01617081740129438,
-                        "threshold": -0.0016142026254128458,
-                        "rus_exit_threshold": -0.0027202547157861375,
-                        "integration_weights_angle": -22.924961014081006,
+                        "amplitude": 0.014,
+                        "threshold": -0.0015021149447947036,
+                        "rus_exit_threshold": -0.002433332148796777,
+                        "integration_weights_angle": -22.943271838720896,
                         "__class__": "quam.components.pulses.SquareReadoutPulse"
                     }
                 },
@@ -208,7 +208,7 @@
                     "x180_DragCosine": {
                         "length": 40,
                         "axis_angle": 0,
-                        "amplitude": 0.09801646277419593,
+                        "amplitude": 0.09782470613709059,
                         "alpha": 0.0,
                         "anharmonicity": 200000000.0,
                         "__class__": "quam.components.pulses.DragCosinePulse"
@@ -217,7 +217,7 @@
                         "length": "#../x180_DragCosine/length",
                         "digital_marker": "#../x180_DragCosine/digital_marker",
                         "axis_angle": 0,
-                        "amplitude": 0.049008231387097964,
+                        "amplitude": 0.04891235306854529,
                         "alpha": "#../x180_DragCosine/alpha",
                         "anharmonicity": "#../x180_DragCosine/anharmonicity",
                         "detuning": "#../x180_DragCosine/detuning",
@@ -281,21 +281,21 @@
                 "f_01": 5830000000.0,
                 "confusion_matrix": [
                     [
-                        0.968,
-                        0.032
+                        0.9655,
+                        0.0345
                     ],
                     [
-                        0.0605,
-                        0.9395
+                        0.11135,
+                        0.88865
                     ]
                 ],
                 "operations": {
                     "readout": {
                         "length": 1000,
-                        "amplitude": 0.012894740037962265,
-                        "threshold": 0.0007797891663413009,
-                        "rus_exit_threshold": -0.00019399042132381438,
-                        "integration_weights_angle": -34.122514871202895,
+                        "amplitude": 0.012851757571169058,
+                        "threshold": 0.0006448190393180555,
+                        "rus_exit_threshold": -0.00021845776523166934,
+                        "integration_weights_angle": -40.389735402777816,
                         "__class__": "quam.components.pulses.SquareReadoutPulse"
                     }
                 },
