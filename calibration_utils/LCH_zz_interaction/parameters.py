@@ -8,9 +8,9 @@ from typing import List, Optional, Literal
 class NodeSpecificParameters(RunnableParameters):
     num_shots: int = 100
     """Number of averages to perform. Default is 100."""
-    detector_qubit: str = None
+    detector_qubit: str = "q0"
     """Qubit to use for detection. Default is 100."""
-    source_qubit: str = None
+    source_qubit: str = "q1"
     """Qubit to use for create zz interaction shift. Default is 100."""
 
 class Parameters(

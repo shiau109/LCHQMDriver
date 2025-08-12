@@ -11,11 +11,11 @@ class NodeSpecificParameters(RunnableParameters):
     """Number of averages to perform. Default is 50."""
     operation: Literal["x180", "x90", "-x90", "y90", "-y90"] = "x180"
     """Type of operation to perform. Default is "x180"."""
-    min_amp_factor: float = 0.001
+    min_amp_factor: float = 0.01
     """Minimum amplitude factor for the operation. Default is 0.001."""
     max_amp_factor: float = 1.99
     """Maximum amplitude factor for the operation. Default is 1.99."""
-    amp_factor_step: float = 0.005
+    amp_factor_step: float = 0.01
     """Step size for the amplitude factor. Default is 0.005."""
     max_number_pulses_per_sweep: int = 1
     """Maximum number of Rabi pulses per sweep. Default is 1."""

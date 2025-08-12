@@ -71,7 +71,7 @@ def create_qua_program(node: QualibrationNode[Parameters, Quam]):
     # Get the active qubits from the node and organize them by batches
     node.namespace["qubits"] = qubits = get_qubits(node)
     num_qubits = len(qubits)
-
+    
     n_avg = node.parameters.num_shots
 
     idle_times = get_idle_times_in_clock_cycles(node.parameters)

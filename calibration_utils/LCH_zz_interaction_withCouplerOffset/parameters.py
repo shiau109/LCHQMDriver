@@ -8,15 +8,21 @@ from typing import List, Optional, Literal
 class NodeSpecificParameters(RunnableParameters):
     num_shots: int = 100
     """Number of averages to perform. Default is 100."""
-    detector_qubit: str = None
+    detector_qubit: str = "q0"
     """Qubit to use for detection. Default is 100."""
-    source_qubit: str = None
+    source_qubit: str = "q1"
     """Qubit to use for create zz interaction shift. Default is 100."""
-    qubit_pair: str = None
+    qubit_pair: str = "q0-1"
     """coupler to use for change zz interaction shift. Default is 100."""
-    coupler_offset: float = 0.0
-    """Offset to apply to the coupler. Default is 0.0."""
-    
+
+    min_coupler_offset_in_v: float = -0.5
+    """Minimum coupler bias offset in volts. Default is -0.5 V."""
+    max_coupler_offset_in_v: float = 0.5
+    """Maximum coupler bias offset in volts. Default is 0.5 V."""
+    num_coupler_flux_points: int = 51
+    """Number of coupler flux points. Default is 51."""
+    readout_basis_operation: str = "-x90"
+    """Readout basis operation. Default is -x90."""
 class Parameters(
     NodeParameters,
     CommonNodeParameters,

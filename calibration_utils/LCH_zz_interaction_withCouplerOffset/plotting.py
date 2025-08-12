@@ -10,7 +10,7 @@ from quam_builder.architecture.superconducting.qubit import AnyTransmon
 u = unit(coerce_to_integer=True)
 
 
-def plot_raw_data_with_fit(ds: xr.Dataset, qubits: List[AnyTransmon], fits: xr.Dataset):
+def plot_raw_data_with_fit(ds: xr.Dataset, qubits: List[AnyTransmon], fits: xr.Dataset=None):
     """
     Plots the resonator spectroscopy amplitude IQ_abs with fitted curves for the given qubits.
 
@@ -35,9 +35,9 @@ def plot_raw_data_with_fit(ds: xr.Dataset, qubits: List[AnyTransmon], fits: xr.D
     """
     grid = QubitGrid(ds, [q.grid_location for q in qubits])
     for ax, qubit in grid_iter(grid):
-        plot_individual_data_with_fit(ax, ds, qubit, fits.sel(qubit=qubit["qubit"]))
+        plot_individual_data_with_fit(ax, ds, qubit)
 
-    grid.fig.suptitle("T2 echo with fit")
+    grid.fig.suptitle("ZZ interation with Coupler Offset")
     grid.fig.set_size_inches(15, 9)
     grid.fig.tight_layout()
     return grid.fig
@@ -62,35 +62,45 @@ def plot_individual_data_with_fit(ax: Axes, ds: xr.Dataset, qubit: dict[str, str
     -----
     - If the fit dataset is provided, the fitted curve is plotted along with the raw data.
     """
-    # Fitted decay
-    fitted = decay_exp(
-        ds.idle_time,
-        fit.fit_data.sel(fit_vals="a"),
-        fit.fit_data.sel(fit_vals="offset"),
-        fit.fit_data.sel(fit_vals="decay"),
-    )
 
-    if hasattr(fit, "state"):
-        ds.sel(qubit=qubit["qubit"]).state.plot(ax=ax)
-        if fitted is not None:
-            ax.plot(ds.idle_time, fitted, "r--")
-        ax.set_ylabel("State")
-    elif hasattr(fit, "I"):
-        (ds.sel(qubit=qubit["qubit"]).I * 1e3).plot(ax=ax)
-        if fitted is not None:
-            ax.plot(ds.idle_time, fitted * 1e3, "r--")
-        ax.set_ylabel("Trans. amp. I [mV]")
+    # Select data for the specific qubit
+    qubit_data = ds.sel(qubit=qubit["qubit"])
+    
+    # Plot 2D map based on available data
+    if hasattr(qubit_data, "state"):
+        # Plot state as 2D heatmap
+        qubit_data.state.plot(
+            ax=ax,
+            x="idle_time",
+            y="coupler_z",
+            add_colorbar=True,
+            cmap="viridis"
+        )
+        
+    elif hasattr(qubit_data, "I"):
+        # Plot I quadrature as 2D heatmap (convert to mV)
+        (qubit_data.I * 1e3).plot(
+            ax=ax,
+            x="idle_time", 
+            y="coupler_z",
+            add_colorbar=True,
+            cmap="RdBu_r"
+        )
+        
+    elif hasattr(qubit_data, "IQ_abs"):
+        # Plot IQ amplitude as 2D heatmap
+        qubit_data.IQ_abs.plot(
+            ax=ax,
+            x="idle_time",
+            y="coupler_z", 
+            add_colorbar=True,
+            cmap="plasma"
+        )
+        
     else:
-        raise RuntimeError("The dataset must contain either 'I' or 'state' for the plotting function to work.")
-
+        raise RuntimeError("The dataset must contain either 'state', 'I', or 'IQ_abs' for the plotting function to work.")
+    
+    ax.set_ylabel("coupler offset (V)")
+    ax.set_xlabel("Idle time (ns)")
     ax.set_title(qubit["qubit"])
-    ax.set_xlabel("Idle_time (µs)")
-    ax.text(
-        0.1,
-        0.9,
-        f'T2e = {fit["T2_echo"].values*1e-3:.1f} ± {fit["T2_echo_error"].values*1e-3:.1f} µs',
-        transform=ax.transAxes,
-        fontsize=10,
-        verticalalignment="top",
-        bbox=dict(facecolor="white", alpha=0.5),
-    )
+
