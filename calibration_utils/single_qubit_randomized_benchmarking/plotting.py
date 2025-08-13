@@ -96,6 +96,6 @@ def plot_individual_data_with_fit(ax: Axes, ds: xr.Dataset, qubit: dict[str, str
     ax.text(
         0.15,
         0.9,
-        f"1Q RB fidelity = {100*(1 - float(fit.error_per_gate.values)):.3f}%",
+        f"1Q RB fidelity (native gate)= {100*(1 - float(fit.error_per_gate.values)):.3f}%",
         transform=ax.transAxes,
     )
