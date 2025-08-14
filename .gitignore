@@ -8,6 +8,6 @@ assets
 .venv*
 tempCodeRunnerFile.python
 **/calibration_data
-**/quam_config
-**/quam_state
+**/quam_config/
+**/quam_state/
 /.img
