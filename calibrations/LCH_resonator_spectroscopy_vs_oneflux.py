@@ -101,11 +101,9 @@ def create_qua_program(node: QualibrationNode[Parameters, Quam]):
     z_source_qubit_id = node.parameters.z_source_qubit
     flux_idle_case = node.parameters.flux_idle_case
 
-    for multiplexed_qubits in qubits.batch():
-        for i, qubit in multiplexed_qubits.items(): 
-            if qubit.id == z_source_qubit_id:
-                z_source_qubit = qubit
-                break
+    z_source_qubit = node.machine.qubits[node.parameters.z_source_qubit]
+
+
 
     node.namespace["sweep_axes"] = {
         "qubit": xr.DataArray(qubits.get_names()),
