@@ -15,22 +15,24 @@ class NodeSpecificParameters(RunnableParameters):
     """Amplitude factor for the operation. Default is 0.1."""
     operation_len_in_ns: Optional[int] = None
     """Length of the operation in ns. Default is the predefined pulse length."""
-    frequency_span_in_mhz: float = 100.0
-    """Frequency span in MHz. Default is 100 MHz."""
-    frequency_step_in_mhz: float = 0.1
-    """Frequency step in MHz. Default is 0.1 MHz."""
-    flux_offset_span_in_v: float = 0.05
+    max_frequency_in_mhz: float = 100.0
+    """Maximum frequency in MHz. Default is 50 MHz."""
+    min_frequency_in_mhz: float = -100
+    """Minimum frequency in MHz. Default is -250 MHz."""
+    num_frequency_points: int = 101
+    """Number of frequency points. Default is 51."""
+    max_flux_amp_in_v: float = 0.05
     """Minimum flux bias offset in volts. Default is -0.02 V."""
-    flux_offset_in_v: float = 0.
-    """Minimum flux bias offset in volts. Default is 0.0 V."""
-    num_flux_points: int = 51
+    min_flux_amp_in_v: float = -0.05
+    """Minimum flux bias offset in volts. Default is -0.02 V."""
+    num_flux_points: int = 21
     """Number of flux points. Default is 51."""
     input_line_impedance_in_ohm: Optional[int] = 50
     """Input line impedance in ohms. Default is 50 Ohm."""
     line_attenuation_in_db: Optional[int] = 0
     """Line attenuation in dB. Default is 0 dB."""
-    z_source_qubit: str = "q0"
-    """Z source of specific qubit. Default is "q0"."""
+    z_source_qubit_pair: str = "q0-1"
+    """Z source of specific qubit. Default is "q0-1"."""
 
 class Parameters(
     NodeParameters,
