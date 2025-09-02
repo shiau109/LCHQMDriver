@@ -90,6 +90,9 @@ def create_qua_program(node: QualibrationNode[Parameters, Quam]):
     flux_idle_case = node.parameters.flux_idle_case
 
     z_source_qubit = node.machine.qubits[node.parameters.z_source_qubit]
+    # TODO Should be remove after test
+    # qubit_pair = node.machine.qubit_pairs["q0-1"]
+    # coupler = qubit_pair.coupler
 
     # Register the sweep axes to be added to the dataset when fetching data
     node.namespace["sweep_axes"] = {
@@ -136,6 +139,9 @@ def create_qua_program(node: QualibrationNode[Parameters, Quam]):
                         z_source_qubit.z.play(
                             "const", amplitude_scale=dc / z_source_qubit.z.operations["const"].amplitude, duration=duration
                         )
+                        # coupler.play(
+                        #     "const", amplitude_scale=dc / z_source_qubit.z.operations["const"].amplitude, duration=duration
+                        # )
                         for i, qubit in multiplexed_qubits.items():
 
                             # Apply saturation pulse to all qubits

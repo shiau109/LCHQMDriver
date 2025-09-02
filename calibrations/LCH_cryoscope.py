@@ -1,0 +1,633 @@
+# %% {Imports}
+import matplotlib.pyplot as plt
+import xarray as xr
+from dataclasses import asdict
+
+from qm.qua import *
+
+from qualang_tools.loops import from_array
+from qualang_tools.multi_user import qm_session
+from qualang_tools.results import progress_counter
+from qualang_tools.units import unit
+
+from qualibrate import QualibrationNode
+from quam_config import Quam
+from calibration_utils.LCH_cryoscope import (
+    Parameters,
+    process_raw_dataset,
+    fit_raw_data,
+    log_fitted_results,
+    plot_raw_data_with_fit,
+)
+from qualibration_libs.parameters import get_qubits, get_idle_times_in_clock_cycles
+from qualibration_libs.runtime import simulate_and_plot
+from qualibration_libs.data import XarrayDataFetcher
+from qualang_tools.bakery import baking
+
+
+
+
+# %% {Description}
+description = """
+        cryoscope
+"""
+
+node = QualibrationNode[Parameters, Quam](name="LCH_cryoscope", description=description, parameters=Parameters())
+
+
+
+# Any parameters that should change for debugging purposes only should go in here
+# These parameters are ignored when run through the GUI or as part of a graph
+@node.run_action(skip_if=node.modes.external)
+def custom_param(node: QualibrationNode[Parameters, Quam]):
+    # You can get type hinting in your IDE by typing node.parameters.
+    # node.parameters.qubits = ["q1", "q2"]
+    pass
+
+
+## Instantiate the QUAM class from the state file
+node.machine = Quam.load()
+# Class containing tools to help handling units and conversions.
+u = unit(coerce_to_integer=True)
+
+
+
+# %% {Initialize_QuAM_and_QOP}
+
+
+    
+# if node.parameters.reset_filters:
+#     for qubit in qubits:
+#         qubit.z.filter_fir_taps = [1,0]
+#     qubit.z.filter_iir_taps = [0]
+
+            
+# Generate the OPX and Octave configurations
+config = node.machine.generate_config()
+
+flux_point = node.parameters.flux_point_joint_or_independent
+reset_type = node.parameters.reset_type_active_or_thermal
+amplitude_factor = node.parameters.amplitude_factor
+
+# %% {Create_QUA_program}
+@node.run_action(skip_if=node.parameters.load_data_id is not None)
+def create_qua_program(node: QualibrationNode[Parameters, Quam]):
+    """Create the sweep axes and generate the QUA program from the pulse sequence and the node parameters."""
+    # Class containing tools to help handle units and conversions.
+    u = unit(coerce_to_integer=True)
+    # Get the active qubits from the node and organize them by batches
+    node.namespace["qubits"] = qubits = get_qubits(node)
+    num_qubits = len(qubits)
+    
+    n_avg = node.parameters.num_shots
+
+
+    flux_idle_case = node.parameters.flux_idle_case
+    # Register the sweep axes to be added to the dataset when fetching data
+    node.namespace["sweep_axes"] = {
+        "qubit": xr.DataArray(qubits.get_names()),
+        "idle_time": xr.DataArray(4 * idle_times, attrs={"long_name": "idle times", "units": "ns"}),
+        "detuning_signs": xr.DataArray(detuning_signs, attrs={"long_name": "detuning signs"}),
+    }
+
+    def baked_waveform(waveform, pulse_duration):
+        pulse_segments = []  # Stores the baking objects
+        # Create the different baked sequences, each one corresponding to a different truncated duration
+        for i in range(0, pulse_duration + 1):
+            with baking(config, padding_method="right") as b:
+                if i == 0:  # Otherwise, the baking will be empty and will not be created
+                    wf = [0.0] * 16
+                else:
+                    wf = waveform[:i].tolist()
+
+                b.add_op("flux_pulse", flux, wf)
+                b.play("flux_pulse", flux)
+            # Append the baking object in the list to call it from the QUA program
+            pulse_segments.append(b)
+        return pulse_segments
+    
+
+    with program() as node.namespace["qua_program"]:
+        I, I_st, Q, Q_st, n, n_st = node.machine.declare_qua_variables()
+        t = declare(int)  # QUA variable for the flux pulse segment index
+        state = [declare(int) for _ in range(num_qubits)]
+        state_st = [declare_stream() for _ in range(num_qubits)]
+        global_state = declare(int)
+        idx = declare(int)
+        idx2 = declare(int)
+        flag = declare(bool)
+        qubit = qubits[0]
+        i = 0
+
+        if node.parameters.use_state_discrimination:
+            state = [declare(int) for _ in range(num_qubits)]
+            state_st = [declare_stream() for _ in range(num_qubits)]
+
+        for multiplexed_qubits in qubits.batch():
+            # Initialize the QPU in terms of flux points (flux tunable transmons and/or tunable couplers)
+            for qubit in multiplexed_qubits.values():
+                node.machine.initialize_qpu(target=qubit, flux_point=flux_idle_case)
+            align()
+
+            with for_(n, 0, n < n_avg, n + 1):
+                save(n, n_st)
+                with for_(t, 4, t < cryoscope_len // 4, t + 4):
+                    with for_(idx2, 0, idx2<16, idx2+1):
+                        with for_each_(flag, [True, False]):
+                            # Qubit initialization
+                            for i, qubit in multiplexed_qubits.items():
+                                reset_frame(qubit.xy.name)
+                                qubit.reset(node.parameters.reset_type, node.parameters.simulate)
+                            align()
+
+                            play("x90", qbit_name)
+                            align(qbit_name, flux)
+                            # Play truncated flux pulse with 1ns resolution
+                            with switch_(segment):
+                                for j in range(0, total_len + 1):
+                                    with case_(j):
+                                        square_pulse_segments[j].run()
+                            # Wait some fixed time so that the whole protocol duration is constant
+                            wait(total_len // 4, qbit_name)
+                            # Play the second pi/2 pulse along x and y successively
+                            with if_(flag):
+                                play("x90", qbit_name)
+                            with else_():
+                                play("y90", qbit_name)
+
+                            align()
+                            for i, qubit in multiplexed_qubits.items():
+                                if node.parameters.use_state_discrimination:
+                                    qubit.readout_state(state[i])
+                                    save(state[i], state_st[i])
+                                else:
+                                    qubit.resonator.measure("readout", qua_vars=(I[i], Q[i]))
+                                    save(I[i], I_st[i])
+                                    save(Q[i], Q_st[i])
+                            align()
+
+        with stream_processing():
+            n_st.save("n")
+            for i in range(num_qubits):
+                if node.parameters.use_state_discrimination:
+                    state_st[i].buffer(len(detuning_signs)).buffer(len(idle_times)).average().save(f"state{i + 1}")
+                else:
+                    I_st[i].buffer(len(detuning_signs)).buffer(len(idle_times)).average().save(f"I{i + 1}")
+                    Q_st[i].buffer(len(detuning_signs)).buffer(len(idle_times)).average().save(f"Q{i + 1}")
+
+# %%
+
+####################
+# Helper functions #
+####################
+
+def baked_waveform(waveform_amp, qubit):
+    pulse_segments = []  # Stores the baking objects
+    # Create the different baked sequences, each one corresponding to a different truncated duration
+    waveform = [waveform_amp] * 16
+
+    for i in range(1, 17):  # from first item up to pulse_duration (16)
+        with baking(config, padding_method="left") as b:
+            wf = waveform[:i]
+            b.add_op("flux_pulse", qubit.z.name, wf)
+            b.play("flux_pulse", qubit.z.name)
+
+        # Append the baking object in the list to call it from the QUA program
+        pulse_segments.append(b)
+
+    return pulse_segments
+
+
+# %% {QUA_program}
+n_avg = node.parameters.num_averages  # The number of averages
+
+cryoscope_len = node.parameters.cryoscope_len  # The length of the cryoscope in nanoseconds
+
+assert cryoscope_len % 16 == 0, 'cryoscope_len is not multiple of 16 nanoseconds'
+
+baked_signals = {}
+# Baked flux pulse segments with 1ns resolution
+
+baked_signals = baked_waveform(qubits[0].z.operations['const'].amplitude * amplitude_factor, qubits[0]) 
+
+cryoscope_time = np.arange(1, cryoscope_len + 1, 1)  # x-axis for plotting - must be in ns
+
+# %%
+
+with program() as cryoscope:
+
+    I, I_st, Q, Q_st, n, n_st = qua_declaration(num_qubits=num_qubits)
+    t = declare(int)  # QUA variable for the flux pulse segment index
+    state = [declare(int) for _ in range(num_qubits)]
+    state_st = [declare_stream() for _ in range(num_qubits)]
+    global_state = declare(int)
+    idx = declare(int)
+    idx2 = declare(int)
+    flag = declare(bool)
+    qubit = qubits[0]
+    i = 0
+    
+    # Bring the active qubits to the minimum frequency point
+    if flux_point == "independent":
+        machine.apply_all_flux_to_min()
+        machine.apply_all_couplers_to_min()
+        qubit.z.to_independent_idle()
+    elif flux_point == "joint":
+        machine.apply_all_flux_to_joint_idle()
+        # qubit.z.set_dc_offset(0.01 + qubit.z.joint_offset)
+    else:
+        machine.apply_all_flux_to_zero()
+    wait(1000)
+
+    # Outer loop for averaging
+    with for_(n, 0, n < n_avg, n + 1):
+        save(n, n_st)
+
+        # The first 16 nanoseconds
+        with for_(idx, 0, idx<16, idx+1):
+            # Alternate between X/2 and Y/2 pulses
+            # for tomo in ['x90', 'y90']:
+            with for_each_(flag, [True, False]):
+                if reset_type == "active":
+                    for qubit in qubits:
+                        active_reset(qubit, "readout")
+                else:
+                    qubit.wait(qubit.thermalization_time * u.ns)
+                align()
+                
+                # Play first X/2
+                for qubit in qubits:
+                    qubit.xy.play("x180", amplitude_scale = 0.5)
+
+                align()
+
+                # Delay between x90 and the flux pulse
+                # NOTE: it can be made larger than 16 nanoseconds it could be benefitial
+                wait(16 // 4)
+
+                align()
+
+                # with switch_(idx):
+                #     for i in range(16):
+                #         with case_(i):
+                #             baked_signals[i].run()
+
+                # Wait for the idle time set slightly above the maximum flux pulse duration to ensure that the 2nd x90
+                # pulse arrives after the longest flux pulse
+                for qubit in qubits:
+                    qubit.xy.wait((cryoscope_len + 16) // 4)
+                    # Play second X/2 or Y/2
+                    # if tomo == 'x90':
+                    with if_(flag):
+                        qubit.xy.play("x90")
+                    # elif tomo == 'y90':
+                    with else_():
+                        qubit.xy.play("y90")
+
+                # Measure resonator state after the sequence
+                align()
+
+                qubit.resonator.measure("readout", qua_vars=(I[i], Q[i]))
+                assign(state[i], Cast.to_int(I[i] > qubit.resonator.operations["readout"].threshold))
+                save(state[i], state_st[i])
+
+        with for_(t, 4, t < cryoscope_len // 4, t + 4):
+
+            with for_(idx2, 0, idx2<16, idx2+1):
+
+                # Alternate between X/2 and Y/2 pulses
+                # for tomo in ['x90', 'y90']:
+                with for_each_(flag, [True, False]):
+                    # Initialize the qubits
+                    if reset_type == "active":
+                        for qubit in qubits:
+                            active_reset(qubit, "readout")
+                    else:
+                        qubit.wait(qubit.thermalization_time * u.ns)
+                    align()
+                    # Play first X/2
+                    for qubit in qubits:
+                        qubit.xy.play("x90")
+
+                    align()
+
+                    # Delay between x90 and the flux pulse
+                    wait(16 // 4)
+
+                    align()
+                    with switch_(idx2):
+                        for j in range(16):
+                            with case_(j):
+                                baked_signals[j].run() 
+                                qubits[0].z.play('const', duration=t, amplitude_scale =amplitude_factor)
+
+                    # Wait for the idle time set slightly above the maximum flux pulse duration to ensure that the 2nd x90
+                    # pulse arrives after the longest flux pulse
+                    for qubit in qubits:
+                        qubit.xy.wait((cryoscope_len + 16) // 4)
+                        # Play second X/2 or Y/2
+                        with if_(flag):
+                            qubit.xy.play("x90")
+                        # elif tomo == 'y90':
+                        with else_():
+                            qubit.xy.play("y90")
+
+                    # Measure resonator state after the sequence
+                    align()
+                    qubit.resonator.measure("readout", qua_vars=(I[i], Q[i]))
+                    assign(state[i], Cast.to_int(I[i] > qubit.resonator.operations["readout"].threshold))
+                    save(state[i], state_st[i])
+
+
+    with stream_processing():
+        # for the progress counter
+        n_st.save("iteration")
+        for i, qubit in enumerate(qubits):
+            state_st[i].buffer(2).buffer(cryoscope_len).average().save(f"state{i + 1}")
+
+
+# %%
+
+simulate =  node.parameters.simulate
+
+if node.parameters.simulate:
+    # Simulates the QUA program for the specified duration
+    simulation_config = SimulationConfig(duration=50000)  # In clock cycles = 4ns
+    job = qmm.simulate(config, cryoscope, simulation_config)
+    samples = job.get_simulated_samples()
+    samples.con4.plot()
+    plt.show()
+    samples.con5.plot()
+    plt.show()
+    # analog5 = job.get_simulated_samples().con1.analog['5']
+    # threshold = 0.01
+    # indices = np.where(np.diff(np.sign(analog5 - threshold)) != 0)[0] + 1
+    # # Plot the signal
+    # plt.figure(figsize=(10, 6))
+    # plt.plot(analog5)
+    # plt.axhline(threshold, color='r', linestyle='--', label='Threshold')
+    # for idx in indices:
+    #     plt.axvline(idx, color='g', linestyle='--')
+
+    # subtracted_values = []
+
+    # for i in range(0, len(indices), 2):
+    #     if i + 1 < len(indices):
+    #         subtracted_value = indices[i + 1] - indices[i]
+    #         subtracted_values.append(subtracted_value)
+
+    # # Print the subtracted values
+    # for i, value in enumerate(subtracted_values):
+    #     print(f"Subtracted value {i + 1}: {value}")
+    # plt.show(block=False)
+else:
+    with qm_session(qmm, config, timeout=node.parameters.timeout) as qm:
+        job = qm.execute(cryoscope)
+        data_list = ["iteration"]
+        results = fetching_tool(job, data_list, mode="live")
+        # Live plotting
+
+        while results.is_processing():
+            fetched_data = results.fetch_all()
+            n = fetched_data[0]
+            progress_counter(n, n_avg, start_time=results.start_time)
+
+
+# %%
+
+# %% {Data_fetching_and_dataset_creation}
+# Fetch the data from the OPX and convert it into a xarray with corresponding axes (from most inner to outer loop)
+if not node.parameters.simulate:
+
+    ds = fetch_results_as_xarray(job.result_handles, [qubit], {"axis": ["x","y"], "time": cryoscope_time})
+    plot_process = True
+
+# %%
+if not node.parameters.simulate:
+    if plot_process:
+        ds.state.sel(qubit= qubits[0].name).plot(hue = 'axis')
+        plt.show()
+
+    sg_order = 2
+    sg_range = 3
+    qubit = qubits[0]
+    da = ds.state.sel(qubit= qubit.name)
+
+    flux_cryoscope_q = cryoscope_frequency(da, 
+                                           quad_term=qubit.freq_vs_flux_01_quad_term,
+                                           stable_time_indices=(20, cryoscope_len-20),  
+                                           sg_order=sg_order,
+                                           sg_range=sg_range, plot=plot_process)
+    plt.show()
+    # node.results['figure_flux_cryoscope'] = flux_cryoscope_q #NOTE: how to save this figure? 
+
+# %%
+if not node.parameters.simulate:
+        # extract the rising part of the data for analysis
+    threshold = flux_cryoscope_q.max().values*0.6 # Set the threshold value
+    rise_index = np.argmax(flux_cryoscope_q.values > threshold) + 1
+    drop_index =  len(flux_cryoscope_q) - 2
+    flux_cryoscope_tp = flux_cryoscope_q.sel(time=slice(rise_index,drop_index ))
+    flux_cryoscope_tp = flux_cryoscope_tp.assign_coords(
+        time=flux_cryoscope_tp.time - rise_index + 1)
+
+
+    f,axs = plt.subplots(2)
+    flux_cryoscope_q.plot(ax = axs[0])
+    axs[0].axvline(rise_index, color='r')
+    axs[0].axvline(drop_index, color='r')
+    flux_cryoscope_tp.plot(ax = axs[1])
+    plt.show()
+    node.results['figure_rise_drop'] = f
+    
+# %%
+if not node.parameters.simulate:
+    # Fit two exponents
+    # Filtering the data might improve the fit at the first few nS, play with range to achieve this
+    filtered_flux_cryoscope_q = savgol(flux_cryoscope_tp, 'time', range = 3, order = 2)
+    da = flux_cryoscope_tp
+
+    first_vals = da.sel(time=slice(0, 1)).mean().values
+    final_vals = da.sel(time=slice(50, None)).mean().values
+
+    try:
+        p0 = [final_vals, -1+first_vals/final_vals, 50]
+        fit, _  = curve_fit(expdecay, da.time[5:], da[5:],
+                p0=p0)
+    except:
+        fit = p0
+        print('single exp fit failed')
+    try:
+        p0 = [fit[0], fit[1], 2, fit[1], fit[2]]
+        fit2, _ = curve_fit(two_expdecay, filtered_flux_cryoscope_q.time[4:], filtered_flux_cryoscope_q[4:],
+                p0 = p0)
+    except:
+        fit2 = p0
+        print('two exp fit failed')
+        
+    if plot_process:
+        f,axs = plt.subplots()
+        da.plot(marker = '.')
+        # plt.plot(filtered_flux_cryoscope_q.time, filtered_flux_cryoscope_q, label = 'filtered')
+        axs.plot(da.time, expdecay(da.time, *fit), label = 'fit single exp')
+        if fit2 is not None:
+            axs.plot(da.time, two_expdecay(da.time, *fit2), label = 'fit two exp')
+        axs.legend()
+        plt.show()
+        node.results['figure_fit_exp'] = f
+
+    # Print fit2 parameters nicely (two_expdecay function)
+    if fit2 is not None:
+        print("Fit2 parameters (two_expdecay function):")
+        print(f"s: {fit2[0]:.6f}")
+        print(f"a: {fit2[1]:.6f}")
+        print(f"t: {fit2[2]:.6f}")
+        print(f"a2: {fit2[3]:.6f}")
+        print(f"t2: {fit2[4]:.6f}")
+
+    # Print fit parameters nicely (expdecay function)
+    print("\nFit parameters (expdecay function):")
+    print(f"s: {fit[0]:.6f}")
+    print(f"a: {fit[1]:.6f}")
+    print(f"t: {fit[2]:.6f}")
+
+    def find_A_B(fit):
+        b = fit[1]
+        tau = fit[2]
+        c = fit[3]
+        sigma = fit[4]
+        mu = (tau + sigma)/(tau - sigma)
+        def solve_quadratic_equation(A, B, C):
+            # Calculate the discriminant
+            discriminant = (B**2) - (4*A*C)
+
+            # Find two solutions using the quadratic formula
+            solution1 = (-B + np.sqrt(discriminant)) / (2*A)
+            solution2 = (-B - np.sqrt(discriminant)) / (2*A)
+
+            return solution1, solution2
+        # Coefficients
+        A = mu - 1
+        B = -(2 + b * (mu + 1) + c* (mu-1))
+        C = 2 * c
+        # Solve the quadratic equation
+        solutions = solve_quadratic_equation(A, B, C)
+        
+        B = solutions[1].real
+        A = (b + c - B) / (B + 1)
+        alpha = np.exp(-1 / tau)
+        beta = np.exp(-1 / sigma)
+        return A, B, alpha, beta
+
+    A, B, alpha, beta = find_A_B(fit2)
+    fir1 = [1 / (1 + A), -alpha / (1 + A)]
+    iir1 = [(A + alpha) / (1 + A)]
+
+    fir2 = [1 / (1 + B), -beta / (1 + B)]
+    iir2 = [(B + beta) / (1 + B)]
+
+
+    IIR_for_opx = [iir2[0],iir1[0]]
+
+    long_FIR = convolve(fir2,fir1, mode='full')/2
+    long_IIR = convolve([1,-iir2[0]],[1,-iir1[0]], mode='full')/2
+    filtered_response_long = lfilter(long_FIR,long_IIR, flux_cryoscope_q)
+
+    if plot_process:
+        f,ax = plt.subplots()
+        ax.plot(flux_cryoscope_q.time,flux_cryoscope_q,label = 'data')
+        ax.plot(flux_cryoscope_q.time,filtered_response_long,label = 'filtered long time')
+        ax.set_ylim([final_vals*0.95,final_vals*1.05])
+        ax.legend()
+        plt.show()
+        node.results['figure_filtered_long_time'] = f
+
+# %%
+if not node.parameters.simulate:
+    ####  FIR filter for the response
+    flux_q = flux_cryoscope_q.copy()
+    flux_q.values = filtered_response_long
+    flux_q_tp = flux_q.sel(time=slice(rise_index, drop_index))
+    flux_q_tp = flux_q_tp.assign_coords(
+        time=flux_q_tp.time - rise_index)
+    final_vals = flux_q_tp.sel(time=slice(100, None)).mean().values
+    step = np.ones(len(flux_q)+100)*final_vals
+    fir_est = estimate_fir_coefficients(step, flux_q_tp.values, 28)
+
+    FIR_new = fir_est
+
+    filtered_response_long = lfilter(long_FIR,long_IIR, flux_cryoscope_q)
+
+    convolved_fir = convolve(long_FIR,FIR_new, mode='full')
+    filtered_response_Full = lfilter(convolved_fir,long_IIR, flux_cryoscope_q)
+
+    if plot_process:
+        flux_cryoscope_q.plot(label =  'data')
+        plt.plot(filtered_response_long, label = 'filtered long time')
+        plt.plot(filtered_response_Full, label = 'filtered full, deconvolved')
+        plt.axhline(final_vals*1.001, color = 'k')
+        plt.axhline(final_vals*0.999, color = 'k')
+        plt.ylim([final_vals*0.95,final_vals*1.05])
+        plt.legend()
+        plt.show()
+
+
+# %%
+if not node.parameters.simulate:
+    def find_diff(x, y, y0, plot = False):
+        filterd_y  = lfilter(x,[1,0], y)
+        diffs = np.sum(np.abs(filterd_y - y0))
+        if plot:
+            plt.plot(filterd_y)
+        return diffs
+
+    result = minimize(find_diff, x0=FIR_new, args = (filtered_response_long,np.mean(filtered_response_long[rise_index+50:drop_index])))
+
+    convolved_fir = convolve(long_FIR,result.x, mode='full')
+    filtered_response_Full = lfilter(convolved_fir,long_IIR, flux_cryoscope_q)
+
+    if plot_process:
+        flux_cryoscope_q.plot(label =  'data')
+        plt.plot(filtered_response_long, label = 'filtered long time')
+        plt.plot(filtered_response_Full, label = 'filtered full, fitted')
+        plt.axhline(final_vals*1.001, color = 'k')
+        plt.axhline(final_vals*0.999, color = 'k')
+        plt.ylim([final_vals*0.95,final_vals*1.05])
+        plt.legend()
+        plt.show()
+
+# %%
+if not node.parameters.simulate:
+    # plotting the results
+    fig,ax = plt.subplots()
+    ax.plot(flux_cryoscope_q.time,flux_cryoscope_q,label = 'data')
+    ax.plot(flux_cryoscope_q.time,filtered_response_long,'--', label = 'slow rise correction')
+    ax.plot(flux_q.time,filtered_response_Full,'--', label = 'expected corrected response')
+    ax.axhline(final_vals*1.001, color = 'k')
+    ax.axhline(final_vals*0.999, color = 'k')
+    ax.set_ylim([final_vals*0.95,final_vals*1.05])
+    ax.legend()
+    node.results['figure'] = fig
+
+# %%
+if not node.parameters.simulate:
+    node.results['fit_results'] = {}
+    for q in qubits:
+        node.results['fit_results'][q.name] = {}
+        node.results['fit_results'][q.name]['fir'] = convolved_fir.tolist()
+        node.results['fit_results'][q.name]['iir'] = IIR_for_opx
+
+
+# %%
+
+if not node.parameters.simulate:
+    with node.record_state_updates():
+        for qubit in qubits:
+            qubit.z.filter_fir_taps = convolved_fir.tolist()
+            qubit.z.filter_iir_taps = IIR_for_opx
+
+# %%
+node.results['initial_parameters'] = node.parameters.model_dump()
+node.machine = machine
+node.save()
+# %%

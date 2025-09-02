@@ -82,27 +82,25 @@ def create_qua_program(node: QualibrationNode[Parameters, Quam]):
     coupler = qubit_pair.coupler
 
     operation = node.parameters.operation  # The qubit operation to play
-    operation_len = node.parameters.operation_len_in_ns  # The operation length in ns
+    operation_times = node.parameters.operation_times  # The times
     n_avg = node.parameters.num_shots
-
+    operation_gap_ns = node.parameters.operation_gap_ns
 
     flux_idle_case = node.parameters.flux_idle_case
 
     ctrl_switch = [True, False]  # Control of CZ
-    readout_angle_array = np.linspace(-1, 1, node.parameters.readout_angle_point)  # Readout basis index (0 or 1)
+    readout_angle_array = np.linspace(-0.75, 0.75, node.parameters.readout_angle_point)  # Readout basis index (0 or 1)
 
     # Register the sweep axes to be added to the dataset when fetching data
     node.namespace["sweep_axes"] = {
         "qubit": xr.DataArray(qubits.get_names()),
         "ctrl_switch": xr.DataArray(np.array(ctrl_switch), attrs={"long_name": "control switch", "units": "arb."}),
-        "basis": xr.DataArray(np.array(readout_angle_array), attrs={"long_name": "control switch", "units": "2pi"}),
+        "basis": xr.DataArray(np.array(readout_angle_array), attrs={"long_name": "reaout basis angle", "units": "2pi"}),
     }
 
     with program() as node.namespace["qua_program"]:
         # Macro to declare I, Q, n and their respective streams for a given number of qubit
         I, I_st, Q, Q_st, n, n_st = node.machine.declare_qua_variables()
-        c_amp = declare(fixed)  # QUA variable for the coupler dc level
-        q_amp = declare(fixed)  # QUA variable for the qubit dc level
         c_sw = declare(bool)  # QUA variable for the CZ control switch
         roa = declare(fixed)  # QUA variable for readout basis index
 
@@ -118,7 +116,6 @@ def create_qua_program(node: QualibrationNode[Parameters, Quam]):
 
             with for_(n, 0, n < n_avg, n + 1):
                 save(n, n_st)
-               
                 with for_each_(c_sw, ctrl_switch):
                     with for_(*from_array(roa,readout_angle_array) ):
 
@@ -130,13 +127,7 @@ def create_qua_program(node: QualibrationNode[Parameters, Quam]):
                                 node.parameters.simulate,
                                 log_callable=node.log,
                             )
-
                             # Flux sweeping for a qubit
-                            duration = (
-                                operation_len * u.ns
-                                if operation_len is not None
-                                else coupler.operations[operation].length * u.ns
-                            )
                         align()
 
                         # Qubit manipulation
@@ -149,12 +140,12 @@ def create_qua_program(node: QualibrationNode[Parameters, Quam]):
 
                         align()
                         wait(16//4)
-                        qubit_sweep.z.play(operation)
-                        coupler.play(operation)
+                        for _ in range(operation_times):
+                            qubit_sweep.z.play(operation)
+                            coupler.play(operation)
+                            wait(operation_gap_ns//4)
 
                         align()
-                        wait(16//4)
-
                         # Change readout basis
                         qubit_fixed.xy.frame_rotation_2pi(roa)
                         qubit_fixed.xy.play("-y90")

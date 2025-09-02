@@ -12,7 +12,7 @@ from qualang_tools.results import progress_counter
 from qualang_tools.units import unit
 from qualibrate import QualibrationNode
 from quam_config import Quam
-from calibration_utils.LCH_CZ_leakage import (
+from calibration_utils.LCH_CZ_conditional_phase_test import (
     Parameters,
     fit_raw_data,
     log_fitted_results,
@@ -23,6 +23,7 @@ from qualibration_libs.parameters import get_qubits
 from qualibration_libs.runtime import simulate_and_plot
 from qualibration_libs.data import XarrayDataFetcher
 
+from customized.common_parameters import get_qubit_pairs
 # %% {Description}
 description = """
         QUBIT SPECTROSCOPY VERSUS FLUX
@@ -42,7 +43,7 @@ State update:
 
 
 node = QualibrationNode[Parameters, Quam](
-    name="LCH_CZ_leakage",
+    name="LCH_CZ_conditional_phase_test",
     description=description,
     parameters=Parameters(),
 )
@@ -70,45 +71,33 @@ def create_qua_program(node: QualibrationNode[Parameters, Quam]):
     u = unit(coerce_to_integer=True)
     # Get the active qubits from the node and organize them by batches
     node.namespace["qubits"] = qubits = get_qubits(node)
+    qubit_pairs = get_qubit_pairs(node)
     num_qubits = len(qubits)
     # Check if the qubits have a z-line attached
     if any([q.z is None for q in qubits]):
         warnings.warn("Found qubits without a flux line. Skipping")
 
-    qubit_sweep = node.machine.qubits[node.parameters.qubit_sweep]
-    qubit_fixed = node.machine.qubits[node.parameters.qubit_fixed]
-    qubit_pair = node.machine.qubit_pairs[node.parameters.qubit_pair]
-    coupler = qubit_pair.coupler
-    print( qubit_sweep.z.operations["cz_square"].amplitude)
-    operation = node.parameters.operation  # The qubit operation to play
-    operation_len = node.parameters.operation_len_in_ns  # The operation length in ns
+    operation_times = node.parameters.operation_times  # The operation length in ns
     n_avg = node.parameters.num_shots
-
-
-    # Coupler Flux amp sweep in V
-    num = node.parameters.num_coupler_amp_points
-    coupler_amps = np.linspace(node.parameters.min_coupler_amp_in_v , node.parameters.max_coupler_amp_in_v, num)
-    # Qubit Flux amp sweep in V
-    num = node.parameters.num_qubit_amp_points
-    qubit_amps = np.linspace(node.parameters.min_qubit_amp_in_v , node.parameters.max_qubit_amp_in_v, num)
-
+    operation_gap_ns = node.parameters.operation_gap_ns
 
     flux_idle_case = node.parameters.flux_idle_case
 
-    # print(operation_len * u.ns)
-    # print(coupler.operations[operation].length * u.ns)
+    ctrl_switch = [True, False]  # Control of CZ
+    readout_angle_array = np.linspace(-0.75, 0.75, node.parameters.readout_angle_point)  # Readout basis index (0 or 1)
+
     # Register the sweep axes to be added to the dataset when fetching data
     node.namespace["sweep_axes"] = {
         "qubit": xr.DataArray(qubits.get_names()),
-        "qubit_amp": xr.DataArray(qubit_amps, attrs={"long_name": "qubit frequency", "units": "Hz"}),
-        "coupler_amp": xr.DataArray(coupler_amps, attrs={"long_name": "flux bias", "units": "V"}),
+        "ctrl_switch": xr.DataArray(np.array(ctrl_switch), attrs={"long_name": "control switch", "units": "arb."}),
+        "basis": xr.DataArray(np.array(readout_angle_array), attrs={"long_name": "control switch", "units": "2pi"}),
     }
 
     with program() as node.namespace["qua_program"]:
         # Macro to declare I, Q, n and their respective streams for a given number of qubit
         I, I_st, Q, Q_st, n, n_st = node.machine.declare_qua_variables()
-        c_amp = declare(fixed)  # QUA variable for the coupler dc level
-        q_amp = declare(fixed)  # QUA variable for the qubit dc level
+        c_sw = declare(bool)  # QUA variable for the CZ control switch
+        roa = declare(fixed)  # QUA variable for readout basis index
 
         if node.parameters.use_state_discrimination:
             state = [declare(int) for _ in range(num_qubits)]
@@ -122,8 +111,10 @@ def create_qua_program(node: QualibrationNode[Parameters, Quam]):
 
             with for_(n, 0, n < n_avg, n + 1):
                 save(n, n_st)
-                with for_(*from_array(q_amp, qubit_amps)):
-                    with for_(*from_array(c_amp, coupler_amps)):
+               
+                with for_each_(c_sw, ctrl_switch):
+                    with for_(*from_array(roa,readout_angle_array) ):
+
                         # Qubit initialization
                         for i, qubit in multiplexed_qubits.items():
                             # Wait for the qubits to decay to the ground state
@@ -134,28 +125,34 @@ def create_qua_program(node: QualibrationNode[Parameters, Quam]):
                             )
 
                             # Flux sweeping for a qubit
-                            duration = (
-                                operation_len * u.ns
-                                if operation_len is not None
-                                else coupler.operations[operation].length * u.ns
-                            )
                         align()
 
                         # Qubit manipulation
-                        qubit_sweep.xy.play("x180")   
-                        qubit_fixed.xy.play("x180") 
+                        with if_(c_sw):
+                            for qubit_pair in qubit_pairs:
+                                qubit_pair.qubit_control.xy.play("x180")                        
+                        with else_():
+                            pass
+
+                        for qubit_pair in qubit_pairs:
+                                qubit_pair.qubit_target.xy.play("x90")    
 
                         align()
                         wait(16//4)
-                        qubit_sweep.z.play(
-                            operation, amplitude_scale=q_amp / qubit_sweep.z.operations["cz_square"].amplitude, duration=duration
-                        )
-                        coupler.play(
-                            operation, amplitude_scale=c_amp / coupler.operations["cz_square"].amplitude, duration=duration
-                        )
-
+                        
+                        # for _ in range(operation_times):
+                        for qubit_pair in qubit_pairs:
+                            qubit_pair.macros["cz"].apply()
+                            wait(operation_gap_ns//4)
                         align()
+
+                        # Change readout basis
+                        for qubit_pair in qubit_pairs:
+                                qubit_pair.qubit_target.xy.frame_rotation_2pi(roa)
+                                qubit_pair.qubit_target.xy.play("-y90")    
+
                         wait(16//4)
+
                         # Measure the state of the resonators
                         for i, qubit in multiplexed_qubits.items():
                             if node.parameters.use_state_discrimination:
@@ -176,10 +173,10 @@ def create_qua_program(node: QualibrationNode[Parameters, Quam]):
             n_st.save("n")
             for i in range(num_qubits):
                 if node.parameters.use_state_discrimination:
-                    state_st[i].buffer(len(coupler_amps)).buffer(len(qubit_amps)).average().save(f"state{i + 1}")
+                    state_st[i].buffer(len(readout_angle_array)).buffer(len(ctrl_switch)).average().save(f"state{i + 1}")
                 else:
-                    I_st[i].buffer(len(coupler_amps)).buffer(len(qubit_amps)).average().save(f"I{i + 1}")
-                    Q_st[i].buffer(len(coupler_amps)).buffer(len(qubit_amps)).average().save(f"Q{i + 1}")
+                    I_st[i].buffer(len(readout_angle_array)).buffer(len(ctrl_switch)).average().save(f"I{i + 1}")
+                    Q_st[i].buffer(len(readout_angle_array)).buffer(len(ctrl_switch)).average().save(f"Q{i + 1}")
 
 
 

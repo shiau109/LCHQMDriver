@@ -173,9 +173,11 @@ def create_qua_program(node: QualibrationNode[Parameters, Quam]):
                                 # Change readout basis
                                 with switch_(rbi):
                                     with case_(0):
-                                        qubit_fixed.xy.play("-y90")
+                                        qubit_fixed.xy.frame_rotation_2pi(0)
                                     with case_(1):
-                                        qubit_fixed.xy.play("x90")
+                                        qubit_fixed.xy.frame_rotation_2pi(0.5)
+                                qubit_fixed.xy.play("-y90")
+
                                 wait(16//4)
 
                                 # Measure the state of the resonators

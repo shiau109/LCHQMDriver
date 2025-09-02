@@ -115,9 +115,9 @@ def plot_individual_data_with_fit(ax: Axes, ds: xr.Dataset, q_label: str, fit: x
 if __name__ == "__main__":
     from customized.read_data import load_xarray_h5
     import matplotlib.pyplot as plt
-    ds = load_xarray_h5(r"data/QPU_project/2025-08-26/#959_LCH_CZ_leakage_151528/ds_raw.h5")
+    ds = load_xarray_h5(r"data/QPU_project/2025-08-26/#979_LCH_CZ_leakage_163523/ds_raw.h5")
     print(ds)
-    plt_data = ds.sel(qubit="q0")
+    plt_data = ds.sel(qubit="q1")
     fig, ax = plt.subplots()
-    plot_individual_data_with_fit(ax, plt_data, "q0")
+    plot_individual_data_with_fit(ax, plt_data, "q1")
     plt.show()

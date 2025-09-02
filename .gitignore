@@ -4,10 +4,10 @@ __pycache__
 **.egg-info
 **/build
 **/data
+**/quam_state
 assets
 .venv*
 **/calibration_data
 **/quam_config
-**/quam_state
 /.img
 tempCodeRunnerFile.python

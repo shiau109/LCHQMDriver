@@ -5,14 +5,15 @@ from matplotlib.figure import Figure
 
 from qualang_tools.units import unit
 from qualibration_libs.plotting import QubitGrid, grid_iter
+from qualibration_libs.analysis import oscillation
 from quam_builder.architecture.superconducting.qubit import AnyTransmon
 
 u = unit(coerce_to_integer=True)
 
 
-def plot_raw_data_with_fit(ds: xr.Dataset, qubits: List[AnyTransmon], fits: xr.Dataset=None):
+def plot_raw_data_with_fit(ds: xr.Dataset, qubits: List[AnyTransmon], fits: xr.Dataset):
     """
-    Plots the raw data with fitted curves for the given qubits.
+    Plots the resonator spectroscopy amplitude IQ_abs with fitted curves for the given qubits.
 
     Parameters
     ----------
@@ -35,15 +36,15 @@ def plot_raw_data_with_fit(ds: xr.Dataset, qubits: List[AnyTransmon], fits: xr.D
     """
     grid = QubitGrid(ds, [q.grid_location for q in qubits])
     for ax, qubit in grid_iter(grid):
-        plot_individual_raw_data_with_fit(ax, ds, qubit)
+        plot_individual_data_with_fit_1D(ax, ds, qubit, fits.sel(qubit=qubit["qubit"]))
 
-    grid.fig.suptitle("Resonator spectroscopy vs flux")
+    grid.fig.suptitle("Power Rabi")
     grid.fig.set_size_inches(15, 9)
     grid.fig.tight_layout()
     return grid.fig
 
 
-def plot_individual_raw_data_with_fit(ax: Axes, ds: xr.Dataset, qubit: dict[str, str], fit: xr.Dataset = None):
+def plot_individual_data_with_fit_1D(ax: Axes, ds: xr.Dataset, qubit: dict[str, str], fit: xr.Dataset = None):
     """
     Plots individual qubit data on a given axis with optional fit.
 
@@ -63,25 +64,32 @@ def plot_individual_raw_data_with_fit(ax: Axes, ds: xr.Dataset, qubit: dict[str,
     - If the fit dataset is provided, the fitted curve is plotted along with the raw data.
     """
 
+    if fit:
+        fitted_data = oscillation(
+            fit.amp_prefactor.data,
+            fit.fit.sel(fit_vals="a").data,
+            fit.fit.sel(fit_vals="f").data,
+            fit.fit.sel(fit_vals="phi").data,
+            fit.fit.sel(fit_vals="offset").data,
+        )
+    else:
+        fitted_data = None
+
+    if hasattr(ds, "I"):
+        data = "I"
+        label = "Rotated I quadrature [mV]"
+    elif hasattr(ds, "state"):
+        data = "state"
+        label = "Qubit state"
+    else:
+        raise RuntimeError("The dataset must contain either 'I' or 'state' for the plotting function to work.")
+
+    (ds.assign_coords(amp_mV=ds.full_amp * 1e3).loc[qubit] * 1e3)[data].plot(ax=ax, x="amp_mV")
+    ax.plot(fit.full_amp * 1e3, 1e3 * fitted_data)
+    ax.set_ylabel(label)
+    ax.set_xlabel("Pulse amplitude [mV]")
     ax2 = ax.twiny()
-    # Plot using the attenuated current x-axis
-    ds.assign_coords(freq_GHz=ds.full_freq / 1e9).loc[qubit].IQ_abs.plot(
-        ax=ax2,
-        add_colorbar=False,
-        x="attenuated_current",
-        y="freq_GHz",
-        robust=True,
-    )
-    ax2.set_xlabel("Current (A)")
-    ax2.set_ylabel("Freq (GHz)")
-    ax2.set_title("")
-    # Move ax2 behind ax
-    ax2.set_zorder(ax.get_zorder() - 1)
-    ax.patch.set_visible(False)
-    # Plot using the flux x-axis
-    ds.assign_coords(freq_GHz=ds.full_freq / 1e9).loc[qubit].IQ_abs.plot(
-        ax=ax, add_colorbar=False, x="flux_bias", y="freq_GHz", robust=True
-    )
-    
-    ax.set_title(qubit["qubit"])
-    ax.set_xlabel("Flux (V)")
+    (ds.assign_coords(amp_mV=ds.amp_prefactor).loc[qubit] * 1e3)[data].plot(ax=ax2, x="amp_mV")
+    ax2.set_xlabel("amplitude prefactor")
+
+

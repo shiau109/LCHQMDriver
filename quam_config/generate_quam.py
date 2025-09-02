@@ -21,9 +21,9 @@ from quam_config import Quam
 ########################################################################################################################
 # %%                                              Define static parameters
 ########################################################################################################################
-host_ip = "192.168.1.126"  # QOP IP address
+host_ip = "192.168.1.115"  # QOP IP address
 port = None  # QOP Port
-cluster_name = "Cluster_1"  # Name of the cluster
+cluster_name = "Cluster_2"  # Name of the cluster
 calibration_db_path = None  # "/path/to/some/config/folder"
 
 ########################################################################################################################

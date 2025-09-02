@@ -8,12 +8,7 @@ from typing import List, Optional, Literal
 class NodeSpecificParameters(RunnableParameters):
     num_shots: int = 100
     """Number of averages to perform. Default is 100."""
-    qubit_sweep: str = "q0"
-    """Qubit to use for detection. Default is 100."""
-    qubit_fixed: str = "q1"
-    """Qubit to use for detection. Default is 100."""
-    qubit_pair: str = "q0-1"
-    """coupler to use for change zz interaction shift. Default is 100."""
+
     operation: str = "cz_square"
     """Type of operation to perform. Default is "cz"."""
     operation_times: int = 1
@@ -28,6 +23,7 @@ class Parameters(
     CommonNodeParameters,
     NodeSpecificParameters,
     QubitsExperimentNodeParameters,
+    QubitPairsExperimentNodeParameters,
     CommonFluxParameters,
 ):
     pass
