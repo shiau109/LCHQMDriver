@@ -12,7 +12,7 @@ from qualang_tools.units import unit
 
 from qualibrate import QualibrationNode
 from quam_config import Quam
-from calibration_utils.ramsey import (
+from calibration_utils.LCH_const_charge_gate_ramsey import (
     Parameters,
 )
 from qualibration_libs.parameters import get_qubits, get_idle_times_in_clock_cycles
@@ -22,27 +22,10 @@ from qualibration_libs.data import XarrayDataFetcher
 
 # %% {Description}
 description = """
-        RAMSEY WITH VIRTUAL Z ROTATIONS
-The program consists in playing a Ramsey sequence (x90 - idle_time - x90/y90 - measurement) for different idle times.
-Instead of detuning the qubit gates, the frame of the second x90 pulse is rotated (de-phased) to mimic an accumulated
-phase acquired for a given detuning after the idle time.
-This method has the advantage of playing gates on resonance as opposed to the detuned Ramsey.
-
-From the results, one can fit the Ramsey oscillations and precisely measure the qubit resonance frequency and T2*.
-
-Prerequisites:
-    - Having calibrated the mixer or the Octave (nodes 01a or 01b).
-    - Having calibrated the readout parameters (nodes 02a, 02b and/or 02c).
-    - Having calibrated the qubit x180 pulse parameters (nodes 03a_qubit_spectroscopy.py and 04b_power_rabi.py).
-    - (optional) Having optimized the readout parameters (nodes 08a, 08b and 08c).
-    - Having specified the desired flux point if relevant (qubit.z.flux_point).
-
-State update:
-    - The qubit 0->1 frequency: qubit.f_01 & qubit.xy.RF_frequency
-    - T2*: qubit.T2ramsey.
+        Ask LCH
 """
 
-node = QualibrationNode[Parameters, Quam](name="LCH_Ramsey", description=description, parameters=Parameters())
+node = QualibrationNode[Parameters, Quam](name="LCH_const_charge_gate_ramsey", description=description, parameters=Parameters())
 
 
 # Any parameters that should change for debugging purposes only should go in here
@@ -93,7 +76,10 @@ def create_qua_program(node: QualibrationNode[Parameters, Quam]):
             for qubit in multiplexed_qubits.values():
                 node.machine.initialize_qpu(target=qubit, flux_point=flux_idle_case)
             align()
-            
+            for qubit in multiplexed_qubits.values():
+                qubit.z.set_dc_offset(node.parameters.charge_gate_in_v)
+            align()
+            wait(10000 * u.us)
             with for_(n, 0, n < n_avg, n + 1):
                 save(n, n_st)
 
