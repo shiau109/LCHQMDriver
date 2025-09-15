@@ -16,8 +16,8 @@ class Parameters(GraphParameters):
 
 nodes = {}
 t2_detuning = 0.2
-t2_max = 40000
-charge_gate = linspace(-0.05, 0.05, 5)
+t2_max = 20000
+charge_gate = linspace(-0.1, 0.1, 10)
 repeat_times = len(charge_gate)
 
 for i in range(repeat_times): 
@@ -30,7 +30,7 @@ for i in range(repeat_times):
             use_state_discrimination = True,
             multiplexed = True, 
             log_or_linear_sweep = "linear",
-            num_shots = 256,
+            num_shots = 128,
             charge_gate_in_v = charge_gate[i],
         )
 

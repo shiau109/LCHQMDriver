@@ -100,7 +100,6 @@ def create_qua_program(node: QualibrationNode[Parameters, Quam]):
                 with for_each_(idle_time, idle_times):
                     # Qubit initialization
                     for i, qubit in multiplexed_qubits.items():
-                        reset_frame(qubit.xy.name)
                         qubit.reset(node.parameters.reset_type, node.parameters.simulate)
                     align()
                     # Qubit manipulation
@@ -224,7 +223,19 @@ def plot_data(node: QualibrationNode[Parameters, Quam]):
 @node.run_action(skip_if=node.parameters.simulate)
 def update_state(node: QualibrationNode[Parameters, Quam]):
     """Update the relevant parameters if the qubit data analysis was successful."""
-    pass
+    detuning = int(node.parameters.frequency_detuning_in_mhz * 1e6)
+    with node.record_state_updates():
+        for q in node.namespace["qubits"]:
+            a_2 = float(node.results["fit_results"][q.name]["a_2"])
+            f_1 = float(node.results["fit_results"][q.name]["f_1"])*1e9
+            f_2 = float(node.results["fit_results"][q.name]["f_2"])*1e9
+            if a_2 == 0:
+                d_f_01 = int(f_1)-detuning
+
+            else:
+                d_f_01 = int((f_1 + f_2) / 2) -detuning
+            q.f_01 -= d_f_01
+            q.xy.RF_frequency -= d_f_01
 
 # %% {Save_results}
 @node.run_action()
