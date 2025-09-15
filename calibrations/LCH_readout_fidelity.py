@@ -28,27 +28,8 @@ from qualibration_libs.data import XarrayDataFetcher
 
 # %% {Description}
 description = """
-        IQ BLOBS
-This sequence involves measuring the state of the resonator 'N' times, first after thermalization (with the qubit in
-the |g> state) and then after applying a x180 (pi) pulse to the qubit (bringing the qubit to the |e> state).
-The resulting IQ blobs are displayed, and the data is processed to determine:
-    - The rotation angle required for the integration weights, ensuring that the
-      separation between |g> and |e> states aligns with the 'I' quadrature.
-    - The threshold along the 'I' quadrature for effective qubit state discrimination (at the center between the two blobs).
-    - The repeat-until-success threshold along the 'I' quadrature for effective active reset (at the center of the |g> blob).
-    - The readout confusion matrix, which is also influenced by the x180 pulse fidelity.
-
-Prerequisites:
-    - Having calibrated the readout parameters (nodes 02a, 02b and/or 02c).
-    - Having calibrated the qubit x180 pulse parameters (nodes 03a_qubit_spectroscopy.py and 04b_power_rabi.py).
-
-State update:
-    - The integration weight angle: qubit.resonator.operations["readout"].integration_weights_angle
-    - the ge discrimination threshold: qubit.resonator.operations["readout"].threshold
-    - the Repeat Until Success threshold: qubit.resonator.operations["readout"].rus_exit_threshold
-    - The confusion matrix: qubit.resonator.operations["readout"].confusion_matrix
+        Ask LCH
 """
-
 # Be sure to include [Parameters, Quam] so the node has proper type hinting
 node = QualibrationNode[Parameters, Quam](
     name="LCH_readout_fidelity",  # Name should be unique

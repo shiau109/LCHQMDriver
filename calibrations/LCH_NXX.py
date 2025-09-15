@@ -27,19 +27,7 @@ import numpy as np
 
 # %% {Node initialisation}
 description = """
-        T1 MEASUREMENT
-The sequence consists in putting the qubit in the excited stated by playing the x180 pulse and measuring the resonator
-after a varying time. The qubit T1 is extracted by fitting the exponential decay of the measured quadratures/state.
-
-Prerequisites:
-    - Having calibrated the mixer or the Octave (nodes 01a or 01b).
-    - Having calibrated the readout parameters (nodes 02a, 02b and/or 02c).
-    - Having calibrated the qubit x180 pulse parameters (nodes 03a_qubit_spectroscopy.py and 04b_power_rabi.py).
-    - (optional) Having optimized the readout parameters (nodes 08a, 08b and 08c).
-    - Having specified the desired flux point if relevant (qubit.z.flux_point).
-
-State update:
-    - The T1 relaxation time: qubit.T1
+        Ask LCH 
 """
 
 # Be sure to include [Parameters, Quam] so the node has proper type hinting

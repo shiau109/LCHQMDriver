@@ -25,19 +25,7 @@ from qualibration_libs.data import XarrayDataFetcher
 
 # %% {Description}
 description = """
-        T2 echo MEASUREMENT
-The sequence consists in playing an echo sequence (x90 - idle_time - x180 - idle_time - -x90 - measurement) for 
-different idle times.
-The qubit T2 echo is extracted by fitting the exponential decay of the measured quadratures/state.
-
-Prerequisites:
-    - Having calibrated the mixer or the Octave (nodes 01a or 01b).
-    - Having calibrated the qubit frequency precisely (node 06a_ramsey.py).
-    - (optional) Having optimized the readout parameters (nodes 08a, 08b and 08c).
-    - Having specified the desired flux point if relevant (qubit.z.flux_point).
-
-Next steps before going to the next node:
-    - Update the qubit T2 echo: qubit.T2echo.
+        Ask LCH
 """
 
 

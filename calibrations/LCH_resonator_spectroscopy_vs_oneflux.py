@@ -28,29 +28,8 @@ from qualibration_libs.data import XarrayDataFetcher
 
 # %% {Initialisation}
 description = """
-        RESONATOR SPECTROSCOPY VERSUS FLUX
-This sequence involves measuring the resonator by sending a readout pulse and demodulating the signals to
-extract the 'I' and 'Q' quadratures. This is done across various readout frequencies and flux biases.
-The resonator frequency as a function of flux bias is then extracted and fitted in order to extract the relevant 
-flux biases and corresponding readout frequency.
-
-This information can then be used to adjust the readout frequency for the maximum and minimum frequency points.
-The flux point parameter (qubit.z.flux_point) is used in order to decide to update the independent or joint offset.
-
-Prerequisites:
-    - Having calibrated the resonator frequency (nodes 02a, 02b and/or 02c).
-    - Having specified the desired flux point (qubit.z.flux_point).
-
-
-State update:
-    - The readout frequency for the chosen flux bias: qubit.resonator.f_01 & qubit.resonator.RF_frequency
-    - The joint or independent offset depending on the chosen flux point: qubit.z.
-    - The min offset: qubit.z.min_offset
-    - The relevant flux offset: qubit.z.independent_offset or qubit.z.joint_offset 
-    - The min offset: qubit.z.min_offset
-    - phi0: qubit.z.phi0_voltage and qubit.z.phi0_current
+        Ask LCH
 """
-
 
 # Be sure to include [Parameters, Quam] so the node has proper type hinting
 node = QualibrationNode[Parameters, Quam](

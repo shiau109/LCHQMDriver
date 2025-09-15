@@ -29,9 +29,8 @@ from qualang_tools.bakery import baking
 
 # %% {Description}
 description = """
-        cryoscope
+        Ask LCH 
 """
-
 node = QualibrationNode[Parameters, Quam](name="LCH_cryoscope", description=description, parameters=Parameters())
 
 

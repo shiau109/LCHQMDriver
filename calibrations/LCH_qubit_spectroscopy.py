@@ -27,27 +27,7 @@ from qualibration_libs.data import XarrayDataFetcher
 
 # %% {Node initialisation}
 description = """
-        QUBIT SPECTROSCOPY
-This sequence involves sending a saturation pulse to the qubit, placing it in a mixed state,
-and then measuring the state of the resonator across various qubit drive frequencies.
-In order to facilitate the qubit search, the qubit pulse duration and amplitude can be changed manually
-from the node parameters.
-
-The data is post-processed to determine the qubit resonance frequency and the width of the peak.
-
-Note that it can happen that the qubit is excited by the image sideband or LO leakage instead of the desired sideband.
-This is why calibrating the qubit mixer is highly recommended when using external mixers or the Octave.
-
-Prerequisites:
-    - Having calibrated the mixer or the Octave (nodes 01a or 01b).
-    - Having calibrated the readout parameters (nodes 02a, 02b and/or 02c).
-    - Having specified the desired flux point if relevant (qubit.z.flux_point).
-
-State update:
-    - The qubit 0->1 frequency: qubit.f_01 & qubit.xy.RF_frequency
-    - The integration weight angle to get the state discrimination along the 'I' quadrature: qubit.resonator.operations["readout"].integration_weights_angle.
-    - (optional) The saturation pulse amplitude to get the targeted fwhm: qubit.xy.operations["saturation"].amplitude.
-    - (optional) The guessed x180/x90 pulse amplitude: qubit.xy.operations["x180"/"x90"].amplitude.
+        Ask LCH
 """
 
 

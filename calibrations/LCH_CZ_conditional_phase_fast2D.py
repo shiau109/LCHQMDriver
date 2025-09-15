@@ -25,19 +25,7 @@ from qualibration_libs.data import XarrayDataFetcher
 
 # %% {Description}
 description = """
-        QUBIT SPECTROSCOPY VERSUS FLUX
-This sequence involves doing a qubit spectroscopy for several flux biases in order to exhibit the qubit frequency
-versus flux response.
-
-Prerequisites:
-    - Having calibrated the mixer or the Octave (nodes 01a or 01b).
-    - Having calibrated the readout parameters (nodes 02a, 02b and/or 02c).
-    - Having calibrated the qubit frequency (node 03a_qubit_spectroscopy.py).
-    - Having specified the desired flux point (qubit.z.flux_point).
-
-State update:
-    - The qubit 0->1 frequency at the set flux point: qubit.f_01 & qubit.xy.RF_frequency
-    - The flux bias corresponding to the set flux point: q.z.independent_offset or q.z.joint_offset.
+        Ask LCH 
 """
 
 
