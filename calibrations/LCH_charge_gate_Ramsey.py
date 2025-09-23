@@ -22,7 +22,7 @@ import numpy as np
 
 # %% {Description}
 description = """
-        Ask LCH for a description
+        Ask LCH 
 """
 
 node = QualibrationNode[Parameters, Quam](name="LCH_charge_gate_Ramsey", description=description, parameters=Parameters())

@@ -16,8 +16,8 @@ class Parameters(GraphParameters):
 
 nodes = {}
 t2_detuning = 0.2
-t2_max = 20000
-charge_gate = linspace(-0.1, 0.1, 10)
+t2_max = 40000
+charge_gate = linspace(-0.2, 0.2, 10)
 repeat_times = len(charge_gate)
 
 for i in range(repeat_times): 
@@ -26,11 +26,12 @@ for i in range(repeat_times):
             frequency_detuning_in_mhz=t2_detuning,
             min_wait_time_in_ns=16,
             max_wait_time_in_ns=t2_max,
-            wait_time_num_points=64,
+            wait_time_num_points=100,
             use_state_discrimination = True,
             multiplexed = True, 
             log_or_linear_sweep = "linear",
-            num_shots = 128,
+            reset_type = "active",
+            num_shots = 400,
             charge_gate_in_v = charge_gate[i],
         )
 

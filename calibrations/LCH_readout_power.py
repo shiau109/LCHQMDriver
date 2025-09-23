@@ -15,10 +15,6 @@ from qualibrate import QualibrationNode
 from quam_config import Quam
 from calibration_utils.LCH_readout_power import (
     Parameters,
-    process_raw_dataset,
-    fit_raw_data,
-    log_fitted_results,
-    plot_raw_data_with_fit,
 )
 from calibration_utils.iq_blobs.plotting import plot_iq_blobs, plot_confusion_matrices
 from qualibration_libs.parameters import get_qubits
@@ -69,7 +65,7 @@ def create_qua_program(node: QualibrationNode[Parameters, Quam]):
     prepared_states = [0, 1]
     node.namespace["sweep_axes"] = {
         "qubit": xr.DataArray(qubits.get_names()),
-        "n_runs": xr.DataArray(np.linspace(1, n_runs, n_runs), attrs={"long_name": "number of shots"}),
+        "shot_idx": xr.DataArray(np.linspace(1, n_runs, n_runs), attrs={"long_name": "number of shots"}),
         "amp_prefactor": xr.DataArray(amps, attrs={"long_name": "readout amplitude", "units": ""}),
         "prepared_state": xr.DataArray(prepared_states, attrs={"long_name": "prepared qubit state", "units": ""}),
     }
@@ -120,8 +116,8 @@ def create_qua_program(node: QualibrationNode[Parameters, Quam]):
         with stream_processing():
             n_st.save("n")
             for i in range(num_qubits):
-                I_st[i].buffer(len(prepared_states)).buffer(len(amps)).buffer(n_runs).save(f"Ig{i + 1}")
-                Q_st[i].buffer(len(prepared_states)).buffer(len(amps)).buffer(n_runs).save(f"Qg{i + 1}")
+                I_st[i].buffer(len(prepared_states)).buffer(len(amps)).buffer(n_runs).save(f"I{i + 1}")
+                Q_st[i].buffer(len(prepared_states)).buffer(len(amps)).buffer(n_runs).save(f"Q{i + 1}")
 
 
 # %% {Simulate}
@@ -186,7 +182,23 @@ def analyse_data(node: QualibrationNode[Parameters, Quam]):
 @node.run_action(skip_if=node.parameters.simulate)
 def plot_data(node: QualibrationNode[Parameters, Quam]):
     """Plot the raw and fitted data in specific figures whose shape is given by qubit.grid_location."""
-    pass
+    from qcat.parser.qm_reader import load_xarray_h5, repetition_data
+    from qcat.analysis.power_dep_state.analysis import PowerMIST
+
+    ds = node.results["ds_raw"]
+    sep_data = repetition_data(ds, repetition_dim="qubit")
+    
+    for sq_data in sep_data:
+        qubit_name = sq_data["qubit"].values.item()
+        # Rename n_runs to shot_idx if present
+        # sq_data = sq_data.rename({'n_runs': 'shot_idx','state': 'prepared_state'})
+        print(sq_data)
+        analysis = PowerMIST(sq_data)
+        analysis._start_analysis()
+       
+        node.results["figures"] = {
+            qubit_name:  analysis._plot_results(qubit_name),
+        }
 
 
 # %% {Update_state}

@@ -79,7 +79,7 @@ def create_qua_program(node: QualibrationNode[Parameters, Quam]):
             for qubit in multiplexed_qubits.values():
                 qubit.z.set_dc_offset(node.parameters.charge_gate_in_v)
             align()
-            wait(10000 * u.us)
+            wait(1 * u.ms)
             with for_(n, 0, n < n_avg, n + 1):
                 save(n, n_st)
 
@@ -153,11 +153,12 @@ def execute_qua_program(node: QualibrationNode[Parameters, Quam]):
         # Display the progress bar
         data_fetcher = XarrayDataFetcher(job, node.namespace["sweep_axes"])
         for dataset in data_fetcher:
-            progress_counter(
-                data_fetcher["n"],
-                node.parameters.num_shots,
-                start_time=data_fetcher.t_start,
-            )
+            pass
+            # progress_counter(
+            #     data_fetcher["n"],
+            #     node.parameters.num_shots,
+            #     start_time=data_fetcher.t_start,
+            # )
         # Display the execution report to expose possible runtime errors
         node.log(job.execution_report())
     # Register the raw dataset
