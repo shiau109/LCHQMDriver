@@ -1,4 +1,5 @@
 # %% {Imports}
+from copy import deepcopy
 import matplotlib.pyplot as plt
 import xarray as xr
 from dataclasses import asdict
@@ -180,7 +181,12 @@ def analyse_data(node: QualibrationNode[Parameters, Quam]):
     # node.results["ds_raw"] = process_raw_dataset(node.results["ds_raw"], node)
     from qcat.parser.qm_reader import repetition_data
     from qcat.analysis.ramsey.analysis import RamseyAnalysis
-    sep_data = repetition_data(node.results["ds_raw"], repetition_dim="qubit")
+    if node.parameters.use_state_discrimination:
+        ds = node.results["ds_raw"].rename({"state": "signal"})
+    else:
+        ds = node.results["ds_raw"].rename({"I": "signal"}) 
+
+    sep_data = repetition_data(ds, repetition_dim="qubit")
     node.results["fit_results"] = {}
     for sq_data in sep_data:
         qubit_name = sq_data["qubit"].values.item()
