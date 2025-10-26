@@ -181,30 +181,35 @@ def load_data(node: QualibrationNode[Parameters, Quam]):
 @node.run_action(skip_if=node.parameters.simulate)
 def analyse_data(node: QualibrationNode[Parameters, Quam]):
     """Analyse the raw data and store the fitted data in another xarray dataset "ds_fit" and the fitted results in the "fit_results" dictionary."""
-    pass
-    # node.results["ds_raw"] = process_raw_dataset(node.results["ds_raw"], node)
-    from qcat.parser.qm_reader import repetition_data
-    from qcat.analysis.ramsey.analysis import RamseyAnalysis
-    sep_data = repetition_data(node.results["ds_raw"], repetition_dim="qubit")
-    node.results["fit_results"] = {}
-    for sq_data in sep_data:
-        qubit_name = sq_data["qubit"].values.item()
-        print(qubit_name)
-        analysis = RamseyAnalysis(sq_data)
-        node.results["fit_results"][qubit_name] = analysis
+    if node.parameters.use_state_discrimination:
+        ds = node.results["ds_raw"].rename({"state": "signal"})
+    else:
+        ds = node.results["ds_raw"].rename({"I": "signal"}) 
+
+    # from qcat.parser.qm_reader import repetition_data
+    # from qcat.analysis.ramsey.analysis import RamseyAnalysis
+    # sep_data = repetition_data( ds, repetition_dim="qubit")
+    # node.results["fit_results"] = {}
+
+    # for sq_data in sep_data:
+    #     qubit_name = sq_data["qubit"].values.item()
+    #     print(qubit_name)
+    #     analysis = RamseyAnalysis(sq_data)
+    #     node.results["fit_results"][qubit_name] = analysis
 
 # %% {Plot_data}
 @node.run_action(skip_if=node.parameters.simulate)
 def plot_data(node: QualibrationNode[Parameters, Quam]):
     """Plot the raw and fitted data in specific figures whose shape is given by qubit.grid_location."""
-    node.results["figures"] = {}
-    for key, value in node.results["fit_results"].items():    
+    pass
+    # node.results["figures"] = {}
+    # for key, value in node.results["fit_results"].items():    
 
-        node.results["fit_results"][key]=value.fit_result.best_values
-    # # Store the generated figures
-        node.results["figures"][key] = {
-            "amplitude": value._plot_results(),
-        }
+    #     node.results["fit_results"][key]=value.fit_result.best_values
+    # # # Store the generated figures
+    #     node.results["figures"][key] = {
+    #         "amplitude": value._plot_results(),
+    #     }
 
 
 # %% {Update_state}

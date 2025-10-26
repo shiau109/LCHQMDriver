@@ -11,7 +11,7 @@ from qualang_tools.units import unit
 
 from qualibrate import QualibrationNode
 from quam_config import Quam
-from customized.node.LCH_const_charge_readout_fidelity import (
+from customized.node.LCH_const_charge_gate_readout_fidelity import (
     Parameters,
 )
 from qualibration_libs.parameters import get_qubits
@@ -25,7 +25,7 @@ description = """
 """
 # Be sure to include [Parameters, Quam] so the node has proper type hinting
 node = QualibrationNode[Parameters, Quam](
-    name="LCH_const_charge_readout_fidelity",  # Name should be unique
+    name="LCH_const_charge_gate_readout_fidelity",  # Name should be unique
     description=description,  # Describe what the node is doing, which is also reflected in the QUAlibrate GUI
     parameters=Parameters(),  # Node parameters defined under quam_experiment/experiments/node_name
 )
@@ -205,26 +205,22 @@ def plot_data(node: QualibrationNode[Parameters, Quam]):
     Plot the raw and fitted data in specific figures whose shape is given by
     qubit.grid_location.
     """
-    from qcat.parser.qm_reader import repetition_data
-    from qcat.analysis.state_discrimination.analysis import StateDiscrimination
-    sep_data = repetition_data(node.results["ds_raw"], repetition_dim="qubit")
-    node.results["figures"] = {}
-    for sq_data in sep_data:
-        qubit_name = sq_data["qubit"].values.item()
+    pass
+    # from qcat.parser.qm_reader import repetition_data
+    # from qcat.analysis.state_discrimination.analysis import StateDiscrimination
+    # sep_data = repetition_data(node.results["ds_raw"], repetition_dim="qubit")
+    # node.results["figures"] = {}
+    # for sq_data in sep_data:
+    #     qubit_name = sq_data["qubit"].values.item()
 
-        # Rename n_runs to shot_idx if present
-        sq_data = sq_data.rename({'n_runs': 'shot_idx'})
-        # print(sq_data)
-        analysis = StateDiscrimination(sq_data)
-        analysis._start_analysis()
-        node.results["figures"][qubit_name] = analysis._plot_results(qubit_name)
+    #     # Rename n_runs to shot_idx if present
+    #     sq_data = sq_data.rename({'n_runs': 'shot_idx'})
+    #     # print(sq_data)
+    #     analysis = StateDiscrimination(sq_data)
+    #     analysis._start_analysis()
+    #     node.results["figures"][qubit_name] = analysis._plot_results(qubit_name)
 
-    # plt.show()
-    # # Store the generated figures
-    # node.results["figures"].update({
-    #     "iq_blobs": fig_iq,
-    #     "confusion_matrix": fig_confusion,
-    # })
+
 
 # %% {Update_state}
 @node.run_action(skip_if=node.parameters.simulate)

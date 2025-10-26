@@ -13,7 +13,7 @@ from qualang_tools.units import unit
 
 from qualibrate import QualibrationNode
 from quam_config import Quam
-from calibration_utils.LCH_readout_power import (
+from customized.node.LCH_readout_power import (
     Parameters,
 )
 from calibration_utils.iq_blobs.plotting import plot_iq_blobs, plot_confusion_matrices
@@ -183,7 +183,7 @@ def analyse_data(node: QualibrationNode[Parameters, Quam]):
 def plot_data(node: QualibrationNode[Parameters, Quam]):
     """Plot the raw and fitted data in specific figures whose shape is given by qubit.grid_location."""
     from qcat.parser.qm_reader import load_xarray_h5, repetition_data
-    from qcat.analysis.power_dep_state.analysis import PowerMIST
+    from qcat.analysis.readout_power.analysis import ROFidelityPower
 
     ds = node.results["ds_raw"]
     sep_data = repetition_data(ds, repetition_dim="qubit")
@@ -193,7 +193,7 @@ def plot_data(node: QualibrationNode[Parameters, Quam]):
         # Rename n_runs to shot_idx if present
         # sq_data = sq_data.rename({'n_runs': 'shot_idx','state': 'prepared_state'})
         print(sq_data)
-        analysis = PowerMIST(sq_data)
+        analysis = ROFidelityPower(sq_data)
         analysis._start_analysis()
        
         node.results["figures"][qubit_name] = analysis._plot_results(qubit_name)

@@ -16,12 +16,8 @@ from qualibration_libs.parameters import get_qubits, get_idle_times_in_clock_cyc
 from qualibration_libs.runtime import simulate_and_plot
 from calibration_utils.LCH_temporal_steering import (
     Parameters,
-    process_raw_dataset,
-    fit_raw_data,
-    log_fitted_results,
-    plot_raw_data_with_fit,
 )
-
+import numpy as np
 
 # %% {Node initialisation}
 description = """
@@ -62,16 +58,22 @@ def create_qua_program(node: QualibrationNode[Parameters, Quam]):
     n_avg = node.parameters.num_shots
     idle_times = get_idle_times_in_clock_cycles(node.parameters)
     flux_idle_case = node.parameters.flux_idle_case
+
+    readout_basis_array = [0, 1, 2]  # X, Y, Z
     # Register the sweep axes to be added to the dataset when fetching data
     node.namespace["sweep_axes"] = {
         "qubit": xr.DataArray(qubits.get_names()),
+        "shot_idx": xr.DataArray(np.linspace(1, n_avg, n_avg), attrs={"long_name": "number of shots"}),
         "idle_time": xr.DataArray(4 * idle_times, attrs={"long_name": "idle time", "units": "ns"}),
+        "basis": xr.DataArray(np.array(readout_basis_array), attrs={"long_name": "basis", "units": "basis"}),
+
     }
 
     # The QUA program stored in the node namespace to be transfer to the simulation and execution run_actions
     with program() as node.namespace["qua_program"]:
         I, I_st, Q, Q_st, n, n_st = node.machine.declare_qua_variables()
         t = declare(int)
+        rbi = declare(int)
         if node.parameters.use_state_discrimination:
             state = [declare(int) for _ in range(num_qubits)]
             state_st = [declare_stream() for _ in range(num_qubits)]
@@ -84,52 +86,60 @@ def create_qua_program(node: QualibrationNode[Parameters, Quam]):
             with for_(n, 0, n < n_avg, n + 1):
                 save(n, n_st)
                 with for_each_(t, idle_times):
-                    # Reset the qubits to the ground state
-                    for i, qubit in multiplexed_qubits.items():
-                        qubit.reset(
-                            node.parameters.reset_type,
-                            node.parameters.simulate,
-                            log_callable=node.log,
-                        )
+                    with for_each_(rbi, readout_basis_array):
+                        # Reset the qubits to the ground state
+                        for i, qubit in multiplexed_qubits.items():
+                            qubit.reset(
+                                node.parameters.reset_type,
+                                node.parameters.simulate,
+                                log_callable=node.log,
+                            )
 
-                    # The qubit manipulation sequence
-                    for i, qubit in multiplexed_qubits.items():
-                        qubit.align()
-                        if node.parameters.prepare_gate is not None:
-                            qubit.xy.play(node.parameters.prepare_gate)
-                        qubit.align()
-                        
-                        qubit.resonator.wait(t)
+                        # The qubit manipulation sequence
+                        for i, qubit in multiplexed_qubits.items():
+                            if i==0:
+                                qubit.align()
+                                if node.parameters.prepare_gate is not None:
+                                    if node.parameters.prepare_gate == "I":
+                                        qubit.xy.play("x180", amplitude_scale=0)
+                                    else:
+                                        qubit.xy.play(node.parameters.prepare_gate)
+                                else:
+                                    qubit.xy.play("x180", amplitude_scale=0)
+                                qubit.wait(t)
+                            else:pass
 
 
-                    # The qubit manipulation sequence
-                    for i, qubit in multiplexed_qubits.items():
-                        qubit.align()
-                        if node.parameters.readout_basis == "X": 
-                            qubit.xy.play("y90")
-                        elif node.parameters.readout_basis == "Y":
-                            qubit.xy.play("-x90")
-
-                        qubit.align()
-                    # Measure the state of the resonators
-                    for i, qubit in multiplexed_qubits.items():
-                        if node.parameters.use_state_discrimination:
-                            qubit.readout_state(state[i])
-                            save(state[i], state_st[i])
-                        else:
-                            qubit.resonator.measure("readout", qua_vars=(I[i], Q[i]))
-                            # save data
-                            save(I[i], I_st[i])
-                            save(Q[i], Q_st[i])
+                        # The qubit manipulation sequence
+                        for i, qubit in multiplexed_qubits.items():
+                            with switch_(rbi):
+                                with case_(0):
+                                    qubit.xy.play("-y90")
+                                with case_(1):
+                                    qubit.xy.play("x90")
+                                with case_(2):
+                                    qubit.xy.play("y90", amplitude_scale=0)
+                            qubit.align()
+                           
+                        # Measure the state of the resonators
+                        for i, qubit in multiplexed_qubits.items():
+                            if node.parameters.use_state_discrimination:
+                                qubit.readout_state(state[i])
+                                save(state[i], state_st[i])
+                            else:
+                                qubit.resonator.measure("readout", qua_vars=(I[i], Q[i]))
+                                # save data
+                                save(I[i], I_st[i])
+                                save(Q[i], Q_st[i])
 
         with stream_processing():
             n_st.save("n")
             for i in range(num_qubits):
                 if node.parameters.use_state_discrimination:
-                    state_st[i].buffer(len(idle_times)).average().save(f"state{i + 1}")
+                    state_st[i].buffer(len(readout_basis_array)).buffer(len(idle_times)).buffer(n_avg).save(f"state{i + 1}")
                 else:
-                    I_st[i].buffer(len(idle_times)).average().save(f"I{i + 1}")
-                    Q_st[i].buffer(len(idle_times)).average().save(f"Q{i + 1}")
+                    I_st[i].buffer(len(readout_basis_array)).buffer(len(idle_times)).buffer(n_avg).save(f"I{i + 1}")
+                    Q_st[i].buffer(len(readout_basis_array)).buffer(len(idle_times)).buffer(n_avg).save(f"Q{i + 1}")
 
 
 # %% {Simulate}
@@ -188,7 +198,7 @@ def load_data(node: QualibrationNode[Parameters, Quam]):
 @node.run_action(skip_if=node.parameters.simulate)
 def analyse_data(node: QualibrationNode[Parameters, Quam]):
     """Analysis the raw data and store the fitted data in another xarray dataset and the fitted results in the fit_results class."""
-    node.results["ds_raw"] = process_raw_dataset(node.results["ds_raw"], node)
+    pass    
     # node.results["ds_fit"], fit_results = fit_raw_data(node.results["ds_raw"], node)
     # node.results["fit_results"] = {k: asdict(v) for k, v in fit_results.items()}
 
@@ -204,13 +214,14 @@ def analyse_data(node: QualibrationNode[Parameters, Quam]):
 @node.run_action(skip_if=node.parameters.simulate)
 def plot_data(node: QualibrationNode[Parameters, Quam]):
     """Plot the raw and fitted data in a specific figure whose shape is given by qubit.grid_location."""
-    fig = plot_raw_data_with_fit(
-        node.results["ds_raw"],
-        node.namespace["qubits"],
-    )
-    plt.show()
-    # Store the generated figures
-    node.results["figures"] = {"raw_fit": fig}
+    pass
+    # fig = plot_raw_data_with_fit(
+    #     node.results["ds_raw"],
+    #     node.namespace["qubits"],
+    # )
+    # plt.show()
+    # # Store the generated figures
+    # node.results["figures"] = {"raw_fit": fig}
 
 
 # %% {Update_state}

@@ -5,7 +5,7 @@ from qualibrate.parameters import GraphParameters
 from qualibrate.qualibration_graph import QualibrationGraph
 from qualibrate.qualibration_library import QualibrationLibrary
 from typing import List, Optional, Literal
-
+from numpy import linspace
 library = QualibrationLibrary.get_active_library()
 
 
@@ -15,27 +15,25 @@ class Parameters(GraphParameters):
     use_state_discrimination: bool = True
 
 nodes = {}
-t2_detuning = 0.2
-t2_max = 40000
-repeat_times = 100
+
+charge_gate = linspace(-0.5, 0.5, 11)
+repeat_times = len(charge_gate)
+
 for i in range(repeat_times): 
-    nodes[f"ramsey_{i}"] = library.nodes["LCH_Ramsey"].copy(
-            name=f"ramsey_{i}",
-            frequency_detuning_in_mhz=t2_detuning,
-            min_wait_time_in_ns=16,
-            max_wait_time_in_ns=t2_max,
-            wait_time_num_points=64,
-            use_state_discrimination = True,
-            log_or_linear_sweep = "linear",
-            num_shots = 256
+    nodes[f"LCH_const_charge_gate_readout_fidelity_{i}"] = library.nodes["LCH_const_charge_gate_readout_fidelity"].copy(
+            name=f"LCH_const_charge_gate_readout_fidelity_{i}",
+            multiplexed = True, 
+            reset_type = "active",
+            num_shots = 10000,
+            charge_gate_in_v = charge_gate[i],
         )
 
 connectivity = []
 for i in range(repeat_times-1):
-    connectivity.append((f"ramsey_{i}", f"ramsey_{i+1}"))
+    connectivity.append((f"LCH_const_charge_gate_readout_fidelity_{i}", f"LCH_const_charge_gate_readout_fidelity_{i+1}"))
 
 g = QualibrationGraph(
-    name="LCH_graph_ramsey_repeat",
+    name="LCH_const_charge_gate_readout_fidelity",
     parameters=Parameters(),
     nodes=nodes,
     connectivity=connectivity,

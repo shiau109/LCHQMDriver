@@ -15,32 +15,42 @@ class Parameters(GraphParameters):
     use_state_discrimination: bool = True
 
 nodes = {}
-t2_detuning = 0.5
-t2_max = 20000
-charge_gate = linspace(-0.5, 0.5, 11)
+
+charge_gate = linspace(-0.5, 0.5, 41)
 repeat_times = len(charge_gate)
 
 for i in range(repeat_times): 
     nodes[f"LCH_const_charge_gate_ramsey_{i}"] = library.nodes["LCH_const_charge_gate_ramsey"].copy(
             name=f"LCH_const_charge_gate_ramsey_{i}",
-            frequency_detuning_in_mhz=t2_detuning,
+            frequency_detuning_in_mhz=0.2,
             min_wait_time_in_ns=16,
-            max_wait_time_in_ns=t2_max,
-            wait_time_num_points=50,
+            max_wait_time_in_ns=40000,
+            wait_time_num_points=100,
             use_state_discrimination = True,
             multiplexed = True, 
             log_or_linear_sweep = "linear",
             reset_type = "active",
-            num_shots = 2000,
+            num_shots = 200,
             charge_gate_in_v = charge_gate[i],
         )
-
+    nodes[f"LCH_const_charge_readout_power_{i}"] = library.nodes["LCH_const_charge_readout_power"].copy(
+            name=f"LCH_const_charge_readout_power_{i}",
+            multiplexed = True, 
+            reset_type = "active",
+            start_amp=0.9,
+            end_amp=1.9,
+            num_amps=11,
+            num_shots = 500,
+            charge_gate_in_v = charge_gate[i],
+        )
 connectivity = []
-for i in range(repeat_times-1):
-    connectivity.append((f"LCH_const_charge_gate_ramsey_{i}", f"LCH_const_charge_gate_ramsey_{i+1}"))
+for i in range(repeat_times):
+    connectivity.append((f"LCH_const_charge_gate_ramsey_{i}", f"LCH_const_charge_readout_power_{i}"))
+    if i<repeat_times-1:
+        connectivity.append((f"LCH_const_charge_readout_power_{i}", f"LCH_const_charge_gate_ramsey_{i+1}"))
 
 g = QualibrationGraph(
-    name="LCH_const_charge_gate_ramsey",
+    name="LCH_graph_charge_gate_ramsey_power_fidelity",
     parameters=Parameters(),
     nodes=nodes,
     connectivity=connectivity,

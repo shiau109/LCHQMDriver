@@ -101,8 +101,8 @@ def get_full_scale_power_dBm_and_amplitude(desired_power: float, max_amplitude: 
 # Note that the "coupled" ports O1 & I1, O2 & O3, O4 & O5, O6 & O7, and O8 & I2 must be in the same band.
 
 # Resonator frequencies
-rr_freq = np.array([4.912, 5.012, 5.113]) * u.GHz
-rr_LO = 5.3 * u.GHz
+rr_freq = np.array([5.8, 5.9]) * u.GHz
+rr_LO = 6.1 * u.GHz
 rr_if = rr_freq - rr_LO  # The intermediate frequency is inferred from the LO and readout frequencies
 assert np.all(np.abs(rr_if) < 400 * u.MHz), (
     "The resonator intermediate frequency must be within [-400; 400] MHz. \n"
@@ -138,8 +138,8 @@ for k, qubit in enumerate(machine.qubits.values()):
 # Note that the "coupled" ports O1 & I1, O2 & O3, O4 & O5, O6 & O7, and O8 & I2 must be in the same band.
 
 # Qubit drive frequencies
-xy_freq = np.array([3.08,2.9545,3.3528]) * u.GHz
-xy_LO = np.array([3.13, 3.05, 3.4]) * u.GHz
+xy_freq = np.array([5.1,5.3]) * u.GHz
+xy_LO = np.array([5.35, 5.35]) * u.GHz
 xy_if = xy_freq - xy_LO  # The intermediate frequency is inferred from the LO and qubit frequencies
 assert np.all(np.abs(xy_if) < 400 * u.MHz), (
     "The xy intermediate frequency must be within [-400; 400] MHz. \n"
@@ -148,7 +148,7 @@ assert np.all(np.abs(xy_if) < 400 * u.MHz), (
     f"Qubit drive IF frequencies: {xy_if} \n"
 )
 # Transmon anharmonicity
-anharmonicity = np.array([200,200,200]) * u.MHz
+anharmonicity = np.array([200,200]) * u.MHz
 
 # Desired output power in dBm
 drive_power = -10

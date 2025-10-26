@@ -10,8 +10,7 @@ class NodeSpecificParameters(RunnableParameters):
     """Number of averages to perform. Default is 1000."""
     prepare_gate: Optional[str] = None
     """Prepare gate to use for the qubit. Default is "X90"."""
-    readout_basis: Optional[str] = None
-    """Tomography gate to use for the qubit. Default is "None" and "Z"."""
+
 
 class Parameters(
     NodeParameters,

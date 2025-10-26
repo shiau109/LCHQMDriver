@@ -125,9 +125,9 @@ def create_qua_program(node: QualibrationNode[Parameters, Quam]):
 
                             with switch_(rbi):
                                 with case_(0):
-                                    qubit.xy.play("-y90")
+                                    qubit.xy.play("y90")
                                 with case_(1):
-                                    qubit.xy.play("x90")
+                                    qubit.xy.play("-x90")
                                 with case_(2):
                                     pass
                                     # qubit.xy.wait()

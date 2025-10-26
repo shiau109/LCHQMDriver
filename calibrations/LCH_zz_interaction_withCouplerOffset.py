@@ -106,7 +106,7 @@ def create_qua_program(node: QualibrationNode[Parameters, Quam]):
                             align()
 
                             # Qubit manipulation
-                            qubit_detector.xy.play("x90")
+                            qubit_detector.xy.play("y90")
                             # qubit_source.xy.play("x90", amplitude_scale=0)
                             align()
                             qubit_detector.xy.wait(t)
