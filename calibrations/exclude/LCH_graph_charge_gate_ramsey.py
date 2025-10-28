@@ -15,8 +15,8 @@ class Parameters(GraphParameters):
     use_state_discrimination: bool = True
 
 nodes = {}
-t2_detuning = 0.2
-t2_max = 40000
+t2_detuning = 0.4
+t2_max = 20000
 charge_gate = linspace(-0.5, 0.5, 11)
 repeat_times = len(charge_gate)
 

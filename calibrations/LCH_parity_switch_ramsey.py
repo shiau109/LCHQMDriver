@@ -13,20 +13,22 @@ from qualang_tools.units import unit
 
 from qualibrate import QualibrationNode
 from quam_config import Quam
-from calibration_utils.ramsey import (
+from customized.node.LCH_parity_switch_ramsey import (
     Parameters,
 )
-from qualibration_libs.parameters import get_qubits, get_idle_times_in_clock_cycles
+from qualibration_libs.parameters import get_qubits
 from qualibration_libs.runtime import simulate_and_plot
 from qualibration_libs.data import XarrayDataFetcher
 
+import numpy as np
 
 # %% {Description}
 description = """
         Ask LCH
+        Do not use multiplexing for this experiment
 """
 
-node = QualibrationNode[Parameters, Quam](name="LCH_Ramsey", description=description, parameters=Parameters())
+node = QualibrationNode[Parameters, Quam](name="LCH_parity_switch_ramsey", description=description, parameters=Parameters())
 
 
 # Any parameters that should change for debugging purposes only should go in here
@@ -54,20 +56,17 @@ def create_qua_program(node: QualibrationNode[Parameters, Quam]):
     
     n_avg = node.parameters.num_shots
 
-    idle_times = get_idle_times_in_clock_cycles(node.parameters)
-    detuning = node.parameters.frequency_detuning_in_mhz * u.MHz
 
     flux_idle_case = node.parameters.flux_idle_case
     # Register the sweep axes to be added to the dataset when fetching data
     node.namespace["sweep_axes"] = {
         "qubit": xr.DataArray(qubits.get_names()),
-        "idle_time": xr.DataArray(4 * idle_times, attrs={"long_name": "idle times", "units": "ns"}),
+        "shot_idx": xr.DataArray(np.linspace(1, n_avg, n_avg), attrs={"long_name": "number of shots"}),
     }
     with program() as node.namespace["qua_program"]:
         I, I_st, Q, Q_st, n, n_st = node.machine.declare_qua_variables()
         idle_time = declare(int)
-        virtual_detuning_phases = [declare(fixed) for _ in range(num_qubits)]
-
+ 
         if node.parameters.use_state_discrimination:
             state = [declare(int) for _ in range(num_qubits)]
             state_st = [declare_stream() for _ in range(num_qubits)]
@@ -81,44 +80,47 @@ def create_qua_program(node: QualibrationNode[Parameters, Quam]):
             with for_(n, 0, n < n_avg, n + 1):
                 save(n, n_st)
 
-                with for_each_(idle_time, idle_times):
-                    # Qubit initialization
-                    for i, qubit in multiplexed_qubits.items():
-                        qubit.reset(node.parameters.reset_type, node.parameters.simulate)
-                    align()
-                    # Qubit manipulation
-                    for i, qubit in multiplexed_qubits.items():
-                        assign(
-                            virtual_detuning_phases[i],
-                            Cast.mul_fixed_by_int(detuning * 1e-9, 4 * idle_time),
-                        )
+                # Qubit initialization
+                for i, qubit in multiplexed_qubits.items():
+                    qubit.reset(node.parameters.reset_type, node.parameters.simulate)
+                align()
+                # Qubit manipulation
+                for i, qubit in multiplexed_qubits.items():
 
-
-                        # with strict_timing_():
-                        qubit.xy.play("y90")
-                        qubit.xy.frame_rotation_2pi(virtual_detuning_phases[i])
-                        qubit.xy.wait(idle_time)
-                        qubit.xy.play("x90")
-
-                    align()
-                    for i, qubit in multiplexed_qubits.items():
-                        if node.parameters.use_state_discrimination:
-                            qubit.readout_state(state[i])
-                            save(state[i], state_st[i])
+                    # with strict_timing_():
+                    qubit.xy.play("y90")
+                    if node.parameters.idle_time_in_ns is not None:
+                        idle_time = node.parameters.idle_time_in_ns//4
+                    else:
+                        d_f = qubit.charge_dispersion
+                        if d_f == 0:
+                            idle_time = int(4)
                         else:
-                            qubit.resonator.measure("readout", qua_vars=(I[i], Q[i]))
-                            save(I[i], I_st[i])
-                            save(Q[i], Q_st[i])
-                    align()
+                            idle_time = (1 /d_f/4)//4
+                            if idle_time > node.parameters.max_idle_time_in_ns//4:
+                                idle_time = int(node.parameters.max_idle_time_in_ns//4)
+                    qubit.xy.wait(idle_time)
+                    qubit.xy.play("x90")
+
+                align()
+                for i, qubit in multiplexed_qubits.items():
+                    if node.parameters.use_state_discrimination:
+                        qubit.readout_state(state[i])
+                        save(state[i], state_st[i])
+                    else:
+                        qubit.resonator.measure("readout", qua_vars=(I[i], Q[i]))
+                        save(I[i], I_st[i])
+                        save(Q[i], Q_st[i])
+                align()
 
         with stream_processing():
             n_st.save("n")
             for i in range(num_qubits):
                 if node.parameters.use_state_discrimination:
-                    state_st[i].buffer(len(idle_times)).average().save(f"state{i + 1}")
+                    state_st[i].buffer(n_avg).average().save(f"state{i + 1}")
                 else:
-                    I_st[i].buffer(len(idle_times)).average().save(f"I{i + 1}")
-                    Q_st[i].buffer(len(idle_times)).average().save(f"Q{i + 1}")
+                    I_st[i].buffer(n_avg).average().save(f"I{i + 1}")
+                    Q_st[i].buffer(n_avg).average().save(f"Q{i + 1}")
 
 
 # %% {Simulate}
@@ -178,52 +180,40 @@ def load_data(node: QualibrationNode[Parameters, Quam]):
 def analyse_data(node: QualibrationNode[Parameters, Quam]):
     """Analyse the raw data and store the fitted data in another xarray dataset "ds_fit" and the fitted results in the "fit_results" dictionary."""
     pass
-    # node.results["ds_raw"] = process_raw_dataset(node.results["ds_raw"], node)
-    from qcat.parser.qm_reader import repetition_data
-    from qcat.analysis.ramsey.analysis import RamseyAnalysis
-    if node.parameters.use_state_discrimination:
-        ds = node.results["ds_raw"].rename({"state": "signal"})
-    else:
-        ds = node.results["ds_raw"].rename({"I": "signal"}) 
 
-    sep_data = repetition_data(ds, repetition_dim="qubit")
-    node.results["fit_results"] = {}
-    for sq_data in sep_data:
-        qubit_name = sq_data["qubit"].values.item()
-        print(qubit_name)
-        analysis = RamseyAnalysis(sq_data)
-        node.results["fit_results"][qubit_name] = analysis
 
 # %% {Plot_data}
 @node.run_action(skip_if=node.parameters.simulate)
 def plot_data(node: QualibrationNode[Parameters, Quam]):
     """Plot the raw and fitted data in specific figures whose shape is given by qubit.grid_location."""
     node.results["figures"] = {}
-    for key, value in node.results["fit_results"].items():    
+    pass
+    # for key, value in node.results["fit_results"].items():    
 
-        node.results["fit_results"][key]=value.fit_result.best_values
-    # # Store the generated figures
-        node.results["figures"][key] = value._plot_results()
+    #     node.results["fit_results"][key]=value.fit_result.best_values
+    # # # Store the generated figures
+    #     node.results["figures"][key] = value._plot_results()
 
 
 # %% {Update_state}
 @node.run_action(skip_if=node.parameters.simulate)
 def update_state(node: QualibrationNode[Parameters, Quam]):
     """Update the relevant parameters if the qubit data analysis was successful."""
-    detuning = int(node.parameters.frequency_detuning_in_mhz * 1e6)
-    with node.record_state_updates():
-        for q in node.namespace["qubits"]:
-            a_2 = float(node.results["fit_results"][q.name]["a_2"])
-            f_1 = float(node.results["fit_results"][q.name]["f_1"])*1e9
-            if a_2 == 0:
-                d_f_01 = int(f_1)-detuning
-                q.charge_dispersion = 0
-            else:
-                f_2 = float(node.results["fit_results"][q.name]["f_2"])*1e9
-                d_f_01 = int((f_1 + f_2) / 2) -detuning
-                q.charge_dispersion =int(abs(f_1 - f_2) / 2)
-            # q.f_01 -= d_f_01
-            # q.xy.RF_frequency -= d_f_01
+    pass
+    # detuning = int(node.parameters.frequency_detuning_in_mhz * 1e6)
+    # with node.record_state_updates():
+    #     for q in node.namespace["qubits"]:
+    #         a_2 = float(node.results["fit_results"][q.name]["a_2"])
+    #         f_1 = float(node.results["fit_results"][q.name]["f_1"])*1e9
+    #         if a_2 == 0:
+    #             d_f_01 = int(f_1)-detuning
+    #             q.charge_dispersion = 0
+    #         else:
+    #             f_2 = float(node.results["fit_results"][q.name]["f_2"])*1e9
+    #             d_f_01 = int((f_1 + f_2) / 2) -detuning
+    #             q.charge_dispersion =int(abs(f_1 - f_2) / 2)
+    #         q.f_01 -= d_f_01
+    #         q.xy.RF_frequency -= d_f_01
 
 # %% {Save_results}
 @node.run_action()
