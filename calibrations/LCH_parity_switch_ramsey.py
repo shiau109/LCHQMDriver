@@ -56,7 +56,6 @@ def create_qua_program(node: QualibrationNode[Parameters, Quam]):
     
     n_avg = node.parameters.num_shots
 
-
     flux_idle_case = node.parameters.flux_idle_case
     # Register the sweep axes to be added to the dataset when fetching data
     node.namespace["sweep_axes"] = {
@@ -82,7 +81,8 @@ def create_qua_program(node: QualibrationNode[Parameters, Quam]):
 
                 # Qubit initialization
                 for i, qubit in multiplexed_qubits.items():
-                    qubit.reset(node.parameters.reset_type, node.parameters.simulate)
+                    qubit.resonator.wait(qubit.resonator.depletion_time//4 * u.ns)
+
                 align()
                 # Qubit manipulation
                 for i, qubit in multiplexed_qubits.items():
@@ -96,9 +96,10 @@ def create_qua_program(node: QualibrationNode[Parameters, Quam]):
                         if d_f == 0:
                             idle_time = int(4)
                         else:
-                            idle_time = (1 /d_f/4)//4
+                            idle_time = int((1 /(d_f/1e9)/4)//4)
                             if idle_time > node.parameters.max_idle_time_in_ns//4:
                                 idle_time = int(node.parameters.max_idle_time_in_ns//4)
+                    print(f"Idle time for qubit {qubit.name}: {idle_time*4} ns")
                     qubit.xy.wait(idle_time)
                     qubit.xy.play("x90")
 

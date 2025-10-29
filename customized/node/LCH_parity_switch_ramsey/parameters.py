@@ -11,7 +11,7 @@ class NodeSpecificParameters(RunnableParameters):
     """Number of averages to perform. Default is 100."""
     idle_time_in_ns: Optional[float] = None
     """Idle time in ns. Default is None."""
-    max_idle_time_in_ns: float = None
+    max_idle_time_in_ns: float = 20000
     """Max idle time in ns. Default is 20000."""
 
 class Parameters(
