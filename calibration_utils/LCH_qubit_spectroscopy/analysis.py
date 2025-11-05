@@ -7,6 +7,8 @@ import xarray as xr
 from qualibrate import QualibrationNode
 from qualibration_libs.data import add_amplitude_and_phase, convert_IQ_to_V
 from qualibration_libs.analysis import peaks_dips
+from calibration_utils.LCH_qubit_spectroscopy import node
+from customized.quam_builder.architecture.superconducting import qubit
 from quam_config.instrument_limits import instrument_limits
 
 
@@ -53,7 +55,18 @@ def log_fitted_results(fit_results: Dict, log_callable=None):
 def process_raw_dataset(ds: xr.Dataset, node: QualibrationNode):
     ds = convert_IQ_to_V(ds, node.namespace["qubits"])
     ds = add_amplitude_and_phase(ds, "detuning", subtract_slope_flag=True)
-    full_freq = np.array([ds.detuning + q.xy.RF_frequency for q in node.namespace["qubits"]])
+    full_freq = []
+    q_name = node.parameters.drive_qubit
+    if node.parameters.drive_qubit is not None:
+        for q in node.namespace["qubits"]:
+            if q.name == q_name:
+                for _ in range(len(node.namespace["qubits"])):
+                    full_freq.append(ds.detuning + q.xy.RF_frequency)
+    else:
+        for q in node.namespace["qubits"]: 
+            full_freq.append(ds.detuning + q.xy.RF_frequency)
+
+    full_freq = np.array(full_freq)
     ds = ds.assign_coords(full_freq=(["qubit", "detuning"], full_freq))
     ds.full_freq.attrs = {"long_name": "RF frequency", "units": "Hz"}
     return ds

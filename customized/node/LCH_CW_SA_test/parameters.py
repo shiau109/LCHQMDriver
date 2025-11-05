@@ -18,10 +18,6 @@ class NodeSpecificParameters(RunnableParameters):
     """Amplitude pre-factor for the operation. Default is 1.0."""
     operation_len_in_ns: Optional[int] = None
     """Length of the operation in nanoseconds. Default is the predefined pulse length."""
-    target_peak_width: float = 3e6
-    """Target peak width in Hz. Default is 3e6 Hz."""
-    update_pulses_amplitude: bool = False
-    """Whether to update the saturation pulse and x180/x90 pulse amplitudes based on the peak width. Default is False"""
     drive_qubit: Optional[str] = None
     """Qubit to apply the drive pulse on. Default is None."""
 

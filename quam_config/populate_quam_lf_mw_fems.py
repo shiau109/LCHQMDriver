@@ -101,8 +101,8 @@ def get_full_scale_power_dBm_and_amplitude(desired_power: float, max_amplitude: 
 # Note that the "coupled" ports O1 & I1, O2 & O3, O4 & O5, O6 & O7, and O8 & I2 must be in the same band.
 
 # Resonator frequencies
-rr_freq = np.array([5.95, 5.85, 5.90]) * u.GHz
-rr_LO = 6.15 * u.GHz
+rr_freq = np.array([4.912]) * u.GHz
+rr_LO = 5.0 * u.GHz
 rr_if = rr_freq - rr_LO  # The intermediate frequency is inferred from the LO and readout frequencies
 assert np.all(np.abs(rr_if) < 400 * u.MHz), (
     "The resonator intermediate frequency must be within [-400; 400] MHz. \n"
@@ -138,8 +138,10 @@ for k, qubit in enumerate(machine.qubits.values()):
 # Note that the "coupled" ports O1 & I1, O2 & O3, O4 & O5, O6 & O7, and O8 & I2 must be in the same band.
 
 # Qubit drive frequencies
-xy_freq = np.array([4.9,4.9,4.9]) * u.GHz
-xy_LO = np.array([5.0, 5.0, 5.0]) * u.GHz
+xy_freq = np.array([3.082]) * u.GHz
+
+
+xy_LO = np.array([3.2]) * u.GHz
 xy_if = xy_freq - xy_LO  # The intermediate frequency is inferred from the LO and qubit frequencies
 assert np.all(np.abs(xy_if) < 400 * u.MHz), (
     "The xy intermediate frequency must be within [-400; 400] MHz. \n"
@@ -148,7 +150,7 @@ assert np.all(np.abs(xy_if) < 400 * u.MHz), (
     f"Qubit drive IF frequencies: {xy_if} \n"
 )
 # Transmon anharmonicity
-anharmonicity = np.array([180,180,180]) * u.MHz
+anharmonicity = np.array([180,180,180,180,180,180]) * u.MHz
 
 # Desired output power in dBm
 drive_power = -10
@@ -156,14 +158,16 @@ drive_power = -10
 xy_full_scale, xy_amplitude = get_full_scale_power_dBm_and_amplitude(drive_power)
 
 # Update qubit xy freq and power
+# for k, qubit in enumerate(machine.qubits.values()):
 for k, qubit in enumerate(machine.qubits.values()):
+
+    # print(f"Updating qubit {k} {qubit} parameters:")
     qubit.f_01 = xy_freq.tolist()[k]  # Qubit 0 to 1 (|g> -> |e>) transition frequency
     qubit.xy.RF_frequency = qubit.f_01  # Qubit drive frequency
     qubit.xy.opx_output.full_scale_power_dbm = xy_full_scale  # Max drive power in dBm
     qubit.xy.opx_output.upconverter_frequency = xy_LO.tolist()[k]  # Qubit drive up-converter frequency
     qubit.xy.opx_output.band = get_band(xy_LO.tolist()[k])  # Qubit drive band for the up-conversion
     qubit.grid_location = f"{k},0"  # Qubit grid location for plotting as "column,row"
-
 
 ########################################################################################################################
 # %%                                    Flux parameters

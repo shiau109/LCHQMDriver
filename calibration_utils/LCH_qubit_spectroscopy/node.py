@@ -1,7 +1,7 @@
 from typing import List
 
 from quam_builder.architecture.superconducting.qubit import AnyTransmon
-from calibration_utils.qubit_spectroscopy.parameters import Parameters
+from calibration_utils.LCH_qubit_spectroscopy.parameters import Parameters
 
 
 def get_optional_pulse_duration(qubits: List[AnyTransmon], node_parameters: Parameters):

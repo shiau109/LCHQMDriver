@@ -1,47 +1,23 @@
 {
     "wiring": {
         "qubits": {
-            "q4": {
+            "q1": {
                 "rr": {
-                    "opx_input": "#/ports/mw_inputs/con1/6/2",
-                    "opx_output": "#/ports/mw_outputs/con1/6/8"
+                    "opx_input": "#/ports/mw_inputs/con1/6/1",
+                    "opx_output": "#/ports/mw_outputs/con1/6/1"
                 },
                 "xy": {
-                    "opx_output": "#/ports/mw_outputs/con1/6/7"
+                    "opx_output": "#/ports/mw_outputs/con1/6/2"
                 },
                 "z": {
-                    "opx_output": "#/ports/analog_outputs/con1/1/8"
-                }
-            },
-            "q5": {
-                "rr": {
-                    "opx_input": "#/ports/mw_inputs/con1/6/2",
-                    "opx_output": "#/ports/mw_outputs/con1/6/8"
-                },
-                "xy": {
-                    "opx_output": "#/ports/mw_outputs/con1/6/6"
-                },
-                "z": {
-                    "opx_output": "#/ports/analog_outputs/con1/1/7"
-                }
-            },
-            "q6": {
-                "rr": {
-                    "opx_input": "#/ports/mw_inputs/con1/6/2",
-                    "opx_output": "#/ports/mw_outputs/con1/6/8"
-                },
-                "xy": {
-                    "opx_output": "#/ports/mw_outputs/con1/6/5"
-                },
-                "z": {
-                    "opx_output": "#/ports/analog_outputs/con1/1/6"
+                    "opx_output": "#/ports/analog_outputs/con1/1/1"
                 }
             }
         }
     },
     "network": {
-        "host": "10.21.19.201",
-        "port": 9513,
-        "cluster_name": "QPX1000_3"
+        "host": "10.21.30.201",
+        "port": 9516,
+        "cluster_name": "QPX1000_6"
     }
 }
