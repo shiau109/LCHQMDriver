@@ -138,10 +138,11 @@ for k, qubit in enumerate(machine.qubits.values()):
 # Note that the "coupled" ports O1 & I1, O2 & O3, O4 & O5, O6 & O7, and O8 & I2 must be in the same band.
 
 # Qubit drive frequencies
-xy_freq = np.array([3.082]) * u.GHz
+xy_q_name = ["q1"]
+xy_freq = np.array([3.08]) * u.GHz
 
 
-xy_LO = np.array([3.2]) * u.GHz
+xy_LO = np.array([3.15]) * u.GHz
 xy_if = xy_freq - xy_LO  # The intermediate frequency is inferred from the LO and qubit frequencies
 assert np.all(np.abs(xy_if) < 400 * u.MHz), (
     "The xy intermediate frequency must be within [-400; 400] MHz. \n"
@@ -150,7 +151,7 @@ assert np.all(np.abs(xy_if) < 400 * u.MHz), (
     f"Qubit drive IF frequencies: {xy_if} \n"
 )
 # Transmon anharmonicity
-anharmonicity = np.array([180,180,180,180,180,180]) * u.MHz
+anharmonicity = np.array([180]) * u.MHz
 
 # Desired output power in dBm
 drive_power = -10
@@ -158,16 +159,18 @@ drive_power = -10
 xy_full_scale, xy_amplitude = get_full_scale_power_dBm_and_amplitude(drive_power)
 
 # Update qubit xy freq and power
-# for k, qubit in enumerate(machine.qubits.values()):
 for k, qubit in enumerate(machine.qubits.values()):
+    if qubit.name in xy_q_name:
+        # Find the index of this qubit in the xy_q_name list
+        xy_index = xy_q_name.index(qubit.name)
+        print(f"Updating {k}th qubit {qubit.name} parameters (xy_index: {xy_index}):")
 
-    # print(f"Updating qubit {k} {qubit} parameters:")
-    qubit.f_01 = xy_freq.tolist()[k]  # Qubit 0 to 1 (|g> -> |e>) transition frequency
-    qubit.xy.RF_frequency = qubit.f_01  # Qubit drive frequency
-    qubit.xy.opx_output.full_scale_power_dbm = xy_full_scale  # Max drive power in dBm
-    qubit.xy.opx_output.upconverter_frequency = xy_LO.tolist()[k]  # Qubit drive up-converter frequency
-    qubit.xy.opx_output.band = get_band(xy_LO.tolist()[k])  # Qubit drive band for the up-conversion
-    qubit.grid_location = f"{k},0"  # Qubit grid location for plotting as "column,row"
+        qubit.f_01 = xy_freq.tolist()[xy_index]  # Qubit 0 to 1 (|g> -> |e>) transition frequency
+        qubit.xy.RF_frequency = qubit.f_01  # Qubit drive frequency
+        qubit.xy.opx_output.full_scale_power_dbm = xy_full_scale  # Max drive power in dBm
+        qubit.xy.opx_output.upconverter_frequency = xy_LO.tolist()[xy_index]  # Qubit drive up-converter frequency
+        qubit.xy.opx_output.band = get_band(xy_LO.tolist()[xy_index])  # Qubit drive band for the up-conversion
+        qubit.grid_location = f"{k},0"  # Qubit grid location for plotting as "column,row"
 
 ########################################################################################################################
 # %%                                    Flux parameters
@@ -182,8 +185,10 @@ for k, qubit in enumerate(machine.qubits.values()):
 # Update flux channels
 for k, qubit in enumerate(machine.qubits.values()):
     if hasattr(qubit, "z"):
-        qubit.z.opx_output.output_mode = "direct"
-        qubit.z.opx_output.upsampling_mode = "pulse"
+        if qubit.z is not None:
+            print(f"Updating {k}th qubit {qubit.name} flux parameters:")
+            qubit.z.opx_output.output_mode = "direct"
+            qubit.z.opx_output.upsampling_mode = "pulse"
 
 ########################################################################################################################
 # %%                                        Pulse parameters
@@ -205,19 +210,25 @@ for k, q in enumerate(machine.qubits):
     machine.qubits[q].resonator.operations["readout"].length = 2.5 * u.us
     machine.qubits[q].resonator.operations["readout"].amplitude = rr_amplitude
     # Qubit saturation
-    machine.qubits[q].xy.operations["saturation"].length = 20 * u.us
-    machine.qubits[q].xy.operations["saturation"].amplitude = 0.1 * xy_amplitude
+    if machine.qubits[q].xy is not None:
+        machine.qubits[q].xy.operations["saturation"].length = 20 * u.us
+        machine.qubits[q].xy.operations["saturation"].amplitude = 0.1 * xy_amplitude
     # Single qubit gates - DragCosine
-    print(f"Adding DRAG pulses to qubit {q}")
-    add_DragCosine_pulses(
-        machine.qubits[q],
-        amplitude=xy_amplitude,
-        length=40,
-        anharmonicity=anharmonicity.tolist()[k],
-        alpha=0.0,
-        detuning=0,
-    )
+        if qubit.name in xy_q_name:
+            # Find the index of this qubit in the xy_q_name list
+            xy_index = xy_q_name.index(qubit.name)
+            print(f"Adding DRAG pulses to qubit {q}")
+            add_DragCosine_pulses(
+                machine.qubits[q],
+                amplitude=xy_amplitude,
+                length=40,
+                anharmonicity=anharmonicity.tolist()[xy_index],
+                alpha=0.0,
+                detuning=0,
+            )
     # Single Gaussian flux pulse
+    if machine.qubits[q].z is not None:
+        pass
     # if hasattr(machine.qubits[q], "z"):
     #     machine.qubits[q].z.operations["gauss"] = GaussianPulse(amplitude=0.1, length=200, sigma=40)
 

@@ -44,4 +44,4 @@ g = QualibrationGraph(
     orchestrator=BasicOrchestrator(skip_failed=False),
 )
 
-g.run()
+g.run(qubits=["q1"])

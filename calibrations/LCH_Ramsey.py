@@ -151,7 +151,7 @@ def execute_qua_program(node: QualibrationNode[Parameters, Quam]):
         data_fetcher = XarrayDataFetcher(job, node.namespace["sweep_axes"])
         for dataset in data_fetcher:
             progress_counter(
-                data_fetcher["n"],
+                data_fetcher.get("n", 0),
                 node.parameters.num_shots,
                 start_time=data_fetcher.t_start,
             )
@@ -222,8 +222,8 @@ def update_state(node: QualibrationNode[Parameters, Quam]):
                 f_2 = float(node.results["fit_results"][q.name]["f_2"])*1e9
                 d_f_01 = int((f_1 + f_2) / 2) -detuning
                 q.charge_dispersion =int(abs(f_1 - f_2) / 2)
-            # q.f_01 -= d_f_01
-            # q.xy.RF_frequency -= d_f_01
+            q.f_01 -= d_f_01
+            q.xy.RF_frequency -= d_f_01
 
 # %% {Save_results}
 @node.run_action()

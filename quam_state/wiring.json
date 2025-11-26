@@ -3,21 +3,21 @@
         "qubits": {
             "q1": {
                 "rr": {
-                    "opx_input": "#/ports/mw_inputs/con1/6/1",
-                    "opx_output": "#/ports/mw_outputs/con1/6/1"
+                    "opx_input": "#/ports/mw_inputs/con1/6/2",
+                    "opx_output": "#/ports/mw_outputs/con1/6/8"
                 },
                 "xy": {
-                    "opx_output": "#/ports/mw_outputs/con1/6/2"
+                    "opx_output": "#/ports/mw_outputs/con1/6/7"
                 },
                 "z": {
-                    "opx_output": "#/ports/analog_outputs/con1/1/1"
+                    "opx_output": "#/ports/analog_outputs/con1/2/8"
                 }
             }
         }
     },
     "network": {
-        "host": "10.21.30.201",
-        "port": 9516,
-        "cluster_name": "QPX1000_6"
+        "host": "10.21.19.201",
+        "port": 9515,
+        "cluster_name": "QPX1000_5"
     }
 }
