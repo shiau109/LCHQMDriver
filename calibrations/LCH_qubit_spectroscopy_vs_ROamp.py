@@ -92,8 +92,8 @@ def create_qua_program(node: QualibrationNode[Parameters, Quam]):
     # Register the sweep axes to be added to the dataset when fetching data
     node.namespace["sweep_axes"] = {
         "qubit": xr.DataArray(qubits.get_names()),
-        "detuning": xr.DataArray(dfs, attrs={"long_name": "qubit frequency", "units": "Hz"}),
         "readout_amp_ratio": xr.DataArray(ro_amp_ratio_array, attrs={"long_name": "readout Amp Ratio", "units": "arb. units"}),
+        "detuning": xr.DataArray(dfs, attrs={"long_name": "qubit frequency", "units": "Hz"}),
     }
 
     with program() as node.namespace["qua_program"]:
@@ -111,10 +111,12 @@ def create_qua_program(node: QualibrationNode[Parameters, Quam]):
                 node.machine.initialize_qpu(target=qubit, flux_point=flux_idle_case)
             align()
 
-            with for_(n, 0, n < n_avg, n + 1):
+            
+            with for_(*from_array(amp_ratio, ro_amp_ratio_array)):
                 save(n, n_st)
                 with for_(*from_array(df, dfs)):
-                    with for_(*from_array(amp_ratio, ro_amp_ratio_array)):
+                    with for_(n, 0, n < n_avg, n + 1):
+
                         # Qubit initialization
                         for i, qubit in multiplexed_qubits.items():
                             # Update the qubit frequency
@@ -128,7 +130,7 @@ def create_qua_program(node: QualibrationNode[Parameters, Quam]):
                                 if xy_operation_len is not None
                                 else (ro_operation_len-xy_delay) * u.ns
                             )
-                            rr_depletion_time
+
                         align()
 
                         # Qubit manipulation
@@ -167,10 +169,10 @@ def create_qua_program(node: QualibrationNode[Parameters, Quam]):
             n_st.save("n")
             for i in range(num_qubits):
                 if node.parameters.use_state_discrimination:
-                    state_st[i].buffer(len(ro_amp_ratio_array)).buffer(len(dfs)).average().save(f"state{i + 1}")
+                    state_st[i].buffer(n_avg).map(FUNCTIONS.average()).buffer(len(dfs)).buffer(len(ro_amp_ratio_array)).save(f"state{i + 1}")
                 else:
-                    I_st[i].buffer(len(ro_amp_ratio_array)).buffer(len(dfs)).average().save(f"I{i + 1}")
-                    Q_st[i].buffer(len(ro_amp_ratio_array)).buffer(len(dfs)).average().save(f"Q{i + 1}")
+                    I_st[i].buffer(n_avg).map(FUNCTIONS.average()).buffer(len(dfs)).buffer(len(ro_amp_ratio_array)).save(f"I{i + 1}")
+                    Q_st[i].buffer(n_avg).map(FUNCTIONS.average()).buffer(len(dfs)).buffer(len(ro_amp_ratio_array)).save(f"Q{i + 1}")
 
 
 

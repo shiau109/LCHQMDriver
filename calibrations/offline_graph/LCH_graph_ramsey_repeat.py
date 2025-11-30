@@ -15,21 +15,19 @@ class Parameters(GraphParameters):
     use_state_discrimination: bool = True
 
 nodes = {}
-t2_detuning = 0.5
-t2_max = 10000
-repeat_times = 10
+repeat_times = 200
 for i in range(repeat_times): 
     nodes[f"LCH_Ramsey_{i}"] = library.nodes["LCH_Ramsey"].copy(
             name=f"LCH_Ramsey_{i}",
             multiplexed = True, 
             reset_type = "active",
-            frequency_detuning_in_mhz=0.4,
+            frequency_detuning_in_mhz=0.25,
             min_wait_time_in_ns=16,
-            max_wait_time_in_ns = 40000,
+            max_wait_time_in_ns = 80000,
             wait_time_num_points = 100,
             use_state_discrimination = True,
             log_or_linear_sweep = "linear",
-            num_shots = 1000,
+            num_shots = 200,
         )
 
 connectivity = []

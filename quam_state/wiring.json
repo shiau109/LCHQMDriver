@@ -3,14 +3,14 @@
         "qubits": {
             "q1": {
                 "rr": {
-                    "opx_input": "#/ports/mw_inputs/con1/6/2",
-                    "opx_output": "#/ports/mw_outputs/con1/6/8"
+                    "opx_input": "#/ports/mw_inputs/con1/7/1",
+                    "opx_output": "#/ports/mw_outputs/con1/7/1"
                 },
                 "xy": {
-                    "opx_output": "#/ports/mw_outputs/con1/6/7"
+                    "opx_output": "#/ports/mw_outputs/con1/7/2"
                 },
                 "z": {
-                    "opx_output": "#/ports/analog_outputs/con1/2/8"
+                    "opx_output": "#/ports/analog_outputs/con1/2/1"
                 }
             }
         }

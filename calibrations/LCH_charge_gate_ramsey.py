@@ -12,20 +12,21 @@ from qualang_tools.units import unit
 
 from qualibrate import QualibrationNode
 from quam_config import Quam
-from calibration_utils.LCH_charge_gate_Ramsey import (
+from customized.node.LCH_charge_gate_ramsey import (
     Parameters,
 )
 from qualibration_libs.parameters import get_qubits, get_idle_times_in_clock_cycles
 from qualibration_libs.runtime import simulate_and_plot
 from qualibration_libs.data import XarrayDataFetcher
+
 import numpy as np
 
 # %% {Description}
 description = """
-        Ask LCH 
+        Ask LCH
 """
 
-node = QualibrationNode[Parameters, Quam](name="LCH_charge_gate_Ramsey", description=description, parameters=Parameters())
+node = QualibrationNode[Parameters, Quam](name="LCH_charge_gate_ramsey", description=description, parameters=Parameters())
 
 
 # Any parameters that should change for debugging purposes only should go in here
@@ -52,24 +53,25 @@ def create_qua_program(node: QualibrationNode[Parameters, Quam]):
     num_qubits = len(qubits)
     
     n_avg = node.parameters.num_shots
-    
+
     idle_times = get_idle_times_in_clock_cycles(node.parameters)
     detuning = node.parameters.frequency_detuning_in_mhz * u.MHz
-    charge_array = np.linspace(node.parameters.min_charge_bias_in_v, node.parameters.max_charge_bias_in_v, node.parameters.charge_bias_points)
+
+    charge_gate_volts = np.arange(node.parameters.charge_gate_start_in_v, node.parameters.charge_gate_end_in_v, node.parameters.charge_gate_step_in_v)
+
     flux_idle_case = node.parameters.flux_idle_case
-    
     # Register the sweep axes to be added to the dataset when fetching data
     node.namespace["sweep_axes"] = {
         "qubit": xr.DataArray(qubits.get_names()),
-        "charge_gate": xr.DataArray( charge_array, attrs={"long_name": "charge gate", "units": "V"} ),
+        "charge_gate": xr.DataArray( charge_gate_volts, attrs={"long_name": "charge gate volts", "units": "V"}),
         "idle_time": xr.DataArray(4 * idle_times, attrs={"long_name": "idle times", "units": "ns"}),
+
     }
     with program() as node.namespace["qua_program"]:
         I, I_st, Q, Q_st, n, n_st = node.machine.declare_qua_variables()
         idle_time = declare(int)
-        charge_bias = declare(fixed)
         virtual_detuning_phases = [declare(fixed) for _ in range(num_qubits)]
-
+        charge_gate = declare(fixed)
         if node.parameters.use_state_discrimination:
             state = [declare(int) for _ in range(num_qubits)]
             state_st = [declare_stream() for _ in range(num_qubits)]
@@ -78,16 +80,16 @@ def create_qua_program(node: QualibrationNode[Parameters, Quam]):
             # Initialize the QPU in terms of flux points (flux tunable transmons and/or tunable couplers)
             for qubit in multiplexed_qubits.values():
                 node.machine.initialize_qpu(target=qubit, flux_point=flux_idle_case)
-                qubit.z.set_dc_offset(0.05)
             align()
-            
-            with for_(n, 0, n < n_avg, n + 1):
-                save(n, n_st)
-                with for_(*from_array(charge_bias, charge_array)):
-                    # for i, qubit in multiplexed_qubits.items():
-                    #         qubit.z.set_dc_offset(charge_bias)
-                    # wait(100 *u.ms//4)  # wait for the charge to st
-                    # align()
+
+            with for_(*from_array(charge_gate, charge_gate_volts)):
+
+                for qubit in multiplexed_qubits.values():
+                    qubit.z.set_dc_offset(charge_gate)
+                align()
+                wait(1/4 * u.ms)
+                with for_(n, 0, n < n_avg, n + 1):
+                    save(n, n_st)
 
                     with for_each_(idle_time, idle_times):
                         # Qubit initialization
@@ -124,10 +126,10 @@ def create_qua_program(node: QualibrationNode[Parameters, Quam]):
             n_st.save("n")
             for i in range(num_qubits):
                 if node.parameters.use_state_discrimination:
-                    state_st[i].buffer(len(idle_times)).buffer(len(charge_array)).average().save(f"state{i + 1}")
+                    state_st[i].buffer(len(idle_times)).buffer(n_avg).map(FUNCTIONS.average()).buffer(len(charge_gate_volts)).save(f"state{i + 1}")
                 else:
-                    I_st[i].buffer(len(idle_times)).buffer(len(charge_array)).average().save(f"I{i + 1}")
-                    Q_st[i].buffer(len(idle_times)).buffer(len(charge_array)).average().save(f"Q{i + 1}")
+                    I_st[i].buffer(len(idle_times)).buffer(n_avg).map(FUNCTIONS.average()).buffer(len(charge_gate_volts)).save(f"I{i + 1}")
+                    Q_st[i].buffer(len(idle_times)).buffer(n_avg).map(FUNCTIONS.average()).buffer(len(charge_gate_volts)).save(f"Q{i + 1}")
 
 
 # %% {Simulate}
@@ -159,11 +161,12 @@ def execute_qua_program(node: QualibrationNode[Parameters, Quam]):
         # Display the progress bar
         data_fetcher = XarrayDataFetcher(job, node.namespace["sweep_axes"])
         for dataset in data_fetcher:
-            progress_counter(
-                data_fetcher.get("n", 0),
-                node.parameters.num_shots,
-                start_time=data_fetcher.t_start,
-            )
+            # progress_counter(
+            #     data_fetcher.get("n", 0),
+            #     node.parameters.num_shots,
+            #     start_time=data_fetcher.t_start,
+            # )
+            pass
         # Display the execution report to expose possible runtime errors
         node.log(job.execution_report())
     # Register the raw dataset
@@ -186,32 +189,33 @@ def load_data(node: QualibrationNode[Parameters, Quam]):
 @node.run_action(skip_if=node.parameters.simulate)
 def analyse_data(node: QualibrationNode[Parameters, Quam]):
     """Analyse the raw data and store the fitted data in another xarray dataset "ds_fit" and the fitted results in the "fit_results" dictionary."""
-    pass
-    # node.results["ds_raw"] = process_raw_dataset(node.results["ds_raw"], node)
-    # from qcat.parser.qm_reader import repetition_data
-    # from qcat.analysis.ramsey.analysis import RamseyAnalysis
-    # sep_data = repetition_data(node.results["ds_raw"], repetition_dim="qubit")
-    # node.results["fit_results"] = {}
-    # for sq_data in sep_data:
-    #     qubit_name = sq_data["qubit"].values.item()
-    #     print(qubit_name)
-    #     analysis = RamseyAnalysis(sq_data)
-    #     node.results["fit_results"][qubit_name] = analysis
+    from qcat.parser.qm_reader import repetition_data
+    from qcat.analysis.charge_gate_ramsey.analysis import ChargeGateRamseyAnalysis
+    if node.parameters.use_state_discrimination:
+        ds = node.results["ds_raw"].rename({"state": "signal"})
+    else:
+        ds = node.results["ds_raw"].rename({"I": "signal"}) 
+
+    sep_data = repetition_data(ds, repetition_dim="qubit")
+    node.results["fit_results"] = {}
+    for sq_data in sep_data:
+        qubit_name = sq_data["qubit"].values.item()
+        print(qubit_name)
+        analysis = ChargeGateRamseyAnalysis(sq_data)
+        analysis._start_analysis()
+
+        node.results["fit_results"][qubit_name] = analysis
 
 # %% {Plot_data}
 @node.run_action(skip_if=node.parameters.simulate)
 def plot_data(node: QualibrationNode[Parameters, Quam]):
     """Plot the raw and fitted data in specific figures whose shape is given by qubit.grid_location."""
-    pass
-    # node.results["figures"] = {}
-    # for key, value in node.results["fit_results"].items():    
+    node.results["figures"] = {}
+    for key, value in node.results["fit_results"].items():    
 
-    #     node.results["fit_results"][key]=value.fit_result.best_values
-    # # # Store the generated figures
-    #     node.results["figures"][key] = {
-    #         "amplitude": value._plot_results(),
-    #     }
-
+        # Store the generated figures
+        node.results["figures"][key] = value._plot_results()
+        node.results["fit_results"][key]= {} #value.fit_result.best_values
 
 # %% {Update_state}
 @node.run_action(skip_if=node.parameters.simulate)

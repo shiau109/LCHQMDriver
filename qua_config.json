@@ -6,7 +6,7 @@
                 "2": {
                     "type": "LF",
                     "analog_outputs": {
-                        "8": {
+                        "1": {
                             "delay": 0,
                             "shareable": false,
                             "sampling_rate": 1000000000.0,
@@ -16,10 +16,10 @@
                         }
                     }
                 },
-                "6": {
+                "7": {
                     "type": "MW",
                     "analog_outputs": {
-                        "8": {
+                        "1": {
                             "band": 1,
                             "delay": 0,
                             "shareable": false,
@@ -27,7 +27,7 @@
                             "full_scale_power_dbm": -11,
                             "upconverter_frequency": 5000000000
                         },
-                        "7": {
+                        "2": {
                             "band": 1,
                             "delay": 0,
                             "shareable": false,
@@ -37,7 +37,7 @@
                         }
                     },
                     "analog_inputs": {
-                        "2": {
+                        "1": {
                             "band": 1,
                             "downconverter_frequency": 5000000000,
                             "sampling_rate": 1000000000.0,
@@ -69,8 +69,8 @@
             "MWInput": {
                 "port": [
                     "con1",
-                    6,
-                    7
+                    7,
+                    2
                 ],
                 "upconverter": 1
             }
@@ -83,8 +83,8 @@
             "MWOutput": {
                 "port": [
                     "con1",
-                    6,
-                    2
+                    7,
+                    1
                 ]
             },
             "smearing": 0,
@@ -92,8 +92,8 @@
             "MWInput": {
                 "port": [
                     "con1",
-                    6,
-                    8
+                    7,
+                    1
                 ],
                 "upconverter": 1
             }
@@ -106,7 +106,7 @@
                 "port": [
                     "con1",
                     2,
-                    8
+                    1
                 ]
             }
         }

@@ -15,9 +15,9 @@ class Parameters(GraphParameters):
     use_state_discrimination: bool = True
 
 nodes = {}
-t2_detuning = 0.4
-t2_max = 20000
-charge_gate = linspace(-0.5, 0.5, 11)
+t2_detuning = 0.25
+t2_max = 80000
+charge_gate = linspace(-0.5, 0.5, 21)
 repeat_times = len(charge_gate)
 
 for i in range(repeat_times): 
@@ -30,8 +30,8 @@ for i in range(repeat_times):
             use_state_discrimination = True,
             multiplexed = True, 
             log_or_linear_sweep = "linear",
-            reset_type = "active",
-            num_shots = 400,
+            reset_type = "thermal",
+            num_shots = 200,
             charge_gate_in_v = charge_gate[i],
         )
 
@@ -47,4 +47,5 @@ g = QualibrationGraph(
     orchestrator=BasicOrchestrator(skip_failed=False),
 )
 
-g.run()
+g.run(qubits=["q1"])
+
