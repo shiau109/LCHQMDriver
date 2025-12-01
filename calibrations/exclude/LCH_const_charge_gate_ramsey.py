@@ -12,7 +12,7 @@ from qualang_tools.units import unit
 
 from qualibrate import QualibrationNode
 from quam_config import Quam
-from calibration_utils.LCH_const_charge_gate_ramsey import (
+from customized.node.LCH_const_charge_gate_ramsey import (
     Parameters,
 )
 from qualibration_libs.parameters import get_qubits, get_idle_times_in_clock_cycles

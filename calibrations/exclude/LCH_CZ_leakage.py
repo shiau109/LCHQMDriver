@@ -12,7 +12,7 @@ from qualang_tools.results import progress_counter
 from qualang_tools.units import unit
 from qualibrate import QualibrationNode
 from quam_config import Quam
-from calibration_utils.LCH_CZ_leakage import (
+from customized.node.LCH_CZ_leakage import (
     Parameters,
     fit_raw_data,
     log_fitted_results,

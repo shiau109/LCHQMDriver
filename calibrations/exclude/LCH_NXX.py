@@ -15,7 +15,7 @@ from quam_config import Quam
 from qualibration_libs.data import XarrayDataFetcher
 from qualibration_libs.parameters import get_qubits
 from qualibration_libs.runtime import simulate_and_plot
-from calibration_utils.LCH_NXX import (
+from customized.node.LCH_NXX import (
     Parameters,
     process_raw_dataset,
     fit_raw_data,

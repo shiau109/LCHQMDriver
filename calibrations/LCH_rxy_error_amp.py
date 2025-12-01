@@ -13,7 +13,7 @@ from qualang_tools.units import unit
 
 from qualibrate import QualibrationNode
 from quam_config import Quam
-from calibration_utils.LCH_rxy_error_amp import (
+from customized.node.LCH_rxy_error_amp import (
     Parameters,
     get_number_of_pulses,
     process_raw_dataset,

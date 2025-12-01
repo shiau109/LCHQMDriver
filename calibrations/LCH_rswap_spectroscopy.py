@@ -12,7 +12,7 @@ from qualang_tools.results import progress_counter
 from qualang_tools.units import unit
 from qualibrate import QualibrationNode
 from quam_config import Quam
-from calibration_utils.LCH_rswap_spectroscopy import (
+from customized.node.LCH_rswap_spectroscopy import (
     Parameters,
     process_raw_dataset,
     plot_qubit_lineplots

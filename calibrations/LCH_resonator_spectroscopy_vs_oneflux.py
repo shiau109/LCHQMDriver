@@ -14,7 +14,7 @@ from qualang_tools.units import unit
 
 from qualibrate import QualibrationNode
 from quam_config import Quam
-from calibration_utils.LCH_resonator_spectroscopy_vs_oneflux import (
+from customized.node.LCH_resonator_spectroscopy_vs_oneflux import (
     Parameters,
     process_raw_dataset,
     fit_raw_data,

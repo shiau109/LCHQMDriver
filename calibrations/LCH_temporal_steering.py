@@ -14,7 +14,7 @@ from quam_config import Quam
 from qualibration_libs.data import XarrayDataFetcher
 from qualibration_libs.parameters import get_qubits, get_idle_times_in_clock_cycles
 from qualibration_libs.runtime import simulate_and_plot
-from calibration_utils.LCH_temporal_steering import (
+from customized.node.LCH_temporal_steering import (
     Parameters,
 )
 import numpy as np
