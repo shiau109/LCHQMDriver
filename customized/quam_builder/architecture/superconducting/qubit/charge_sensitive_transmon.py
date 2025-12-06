@@ -15,3 +15,4 @@ class ChargeSensitiveTransmon(FluxTunableTransmon):
     """
 
     charge_dispersion: float = 0.0
+    charge_offset: float = 0.0

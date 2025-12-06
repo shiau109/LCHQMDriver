@@ -1,3 +1,4 @@
+from typing import Optional
 from qualibrate import NodeParameters
 from qualibrate.parameters import RunnableParameters
 from qualibration_libs.parameters import QubitsExperimentNodeParameters, CommonNodeParameters
@@ -21,7 +22,10 @@ class NodeSpecificParameters(RunnableParameters):
     """Charge gate voltage in V. Default is 0.05 V."""
     prepared_states: list[int] = [0]
     """List of prepared states. Default is [0]."""
-
+    manual_relexation_time_in_ns: Optional[int] = None
+    """Manual relaxation time in ns. Default is None."""
+    add_charge_offset: bool = False
+    
 class Parameters(
     NodeParameters,
     CommonNodeParameters,

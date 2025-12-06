@@ -7,7 +7,7 @@ import xarray as xr
 from qualibrate import QualibrationNode
 from qualibration_libs.data import add_amplitude_and_phase, convert_IQ_to_V
 from qualibration_libs.analysis import peaks_dips
-from calibration_utils.LCH_qubit_spectroscopy import node
+
 from customized.quam_builder.architecture.superconducting import qubit
 from quam_config.instrument_limits import instrument_limits
 
@@ -142,8 +142,9 @@ def _extract_relevant_fit_parameters(fit: xr.Dataset, node: QualibrationNode):
     fit = fit.assign({"x180_amplitude": factor_x180 * used_amp})
 
     # Assess whether the fit was successful or not
-    freq_success = np.abs(res_freq) < node.parameters.frequency_span_in_mhz * 1e6 + full_freq
-    fwhm_success = np.abs(fwhm) < node.parameters.frequency_span_in_mhz * 1e6 + full_freq
+    frequency_span_in_mhz = np.abs(node.parameters.max_frequency_in_mhz - node.parameters.min_frequency_in_mhz)
+    freq_success = np.abs(res_freq) < frequency_span_in_mhz * 1e6 + full_freq
+    fwhm_success = np.abs(fwhm) < frequency_span_in_mhz * 1e6 + full_freq
     saturation_amp_success = np.abs(fit.saturation_amplitude) < limits[0].max_wf_amplitude
     # x180amp_success = np.abs(fit.x180_amplitude.data) < limits[0].max_x180_wf_amplitude
     success_criteria = freq_success & fwhm_success & saturation_amp_success

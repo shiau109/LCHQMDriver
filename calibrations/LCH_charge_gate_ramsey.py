@@ -1,5 +1,4 @@
 # %% {Imports}
-import matplotlib.pyplot as plt
 import xarray as xr
 from dataclasses import asdict
 
@@ -51,15 +50,14 @@ def create_qua_program(node: QualibrationNode[Parameters, Quam]):
     # Get the active qubits from the node and organize them by batches
     node.namespace["qubits"] = qubits = get_qubits(node)
     num_qubits = len(qubits)
-    
-    n_avg = node.parameters.num_shots
+    p = node.parameters
+    n_avg = p.num_shots
 
-    idle_times = get_idle_times_in_clock_cycles(node.parameters)
-    detuning = node.parameters.frequency_detuning_in_mhz * u.MHz
+    idle_times = get_idle_times_in_clock_cycles(p)
+    detuning = p.frequency_detuning_in_mhz * u.MHz
+    charge_gate_volts = np.arange(p.charge_gate_start_in_v, p.charge_gate_end_in_v +p.charge_gate_step_in_v/2, p.charge_gate_step_in_v)
 
-    charge_gate_volts = np.arange(node.parameters.charge_gate_start_in_v, node.parameters.charge_gate_end_in_v, node.parameters.charge_gate_step_in_v)
-
-    flux_idle_case = node.parameters.flux_idle_case
+    flux_idle_case = p.flux_idle_case
     # Register the sweep axes to be added to the dataset when fetching data
     node.namespace["sweep_axes"] = {
         "qubit": xr.DataArray(qubits.get_names()),
@@ -191,7 +189,8 @@ def analyse_data(node: QualibrationNode[Parameters, Quam]):
     """Analyse the raw data and store the fitted data in another xarray dataset "ds_fit" and the fitted results in the "fit_results" dictionary."""
     from qcat.parser.qm_reader import repetition_data
     from qcat.analysis.charge_gate_ramsey.analysis import ChargeGateRamseyAnalysis
-    if node.parameters.use_state_discrimination:
+    p = node.parameters
+    if p.use_state_discrimination:
         ds = node.results["ds_raw"].rename({"state": "signal"})
     else:
         ds = node.results["ds_raw"].rename({"I": "signal"}) 
@@ -200,11 +199,16 @@ def analyse_data(node: QualibrationNode[Parameters, Quam]):
     node.results["fit_results"] = {}
     for sq_data in sep_data:
         qubit_name = sq_data["qubit"].values.item()
-        print(qubit_name)
-        analysis = ChargeGateRamseyAnalysis(sq_data)
-        analysis._start_analysis()
 
-        node.results["fit_results"][qubit_name] = analysis
+        analysis = ChargeGateRamseyAnalysis(sq_data)
+        analysis.all_ave_freq = (p.frequency_detuning_in_mhz)*1e-3
+        if p.gate_period_in_volt is not None:
+            analysis.fixed_frequency = 1/(p.gate_period_in_volt*2)
+        
+        analysis._start_analysis()
+        node.results["fit_results"][qubit_name] = analysis.abscos_fit_result_dict
+
+        node.results["fit_results"][qubit_name]["analysis_obj"] = analysis
 
 # %% {Plot_data}
 @node.run_action(skip_if=node.parameters.simulate)
@@ -214,16 +218,22 @@ def plot_data(node: QualibrationNode[Parameters, Quam]):
     for key, value in node.results["fit_results"].items():    
 
         # Store the generated figures
-        node.results["figures"][key] = value._plot_results()
-        node.results["fit_results"][key]= {} #value.fit_result.best_values
+        node.results["figures"][key] = value["analysis_obj"]._plot_results()
 
 # %% {Update_state}
 @node.run_action(skip_if=node.parameters.simulate)
 def update_state(node: QualibrationNode[Parameters, Quam]):
     """Update the relevant parameters if the qubit data analysis was successful."""
-    pass
+    with node.record_state_updates():
+
+        for q in node.namespace["qubits"]:
+            qubit_name = q.name            
+            q.charge_offset = node.results["fit_results"][qubit_name]['abscos_phase'] 
 
 # %% {Save_results}
 @node.run_action()
 def save_results(node: QualibrationNode[Parameters, Quam]):
+    for q in node.namespace["qubits"]:
+        del node.results["fit_results"][q.name]["analysis_obj"]
+
     node.save()

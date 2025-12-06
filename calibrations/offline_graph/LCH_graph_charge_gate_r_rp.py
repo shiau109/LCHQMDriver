@@ -15,7 +15,7 @@ class Parameters(GraphParameters):
     use_state_discrimination: bool = True
 
 nodes = {}
-repeat_times = 21
+repeat_times = 1000
 
 for i in range(repeat_times): 
     nodes[f"LCH_charge_gate_ramsey_{i}"] = library.nodes["LCH_charge_gate_ramsey"].copy(
@@ -23,40 +23,42 @@ for i in range(repeat_times):
             reset_type = "active",
             frequency_detuning_in_mhz=0.25,
             min_wait_time_in_ns=16,
-            max_wait_time_in_ns = 80000,
-            wait_time_num_points = 100,
+            max_wait_time_in_ns = 50000,
+            wait_time_num_points = 50,
             use_state_discrimination = True,
-            charge_gate_start_in_v = -0.5,
-            charge_gate_end_in_v = 0.5,
-            charge_gate_step_in_v = 0.1,
+            charge_gate_start_in_v = -0.45,
+            charge_gate_end_in_v = 0.45,
+            charge_gate_step_in_v = 0.15,
             log_or_linear_sweep = "linear",
-            num_shots = 200,
+            num_shots = 300,
         )
     nodes[f"LCH_charge_gate_readout_power_{i}"] = library.nodes["LCH_charge_gate_readout_power"].copy(
             name=f"LCH_charge_gate_readout_power_{i}",
             reset_type = "active",
             start_amp = 0.2,
             end_amp = 1.9,
-            num_amps = 35,
-            charge_gate_start_in_v = -0.5,
-            charge_gate_end_in_v = 0.5,
+            num_amps = 18,
+            charge_gate_start_in_v = 0,
+            charge_gate_end_in_v = 0.460,
             charge_gate_step_in_v = 0.005,
-            prepared_states = [1],
+            prepared_states = [0,1],
             num_shots = 100,
+            manual_relexation_time_in_ns = 8000,
+            add_charge_offset = True,
         )
 nodes[f"LCH_charge_gate_ramsey_{repeat_times}"] = library.nodes["LCH_charge_gate_ramsey"].copy(
             name=f"LCH_charge_gate_ramsey_{repeat_times}",
             reset_type = "active",
             frequency_detuning_in_mhz=0.25,
             min_wait_time_in_ns=16,
-            max_wait_time_in_ns = 80000,
-            wait_time_num_points = 100,
+            max_wait_time_in_ns = 50000,
+            wait_time_num_points = 50,
             use_state_discrimination = True,
-            charge_gate_start_in_v = -0.5,
-            charge_gate_end_in_v = 0.5,
-            charge_gate_step_in_v = 0.1,
+            charge_gate_start_in_v = -0.45,
+            charge_gate_end_in_v = 0.45,
+            charge_gate_step_in_v = 0.15,
             log_or_linear_sweep = "linear",
-            num_shots = 200,
+            num_shots = 300,
         )
 connectivity = []
 for i in range(repeat_times):

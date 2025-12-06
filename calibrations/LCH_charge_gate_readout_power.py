@@ -16,7 +16,6 @@ from quam_config import Quam
 from customized.node.LCH_charge_gate_readout_power import (
     Parameters,
 )
-from calibration_utils.iq_blobs.plotting import plot_iq_blobs, plot_confusion_matrices
 from qualibration_libs.parameters import get_qubits
 from qualibration_libs.runtime import simulate_and_plot
 from qualibration_libs.data import XarrayDataFetcher
@@ -57,19 +56,26 @@ def create_qua_program(node: QualibrationNode[Parameters, Quam]):
     # Get the active qubits from the node and organize them by batches
     node.namespace["qubits"] = qubits = get_qubits(node)
     num_qubits = len(qubits)
+    p = node.parameters
 
-    n_runs = node.parameters.num_shots  # Number of runs
-    amps = np.linspace(node.parameters.start_amp, node.parameters.end_amp, node.parameters.num_amps)
-    flux_idle_case = node.parameters.flux_idle_case
-    
-    charge_gate_volts = np.arange(node.parameters.charge_gate_start_in_v, node.parameters.charge_gate_end_in_v, node.parameters.charge_gate_step_in_v)
-
+    n_runs = p.num_shots  # Number of runs
+    amps = np.linspace(p.start_amp, p.end_amp, p.num_amps)
+    flux_idle_case = p.flux_idle_case
+    print(f"{qubits[0].charge_offset} charge offset")
+    charge_gate_volts = np.arange(p.charge_gate_start_in_v, p.charge_gate_end_in_v +p.charge_gate_step_in_v/2, p.charge_gate_step_in_v)
+    relative_charge_gate_volts = charge_gate_volts
+    if (qubits[0].charge_offset + p.charge_gate_end_in_v) <= 0.5:
+        charge_gate_volts = charge_gate_volts +qubits[0].charge_offset
+        print(f"v+")
+    else:
+        charge_gate_volts = qubits[0].charge_offset -charge_gate_volts
+        print(f"v-")
     # Register the sweep axes to be added to the dataset when fetching data
-    prepared_states = node.parameters.prepared_states
+    prepared_states = p.prepared_states
     node.namespace["sweep_axes"] = {
         "qubit": xr.DataArray(qubits.get_names()),
         "prepared_state": xr.DataArray(prepared_states, attrs={"long_name": "prepared qubit state", "units": ""}),
-        "charge_gate": xr.DataArray( charge_gate_volts, attrs={"long_name": "charge gate volts", "units": "V"}),
+        "charge_gate": xr.DataArray( relative_charge_gate_volts, attrs={"long_name": "charge gate volts", "units": "V"}),
         "amp_prefactor": xr.DataArray(amps, attrs={"long_name": "readout amplitude", "units": ""}),
         "shot_idx": xr.DataArray(np.linspace(1, n_runs, n_runs), attrs={"long_name": "number of shots"}),
     }
@@ -125,6 +131,9 @@ def create_qua_program(node: QualibrationNode[Parameters, Quam]):
                                 # save data
                                 save(I[i], I_st[i])
                                 save(Q[i], Q_st[i])
+
+                            if p.manual_relexation_time_in_ns is not None:
+                                wait( p.manual_relexation_time_in_ns//4 )
 
 
 

@@ -8,10 +8,12 @@ from customized.common_parameters import CommonFluxParameters
 class NodeSpecificParameters(RunnableParameters):
     num_shots: int = 100
     """Number of averages to perform. Default is 100."""
-    frequency_span_in_mhz: float = 100
-    """Span of frequencies to sweep in MHz. Default is 100 MHz."""
-    frequency_step_in_mhz: float = 0.25
-    """Step size for frequency sweep in MHz. Default is 0.25 MHz."""
+    max_frequency_in_mhz: float = 100.0
+    """Maximum frequency in MHz. Default is 50 MHz."""
+    min_frequency_in_mhz: float = -100
+    """Minimum frequency in MHz. Default is -250 MHz."""
+    num_frequency_points: int = 101
+    """Number of frequency points. Default is 51."""
     operation: str = "saturation"
     """Type of operation to perform. Default is "saturation"."""
     operation_amplitude_factor: float = 1.0
