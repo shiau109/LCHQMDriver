@@ -35,8 +35,8 @@ for i in range(repeat_times):
     nodes[f"LCH_charge_gate_readout_power_{i}"] = library.nodes["LCH_charge_gate_readout_power"].copy(
             name=f"LCH_charge_gate_readout_power_{i}",
             reset_type = "active",
-            start_amp = 0.2,
-            end_amp = 1.9,
+            start_amp = 0.25,
+            end_amp = 1.95,
             num_amps = 18,
             charge_gate_start_in_v = 0,
             charge_gate_end_in_v = 0.460,
