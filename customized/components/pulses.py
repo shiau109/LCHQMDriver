@@ -33,6 +33,32 @@ class RampPulse(Pulse):
 
 
 @quam_dataclass
+class ParaCosinePulse(Pulse):
+    """Cosine pulse QUAM component.
+
+    Args:
+        length (int): The total length of the pulse in samples.
+        amplitude (float): The amplitude of the pulse in volts.
+        frequency (float): The frequency of the cosine wave in units of cycles per sample.
+        phase (float): The phase offset of the cosine wave in radians.
+
+    """
+
+    amplitude: float = 0.1
+    frequency: float = 0.1
+    phase: float = 0.0
+
+    def waveform_function(self):
+        # Generate time array
+        t = np.linspace( 0, self.length ,self.length, endpoint=False)  # An array of size pulse length in ns
+        
+        # Generate cosine waveform
+        waveform = self.amplitude * np.cos(2 * np.pi * self.frequency * t + self.phase)
+
+        return waveform
+
+
+@quam_dataclass
 class CascadeFlatTopGaussianPulse(Pulse):
     """Gaussian pulse with flat top QUAM component.
 
@@ -75,8 +101,15 @@ class CascadeFlatTopGaussianPulse(Pulse):
 
         return waveform
 
+
+
 if __name__ == "__main__":
     # Example usage
     pulse = RampPulse(length=10, start_value=0, end_value=0.5)
     print(pulse.waveform_function())
     print(pulse.__class__.__name__)
+    
+    # Example usage for CosinePulse
+    cosine_pulse = ParaCosinePulse(length=20, amplitude=0.5, frequency=0.1, phase=0.0)
+    print(cosine_pulse.waveform_function())
+    print(cosine_pulse.__class__.__name__)
