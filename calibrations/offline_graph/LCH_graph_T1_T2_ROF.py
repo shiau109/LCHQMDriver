@@ -17,7 +17,7 @@ class Parameters(GraphParameters):
 nodes = {}
 
 
-repeat_times = 100
+repeat_times = 1000
 
 for i in range(repeat_times): 
     nodes[f"05_T1_{i}"] = library.nodes["05_T1"].copy(
@@ -26,33 +26,33 @@ for i in range(repeat_times):
             multiplexed = True, 
             use_state_discrimination = True,
             min_wait_time_in_ns=16,
-            max_wait_time_in_ns=1000000,
+            max_wait_time_in_ns=3000000,
             wait_time_num_points=100,
             log_or_linear_sweep = "log",
-            num_shots = 200,
+            num_shots = 500,
         )
     nodes[f"LCH_Ramsey_{i}"] = library.nodes["LCH_Ramsey"].copy(
             name=f"LCH_Ramsey_{i}",
             reset_type = "active",
             multiplexed = True, 
             use_state_discrimination = True,
-            frequency_detuning_in_mhz=0.2,
+            frequency_detuning_in_mhz=0.25,
             min_wait_time_in_ns=16,
-            max_wait_time_in_ns = 80000,
+            max_wait_time_in_ns = 50000,
             wait_time_num_points = 100,
             log_or_linear_sweep = "linear",
-            num_shots = 200,
+            num_shots = 1000,
         )
     nodes[f"06b_echo_{i}"] = library.nodes["06b_echo"].copy(
             name=f"06b_echo_{i}",
             reset_type = "active",
             multiplexed = True, 
             min_wait_time_in_ns=16,
-            max_wait_time_in_ns = 1000000,
+            max_wait_time_in_ns = 500000,
             wait_time_num_points = 100,
             use_state_discrimination = True,
             log_or_linear_sweep = "log",
-            num_shots = 200,
+            num_shots = 1000,
         )
     nodes[f"LCH_readout_fidelity_{i}"] = library.nodes["LCH_readout_fidelity"].copy(
             name=f"LCH_readout_fidelity_{i}",

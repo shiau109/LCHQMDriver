@@ -32,6 +32,8 @@ def plot_raw_data_with_fit(ds: xr.Dataset, qubits: List[AnyTransmon], fits: xr.D
     for ax, qubit in grid_iter(grid):
         q_label = qubit["qubit"]  
         plot_ds = ds.sel(qubit=qubit["qubit"])
+
+        
         plot_individual_data_with_fit(ax, plot_ds, q_label)
 
     grid.fig.suptitle("T1 vs. idle time")
@@ -53,27 +55,20 @@ def plot_individual_data_with_fit(ax: Axes, ds: xr.Dataset, q_label: str, fit: x
         fitted = None
 
     # If flux_amp axis exists, plot 2D heatmap
-    if "flux_amp" in ds.state.dims:
-        ds.state.plot(ax=ax, x="idle_time", y="flux_amp", add_colorbar=True, cmap="viridis")
+    if hasattr(ds, "signal") and "flux_amp" in ds.signal.dims:
+        ds.signal.plot(ax=ax, x="idle_time", y="flux_amp", add_colorbar=True, cmap="viridis")
         ax.set_ylabel("flux_amp")
         ax.set_xlabel("Idle time [ns]")
         ax.set_title(q_label + " (2D heatmap)")
-    elif hasattr(ds, "state"):
-        ds.state.plot(ax=ax)
+    elif hasattr(ds, "signal"):
+        ds.signal.plot(ax=ax)
         if fitted is not None:
             ax.plot(ds.idle_time, fitted, "r--")
-        ax.set_ylabel("State")
-        ax.set_xlabel("Idle time [ns]")
-        ax.set_title(q_label)
-    elif hasattr(ds, "I"):
-        (ds.I * 1e3).plot(ax=ax)
-        if fitted is not None:
-            ax.plot(ds.idle_time, fitted * 1e3, "r--")
-        ax.set_ylabel("Trans. amp. I [mV]")
+        ax.set_ylabel("Signal")
         ax.set_xlabel("Idle time [ns]")
         ax.set_title(q_label)
     else:
-        raise RuntimeError("The dataset must contain either 'I' or 'state' for the plotting function to work.")
+        raise RuntimeError("The dataset must contain 'signal' for the plotting function to work.")
 
     if fit is not None:
         _add_fit_text(ax, fit)
