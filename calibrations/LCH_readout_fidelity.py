@@ -129,7 +129,10 @@ def create_qua_program(node: QualibrationNode[Parameters, Quam]):
                 I_st[i].buffer(len(prepared_states)).buffer(n_runs).save(f"I{i + 1}")
                 Q_st[i].buffer(len(prepared_states)).buffer(n_runs).save(f"Q{i + 1}")
 
-
+    from qm import generate_qua_script
+    sourceFile = open('debug_LCH_readout_fidelity.py', 'w')
+    print(generate_qua_script(node.namespace["qua_program"], node.machine.generate_config()), file=sourceFile) 
+    sourceFile.close()
 # %% {Simulate}
 @node.run_action(skip_if=node.parameters.load_data_id is not None or not node.parameters.simulate)
 def simulate_qua_program(node: QualibrationNode[Parameters, Quam]):
@@ -220,20 +223,6 @@ def plot_data(node: QualibrationNode[Parameters, Quam]):
 def update_state(node: QualibrationNode[Parameters, Quam]):
     """Update the relevant parameters if the qubit data analysis was successful."""
     pass
-    # with node.record_state_updates():
-    #     for q in node.namespace["qubits"]:
-    #         if node.outcomes[q.name] == "failed":
-    #             continue
-
-    #         fit_result = node.results["fit_results"][q.name]
-    #         operation = q.resonator.operations[node.parameters.operation]
-    #         operation.integration_weights_angle -= float(fit_result["iw_angle"])
-    #         # Convert the thresholds back to demod units
-    #         operation.threshold = float(fit_result["ge_threshold"]) * operation.length / 2**12
-    #         operation.rus_exit_threshold = float(fit_result["rus_threshold"]) * operation.length / 2**12
-    #         if node.parameters.operation == "readout":
-    #             q.resonator.confusion_matrix = fit_result["confusion_matrix"]
-
 
 # %% {Save_results}
 @node.run_action()

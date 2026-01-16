@@ -27,6 +27,7 @@ from qualibration_libs.data import XarrayDataFetcher
 
 # %% {Node initialisation}
 description = """
+        If Drive Qubit is None, all qubits in Qubits are driven.
         Ask LCH
 """
 
@@ -45,8 +46,16 @@ node = QualibrationNode[Parameters, Quam](
 def custom_param(node: QualibrationNode[Parameters, Quam]):
     """Allow the user to locally set the node parameters for debugging purposes, or execution in the Python IDE."""
     # You can get type hinting in your IDE by typing node.parameters.
-    # node.parameters.qubits = ["q1", "q2"]
-    pass
+    node.parameters.qubits = ["q1"]
+    node.parameters.operation = "saturation"
+    node.parameters.operation_amplitude_factor = 0.1
+    node.parameters.operation_len_in_ns = 500000
+    node.parameters.num_shots = 1000
+    node.parameters.max_frequency_in_mhz = 50
+    node.parameters.min_frequency_in_mhz = -150
+    node.parameters.num_frequency_points = 401
+    node.parameters.reset_type = "thermal"
+    # pass
 
 
 # Instantiate the QUAM class from the state file

@@ -134,7 +134,10 @@ def create_qua_program(node: QualibrationNode[Parameters, Quam]):
                     I_st[i].buffer(len(idle_times)).average().save(f"I{i + 1}")
                     Q_st[i].buffer(len(idle_times)).average().save(f"Q{i + 1}")
 
-
+    from qm import generate_qua_script
+    sourceFile = open('debug_06b_echo.py', 'w')
+    print(generate_qua_script(node.namespace["qua_program"], node.machine.generate_config()), file=sourceFile) 
+    sourceFile.close()
 # %% {Simulate}
 @node.run_action(skip_if=node.parameters.load_data_id is not None or not node.parameters.simulate)
 def simulate_qua_program(node: QualibrationNode[Parameters, Quam]):
@@ -219,11 +222,12 @@ def plot_data(node: QualibrationNode[Parameters, Quam]):
 @node.run_action(skip_if=node.parameters.simulate)
 def update_state(node: QualibrationNode[Parameters, Quam]):
     """Update the relevant parameters if the qubit data analysis was successful."""
-    with node.record_state_updates():
-        for q in node.namespace["qubits"]:
-            if node.outcomes[q.name] == "failed":
-                continue
-            q.T2echo = node.results["fit_results"][q.name]["T2_echo"]
+    pass
+    # with node.record_state_updates():
+    #     for q in node.namespace["qubits"]:
+    #         if node.outcomes[q.name] == "failed":
+    #             continue
+    #         q.T2echo = node.results["fit_results"][q.name]["T2_echo"]
 
 
 # %% {Save_results}

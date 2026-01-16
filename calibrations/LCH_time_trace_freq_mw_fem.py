@@ -12,7 +12,7 @@ from qualang_tools.units import unit
 
 from qualibrate import QualibrationNode
 from quam_config import Quam
-from calibration_utils.time_of_flight_mw import (
+from customized.node.LCH_time_trace_freq_mw_fem import (
     Parameters,
     process_raw_dataset,
     fit_raw_data,
@@ -26,28 +26,12 @@ from qualibration_libs.data import XarrayDataFetcher
 from qualibration_libs.core import tracked_updates
 
 description = """
-        TIME OF FLIGHT - MW FEM
-This sequence involves sending a readout pulse and capturing the raw ADC traces.
-The data undergoes post-processing to calibrate three distinct parameters:
-    - Time of Flight: This represents the internal processing time and the propagation
-      delay of the readout pulse. Its value can be adjusted in the configuration under
-      "time_of_flight". This value is utilized to offset the acquisition window relative
-      to when the readout pulse is dispatched.
-
-    - Analog Inputs Gain: If a signal is constrained by digitization or if it saturates
-      the ADC, the variable gain of the OPX analog input, ranging from -12 dB to 20 dB,
-      can be modified to fit the signal within the ADC range of +/-0.5V.
-      
-Prerequisites:
-    - Having initialized the Quam (quam_config/populate_quam_state_*.py).
-
-State update:
-    - The time of flight: qubit.resonator.time_of_flight
+        Ask LCH
 """
 
 
 node = QualibrationNode[Parameters, Quam](
-    name="01b_time_of_flight_mw_fem", description=description, parameters=Parameters()
+    name="LCH_time_trace_freq_mw_fem", description=description, parameters=Parameters()
 )
 
 
@@ -56,7 +40,7 @@ node = QualibrationNode[Parameters, Quam](
 @node.run_action(skip_if=node.modes.external)
 def custom_param(node: QualibrationNode[Parameters, Quam]):
     # You can get type hinting in your IDE by typing node.parameters.
-    node.parameters.time_of_flight_in_ns = 300
+
     pass
 
 
@@ -73,23 +57,23 @@ def create_qua_program(node: QualibrationNode[Parameters, Quam]):
     # Get the active qubits from the node and organize them by batches
     node.namespace["qubits"] = qubits = get_qubits(node)
     num_qubits = len(qubits)
-
-    node.namespace["tracked_resonators"] = [] = []
+    # node.namespace["tracked_resonators"] = [] = []
+    # for q in qubits:
+    #     resonator = q.resonator
+    #     # make temporary updates before running the program and revert at the end.
+    #     with tracked_updates(resonator, auto_revert=False, dont_assign_to_none=True) as resonator:
+    #           # Disable smearing to get the raw trace
+    #         if node.parameters.time_of_flight_in_ns is not None:
+    #             resonator.time_of_flight = node.parameters.time_of_flight_in_ns
+    #         resonator.operations["readout"].length = node.parameters.readout_length_in_ns
+    #         node.namespace["tracked_resonators"].append(resonator)
     for q in qubits:
         resonator = q.resonator
-        # make temporary updates before running the program and revert at the end.
-        with tracked_updates(resonator, auto_revert=False, dont_assign_to_none=True) as resonator:
-            if node.parameters.time_of_flight_in_ns is not None:
-                resonator.time_of_flight = node.parameters.time_of_flight_in_ns
-            resonator.operations["readout"].length = node.parameters.readout_length_in_ns
-            resonator.set_output_power(node.parameters.readout_amplitude_in_dBm, operation="readout")
-            node.namespace["tracked_resonators"].append(resonator)
-
     # Register the sweep axes to be added to the dataset when fetching data
     node.namespace["sweep_axes"] = {
         "qubit": xr.DataArray(qubits.get_names()),
         "readout_time": xr.DataArray(
-            np.arange(0, node.parameters.readout_length_in_ns, 1),
+            np.arange(0, resonator.operations["readout"].length +200 , 1),
             attrs={"long_name": "readout time", "units": "ns"},
         ),
     }
@@ -218,20 +202,7 @@ def update_state(node: QualibrationNode[Parameters, Quam]):
     """Update the relevant parameters if the qubit data analysis was successful."""
 
     # Revert the change done at the beginning of the node
-    for tracked_resonator in node.namespace.get("tracked_resonators", []):
-        tracked_resonator.revert_changes()
-
-    with node.record_state_updates():
-        for q in node.namespace["qubits"]:
-            if not node.results["fit_results"][q.name]["success"]:
-                continue
-
-            fit_result = node.results["fit_results"][q.name]
-            if node.parameters.time_of_flight_in_ns is not None:
-                q.resonator.time_of_flight = node.parameters.time_of_flight_in_ns + fit_result["tof_to_add"]
-            else:
-                q.resonator.time_of_flight = fit_result["tof_to_add"]
-
+    pass
 
 # %% {Save_results}
 @node.run_action()

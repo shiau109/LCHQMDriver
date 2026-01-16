@@ -18,6 +18,12 @@ class NodeSpecificParameters(RunnableParameters):
     """Type of operation to perform. Default is "saturation"."""
     drive_qubit: Optional[str] = None
     """Qubit to apply the drive pulse on. Default is None."""
+    max_frequency_mhz : float = 300
+    """Maximum frequency in MHz. Default is 300 MHz."""
+    min_frequency_mhz : float = 10
+    """Minimum frequency in MHz. Default is 10 MHz."""
+    frequency_points: int = 51
+    """Number of frequency points to sample. Default is 51."""
 
 class Parameters(
     NodeParameters,
