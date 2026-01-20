@@ -6,7 +6,7 @@
                 "operations": {
                     "saturation": {
                         "length": 20000,
-                        "amplitude": 0.3981071705534972,
+                        "amplitude": 0.12976009043438833,
                         "axis_angle": 0,
                         "__class__": "quam.components.pulses.SquarePulse"
                     },
@@ -75,7 +75,7 @@
                     "y90": "#./y90_DragCosine",
                     "-y90": "#./-y90_DragCosine"
                 },
-                "RF_frequency": 4800192619.676257,
+                "RF_frequency": 4800274916.156376,
                 "opx_output": "#/wiring/qubits/q1/xy/opx_output",
                 "__class__": "quam_builder.architecture.superconducting.components.xy_drive.XYDriveMW"
             },
@@ -84,21 +84,21 @@
                 "f_01": 5909800000.0,
                 "confusion_matrix": [
                     [
-                        0.9684,
-                        0.0316
+                        0.9716,
+                        0.0284
                     ],
                     [
-                        0.0588,
-                        0.9412
+                        0.0673,
+                        0.9327
                     ]
                 ],
                 "operations": {
                     "readout": {
                         "length": 800,
                         "amplitude": 0.014,
-                        "threshold": 0.0002873330239576634,
-                        "rus_exit_threshold": -0.00022792464639395982,
-                        "integration_weights_angle": -15.04234676591336,
+                        "threshold": 0.0002899941666696817,
+                        "rus_exit_threshold": -0.00021974449293925516,
+                        "integration_weights_angle": -21.78055613144878,
                         "__class__": "quam.components.pulses.SquareReadoutPulse"
                     }
                 },
@@ -108,7 +108,7 @@
                 "opx_output": "#/wiring/qubits/q1/rr/opx_output",
                 "__class__": "quam_builder.architecture.superconducting.components.readout_resonator.ReadoutResonatorMW"
             },
-            "f_01": 4800192619.676257,
+            "f_01": 4800274916.156376,
             "T1": 1.8221029652896147e-05,
             "T2ramsey": 1.1411699373190411e-05,
             "chi": -250000.0,
@@ -119,10 +119,16 @@
                         "length": 100,
                         "amplitude": 0.2,
                         "__class__": "quam.components.pulses.SquarePulse"
+                    },
+                    "param": {
+                        "length": 4000,
+                        "amplitude": 0.1,
+                        "__class__": "quam.components.pulses.SquarePulse"
                     }
                 },
+                "intermediate_frequency": 0,
                 "opx_output": "#/wiring/qubits/q1/z/opx_output",
-                "joint_offset": -0.0224394013034414,
+                "joint_offset": -0.020915311454358935,
                 "flux_point": "joint",
                 "__class__": "quam_builder.architecture.superconducting.components.flux_line.FluxLine"
             },
@@ -136,7 +142,7 @@
                 "operations": {
                     "saturation": {
                         "length": 20000,
-                        "amplitude": 0.18267319038380955,
+                        "amplitude": 0.17770954228593377,
                         "axis_angle": 0,
                         "__class__": "quam.components.pulses.SquarePulse"
                     },
@@ -205,7 +211,7 @@
                     "y90": "#./y90_DragCosine",
                     "-y90": "#./-y90_DragCosine"
                 },
-                "RF_frequency": 4567481508.795001,
+                "RF_frequency": 4579885214.052628,
                 "opx_output": "#/wiring/qubits/q2/xy/opx_output",
                 "__class__": "quam_builder.architecture.superconducting.components.xy_drive.XYDriveMW"
             },
@@ -214,21 +220,21 @@
                 "f_01": 5828000000.0,
                 "confusion_matrix": [
                     [
-                        0.9676,
-                        0.0324
+                        0.9675,
+                        0.0325
                     ],
                     [
-                        0.0492,
-                        0.9508
+                        0.065,
+                        0.935
                     ]
                 ],
                 "operations": {
                     "readout": {
                         "length": 800,
                         "amplitude": 0.017,
-                        "threshold": -0.000853634335581173,
-                        "rus_exit_threshold": -0.0013270323413613436,
-                        "integration_weights_angle": -7.998151550373928,
+                        "threshold": -0.0009573230353006975,
+                        "rus_exit_threshold": -0.0014200311668207078,
+                        "integration_weights_angle": -14.975418436414383,
                         "__class__": "quam.components.pulses.SquareReadoutPulse"
                     }
                 },
@@ -238,7 +244,7 @@
                 "opx_output": "#/wiring/qubits/q2/rr/opx_output",
                 "__class__": "quam_builder.architecture.superconducting.components.readout_resonator.ReadoutResonatorMW"
             },
-            "f_01": 4567481508.795001,
+            "f_01": 4579885214.052628,
             "T1": 1.2434194551396706e-05,
             "T2ramsey": 8.505275313642565e-07,
             "chi": -200000.0,
@@ -252,14 +258,13 @@
                     },
                     "param": {
                         "length": 4000,
-                        "amplitude": 0.055,
-                        "flat_length": 3960,
-                        "__class__": "quam.components.pulses.FlatTopGaussianPulse"
+                        "amplitude": 0.1,
+                        "__class__": "quam.components.pulses.SquarePulse"
                     }
                 },
-                "intermediate_frequency": 50000000,
+                "intermediate_frequency": 0,
                 "opx_output": "#/wiring/qubits/q2/z/opx_output",
-                "joint_offset": -0.27997906006132384,
+                "joint_offset": -0.2982642662880538,
                 "flux_point": "joint",
                 "__class__": "quam_builder.architecture.superconducting.components.flux_line.FluxLine"
             },

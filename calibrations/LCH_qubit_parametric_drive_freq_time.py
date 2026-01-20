@@ -40,14 +40,15 @@ def custom_param(node: QualibrationNode[Parameters, Quam]):
     """Allow the user to locally set the node parameters for debugging purposes, or execution in the Python IDE."""
     # You can get type hinting in your IDE by typing node.parameters.
     node.parameters.qubits = ["q2"]
-    node.parameters.max_driving_time_ns = 50000
+    node.parameters.max_driving_time_ns = 10000
     node.parameters.min_driving_time_ns = 16
-    node.parameters.driving_time_step = 1000
-    node.parameters.max_frequency_mhz = 300
-    node.parameters.min_frequency_mhz = 10
+    node.parameters.driving_time_step = 200
+    node.parameters.max_frequency_mhz = 332.5
+    node.parameters.min_frequency_mhz = 322.5
     node.parameters.frequency_points = 51
+    node.parameters.driving_amp_ratio = 1.0
     node.parameters.use_state_discrimination = True
-    node.parameters.simulate = True
+    node.parameters.simulate = False
     node.parameters.num_shots = 1000
     node.parameters.multiplexed = True
     pass
@@ -75,7 +76,6 @@ def create_qua_program(node: QualibrationNode[Parameters, Quam]):
     time_ns =  time_tick*4  # in ns
 
     freqs = np.linspace( p.min_frequency_mhz*u.MHz, p.max_frequency_mhz*u.MHz, p.frequency_points)
-
     flux_idle_case = node.parameters.flux_idle_case
     # Register the sweep axes to be added to the dataset when fetching data
     node.namespace["sweep_axes"] = {
@@ -120,10 +120,11 @@ def create_qua_program(node: QualibrationNode[Parameters, Quam]):
                             # if i == 0:                        
                             qubit.xy.play("x180")
                         align()
-                        wait( (32*u.ns)//4)
+                        wait( (200*u.ns)//4)
                         for i, qubit in multiplexed_qubits.items():
-                            if i == 0:                   
-                                qubit.z.play("param", truncate=tt)
+                            if i == 0:
+                                qubit.z.reset_if_phase()                   
+                                qubit.z.play("param",amplitude_scale=p.driving_amp_ratio, duration=tt)
                         align()
 
                         for i, qubit in multiplexed_qubits.items():
@@ -140,10 +141,10 @@ def create_qua_program(node: QualibrationNode[Parameters, Quam]):
             n_st.save("n")
             for i in range(num_qubits):
                 if node.parameters.use_state_discrimination:
-                    state_st[i].buffer(len(time_tick)).average().save(f"state{i + 1}")
+                    state_st[i].buffer(len(time_tick)).buffer(len(freqs)).average().save(f"state{i + 1}")
                 else:
-                    I_st[i].buffer(len(time_tick)).average().save(f"I{i + 1}")
-                    Q_st[i].buffer(len(time_tick)).average().save(f"Q{i + 1}")
+                    I_st[i].buffer(len(time_tick)).buffer(len(freqs)).average().save(f"I{i + 1}")
+                    Q_st[i].buffer(len(time_tick)).buffer(len(freqs)).average().save(f"Q{i + 1}")
 
 
 # %% {Simulate}
@@ -226,19 +227,22 @@ def plot_data(node: QualibrationNode[Parameters, Quam]):
     sep_data = repetition_data(ds, repetition_dim="qubit")
 
     node.results["fit_results"] = {}
-    fig, ax = plt.subplots()
+    node.results["figures"] = {}
+    
     for sq_data in sep_data:
         qubit_name = sq_data["qubit"].values.item()
-        ax.scatter(sq_data.detuning, sq_data.signal, label=qubit_name)
-    ax.set_xlabel("Detuning")
-    ax.set_ylabel("Signal")
-    ax.legend()
-    plt.show()
-    # Store the generated figures
-    node.results["figures"] = {
-        "amplitude": fig,
-    }
-
+        fig, ax = plt.subplots()
+        
+        # Plot 2D colormap
+        sq_data.signal.plot(ax=ax, x="driving_frequency", y="driving_time", add_colorbar=True, cmap="viridis")
+        ax.set_xlabel("Driving Frequency [Hz]")
+        ax.set_ylabel("Amplitude Ratio")
+        ax.set_title(f"{qubit_name} - Signal vs Driving Frequency and Amplitude Ratio")
+        
+        # Store the figure for this qubit
+        node.results["figures"][qubit_name] = fig
+    
+    # plt.show()
 
 # %% {Update_state}
 @node.run_action(skip_if=node.parameters.simulate)

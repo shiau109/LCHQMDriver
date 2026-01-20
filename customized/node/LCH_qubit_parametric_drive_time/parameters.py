@@ -24,6 +24,8 @@ class NodeSpecificParameters(RunnableParameters):
     """Minimum frequency in MHz. Default is 10 MHz."""
     frequency_points: int = 51
     """Number of frequency points to sample. Default is 51."""
+    driving_amp_ratio: float = 1.0
+    """Amplitude ratio for the driving pulse. Default is 1.0."""
 
 class Parameters(
     NodeParameters,

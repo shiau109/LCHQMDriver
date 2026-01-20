@@ -40,17 +40,17 @@ def custom_param(node: QualibrationNode[Parameters, Quam]):
     """Allow the user to locally set the node parameters for debugging purposes, or execution in the Python IDE."""
     # You can get type hinting in your IDE by typing node.parameters.
     node.parameters.qubits = ["q2"]
-    node.parameters.max_amp_ratio = 1.2
-    node.parameters.min_amp_ratio = 0.6
-    node.parameters.amp_ratio_points = 21
-    node.parameters.max_frequency_mhz = 362
-    node.parameters.min_frequency_mhz = 352
+    node.parameters.max_amp_ratio = 1.3
+    node.parameters.min_amp_ratio = 1
+    node.parameters.amp_ratio_points = 10
+    node.parameters.max_frequency_mhz = 340
+    node.parameters.min_frequency_mhz = 320
     node.parameters.frequency_points = 201
     node.parameters.use_state_discrimination = True
     node.parameters.simulate = False
     node.parameters.num_shots = 1000
     node.parameters.multiplexed = True
-    node.parameters.driving_time_in_ns = 4000
+    node.parameters.driving_time_in_ns = 8000
     pass
 
 
@@ -118,11 +118,11 @@ def create_qua_program(node: QualibrationNode[Parameters, Quam]):
                             # if i == 0:                        
                             qubit.xy.play("x180")
                         align()
-                        wait( (32*u.ns)//4)
+                        wait( (200*u.ns)//4)
                         for i, qubit in multiplexed_qubits.items(): 
                             
                             if i == 0:              
-                                # qubit.z.frame_rotation(0.5)
+                                qubit.z.reset_if_phase()    
                                 qubit.z.play("param",amplitude_scale=ra, duration=p.driving_time_in_ns*u.ns//4)
                         align()
 
