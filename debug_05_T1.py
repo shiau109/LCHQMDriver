@@ -1,5 +1,5 @@
 
-# Single QUA script generated at 2026-01-18 22:18:14.996421
+# Single QUA script generated at 2026-01-21 09:22:58.331617
 # QUA library version: 1.2.4a1
 
 
@@ -15,30 +15,47 @@ with program() as prog:
     v6 = declare(fixed, )
     v7 = declare(fixed, )
     v8 = declare(int, )
-    a1 = declare(int, value=[4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 32, 33, 34, 35, 37, 38, 40, 41, 43, 45, 46, 48, 50, 52, 54, 56, 58, 61, 63, 65, 68, 71, 73, 76, 79, 82, 85, 89, 92, 96, 100, 103, 107, 112, 116, 120, 125, 130, 135, 140, 146, 151, 157, 163, 169, 176, 183, 190, 197, 205, 213, 221, 230, 238, 248, 257, 267, 278, 288, 299, 311, 323, 336, 349, 362, 376, 390, 406, 421, 438, 454, 472, 490, 509, 529, 549, 571, 593, 615, 639, 664, 690, 716, 744, 773, 802, 833, 866, 899, 934, 970, 1007, 1046, 1087, 1129, 1172, 1217, 1264, 1313, 1364, 1417, 1471, 1528, 1587, 1648, 1712, 1778, 1847, 1918, 1992, 2069, 2149, 2232, 2318, 2407, 2500, 2597, 2697, 2801, 2909, 3022, 3138, 3260, 3385, 3516, 3652, 3793, 3939, 4091, 4249, 4413, 4584, 4760, 4944, 5135, 5333, 5539, 5753, 5975, 6206, 6445, 6694, 6952, 7221, 7500])
-    set_dc_offset("q1.z", "single", -0.02265395898832674)
-    set_dc_offset("q2.z", "single", -0.27997906006132384)
+    a1 = declare(int, value=[4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 18, 19, 21, 23, 24, 26, 28, 31, 33, 36, 39, 42, 45, 49, 53, 57, 61, 66, 72, 77, 84, 90, 97, 105, 113, 122, 132, 143, 154, 166, 179, 194, 209, 226, 243, 263, 284, 306, 330, 356, 385, 415, 448, 484, 522, 563, 608, 656, 708, 764, 824, 889, 960, 1036, 1118, 1206, 1302, 1405, 1516, 1636, 1765, 1905, 2056, 2218, 2394, 2583, 2787, 3008, 3246, 3503, 3780, 4079, 4401, 4750, 5125, 5531, 5968, 6440, 6950, 7500])
+    set_dc_offset("q1.z", "single", -0.020915311454358935)
+    set_dc_offset("q2.z", "single", -0.2982642662880538)
     set_dc_offset("q3.z", "single", 0.13)
     set_dc_offset("coupler_q1_q2", "single", 0.13)
-    align("q2.z", "q2.xy", "q2.resonator")
-    with for_(v1,0,(v1<1000),(v1+1)):
+    align("q1.xy", "q1.resonator", "q1.z")
+    set_dc_offset("q1.z", "single", -0.020915311454358935)
+    set_dc_offset("q2.z", "single", -0.2982642662880538)
+    set_dc_offset("q3.z", "single", 0.13)
+    set_dc_offset("coupler_q1_q2", "single", 0.13)
+    align("q2.xy", "q2.resonator", "q2.z")
+    with for_(v1,0,(v1<200),(v1+1)):
         r1 = declare_stream()
         save(v1, r1)
         with for_each_((v8),(a1)):
+            wait(22776, "q1.xy", "q1.resonator", "q1.z")
             wait(15542, "q2.xy", "q2.resonator", "q2.z")
-            align("q2.z", "q2.xy", "q2.resonator")
+            align("q1.xy", "q1.resonator", "q1.z")
+            play("x180", "q1.xy")
+            align("q1.xy", "q1.resonator", "q1.z")
+            wait(v8, "q1.resonator")
+            align("q2.xy", "q2.resonator", "q2.z")
             play("x180", "q2.xy")
-            align("q2.z", "q2.xy", "q2.resonator")
+            align("q2.xy", "q2.resonator", "q2.z")
             wait(v8, "q2.resonator")
-            measure("readout", "q2.resonator", dual_demod.full("iw1", "iw2", v2), dual_demod.full("iw3", "iw1", v5))
+            measure("readout", "q1.resonator", dual_demod.full("iw1", "iw2", v2), dual_demod.full("iw3", "iw1", v5))
             r2 = declare_stream()
             save(v2, r2)
             r5 = declare_stream()
             save(v5, r5)
+            measure("readout", "q2.resonator", dual_demod.full("iw1", "iw2", v3), dual_demod.full("iw3", "iw1", v6))
+            r3 = declare_stream()
+            save(v3, r3)
+            r6 = declare_stream()
+            save(v6, r6)
     with stream_processing():
         r1.save("n")
-        r2.buffer(172).average().save("I1")
-        r5.buffer(172).average().save("Q1")
+        r2.buffer(93).average().save("I1")
+        r5.buffer(93).average().save("Q1")
+        r3.buffer(93).average().save("I2")
+        r6.buffer(93).average().save("Q2")
 
 config = {
     "version": 1,
@@ -139,7 +156,7 @@ config = {
                 "y90": "q1.xy.y90_DragCosine.pulse",
                 "-y90": "q1.xy.-y90_DragCosine.pulse",
             },
-            "intermediate_frequency": -49800151.5599308,
+            "intermediate_frequency": -49725083.843624115,
             "MWInput": {
                 "port": ('con1', 6, 2),
                 "upconverter": 1,
@@ -165,7 +182,7 @@ config = {
                 "const": "q1.z.const.pulse",
                 "param": "q1.z.param.pulse",
             },
-            "intermediate_frequency": 50000000,
+            "intermediate_frequency": 0,
             "singleInput": {
                 "port": ('con1', 1, 1),
             },
@@ -186,7 +203,7 @@ config = {
                 "y90": "q2.xy.y90_DragCosine.pulse",
                 "-y90": "q2.xy.-y90_DragCosine.pulse",
             },
-            "intermediate_frequency": 217481508.79500103,
+            "intermediate_frequency": 229885214.05262756,
             "MWInput": {
                 "port": ('con1', 6, 3),
                 "upconverter": 1,
@@ -212,7 +229,7 @@ config = {
                 "const": "q2.z.const.pulse",
                 "param": "q2.z.param.pulse",
             },
-            "intermediate_frequency": 50000000,
+            "intermediate_frequency": 0,
             "singleInput": {
                 "port": ('con1', 1, 2),
             },
@@ -612,11 +629,11 @@ config = {
         },
         "q1.z.param.wf": {
             "type": "constant",
-            "sample": 0.05,
+            "sample": 0.1,
         },
         "q2.xy.saturation.wf.I": {
             "type": "constant",
-            "sample": 0.18267319038380955,
+            "sample": 0.17770954228593377,
         },
         "q2.xy.saturation.wf.Q": {
             "type": "constant",
@@ -684,7 +701,7 @@ config = {
         },
         "q2.z.param.wf": {
             "type": "constant",
-            "sample": 0.04,
+            "sample": 0.1,
         },
         "q3.xy.saturation.wf.I": {
             "type": "constant",
@@ -766,28 +783,28 @@ config = {
     },
     "integration_weights": {
         "q1.resonator.readout.iw1": {
-            "cosine": [(-0.9779072423419304, 800)],
-            "sine": [(0.20903929146263658, 800)],
+            "cosine": [(-0.9851391395558443, 800)],
+            "sine": [(0.17175818965968054, 800)],
         },
         "q1.resonator.readout.iw2": {
-            "cosine": [(-0.20903929146263658, 800)],
-            "sine": [(-0.9779072423419304, 800)],
+            "cosine": [(-0.17175818965968054, 800)],
+            "sine": [(-0.9851391395558443, 800)],
         },
         "q1.resonator.readout.iw3": {
-            "cosine": [(0.20903929146263658, 800)],
-            "sine": [(0.9779072423419304, 800)],
+            "cosine": [(0.17175818965968054, 800)],
+            "sine": [(0.9851391395558443, 800)],
         },
         "q2.resonator.readout.iw1": {
-            "cosine": [(-0.7434749203641735, 800)],
-            "sine": [(0.6687638168961341, 800)],
+            "cosine": [(-0.7769048902650301, 800)],
+            "sine": [(0.6296179726487178, 800)],
         },
         "q2.resonator.readout.iw2": {
-            "cosine": [(-0.6687638168961341, 800)],
-            "sine": [(-0.7434749203641735, 800)],
+            "cosine": [(-0.6296179726487178, 800)],
+            "sine": [(-0.7769048902650301, 800)],
         },
         "q2.resonator.readout.iw3": {
-            "cosine": [(0.6687638168961341, 800)],
-            "sine": [(0.7434749203641735, 800)],
+            "cosine": [(0.6296179726487178, 800)],
+            "sine": [(0.7769048902650301, 800)],
         },
         "q3.resonator.readout.iw1": {
             "cosine": [(0.23327923198944595, 800)],
@@ -959,7 +976,7 @@ loaded_config = {
                 "port": ('con1', 6, 2),
                 "upconverter": 1,
             },
-            "intermediate_frequency": -49800151.5599308,
+            "intermediate_frequency": -49725083.843624115,
         },
         "q1.resonator": {
             "digitalInputs": {},
@@ -1006,7 +1023,7 @@ loaded_config = {
             "singleInput": {
                 "port": ('con1', 1, 1),
             },
-            "intermediate_frequency": 50000000.0,
+            "intermediate_frequency": 0,
         },
         "q2.xy": {
             "digitalInputs": {},
@@ -1039,7 +1056,7 @@ loaded_config = {
                 "port": ('con1', 6, 3),
                 "upconverter": 1,
             },
-            "intermediate_frequency": 217481508.79500103,
+            "intermediate_frequency": 229885214.05262756,
         },
         "q2.resonator": {
             "digitalInputs": {},
@@ -1086,7 +1103,7 @@ loaded_config = {
             "singleInput": {
                 "port": ('con1', 1, 2),
             },
-            "intermediate_frequency": 50000000.0,
+            "intermediate_frequency": 0,
         },
         "q3.xy": {
             "digitalInputs": {},
@@ -1579,11 +1596,11 @@ loaded_config = {
         },
         "q1.z.param.wf": {
             "type": "constant",
-            "sample": 0.05,
+            "sample": 0.1,
         },
         "q2.xy.saturation.wf.I": {
             "type": "constant",
-            "sample": 0.18267319038380955,
+            "sample": 0.17770954228593377,
         },
         "q2.xy.saturation.wf.Q": {
             "type": "constant",
@@ -1675,7 +1692,7 @@ loaded_config = {
         },
         "q2.z.param.wf": {
             "type": "constant",
-            "sample": 0.04,
+            "sample": 0.1,
         },
         "q3.xy.saturation.wf.I": {
             "type": "constant",
@@ -1781,28 +1798,28 @@ loaded_config = {
     },
     "integration_weights": {
         "q1.resonator.readout.iw1": {
-            "cosine": [(-0.9779072423419304, 800)],
-            "sine": [(0.20903929146263658, 800)],
+            "cosine": [(-0.9851391395558443, 800)],
+            "sine": [(0.17175818965968054, 800)],
         },
         "q1.resonator.readout.iw2": {
-            "cosine": [(-0.20903929146263658, 800)],
-            "sine": [(-0.9779072423419304, 800)],
+            "cosine": [(-0.17175818965968054, 800)],
+            "sine": [(-0.9851391395558443, 800)],
         },
         "q1.resonator.readout.iw3": {
-            "cosine": [(0.20903929146263658, 800)],
-            "sine": [(0.9779072423419304, 800)],
+            "cosine": [(0.17175818965968054, 800)],
+            "sine": [(0.9851391395558443, 800)],
         },
         "q2.resonator.readout.iw1": {
-            "cosine": [(-0.7434749203641735, 800)],
-            "sine": [(0.6687638168961341, 800)],
+            "cosine": [(-0.7769048902650301, 800)],
+            "sine": [(0.6296179726487178, 800)],
         },
         "q2.resonator.readout.iw2": {
-            "cosine": [(-0.6687638168961341, 800)],
-            "sine": [(-0.7434749203641735, 800)],
+            "cosine": [(-0.6296179726487178, 800)],
+            "sine": [(-0.7769048902650301, 800)],
         },
         "q2.resonator.readout.iw3": {
-            "cosine": [(0.6687638168961341, 800)],
-            "sine": [(0.7434749203641735, 800)],
+            "cosine": [(0.6296179726487178, 800)],
+            "sine": [(0.7769048902650301, 800)],
         },
         "q3.resonator.readout.iw1": {
             "cosine": [(0.23327923198944595, 800)],

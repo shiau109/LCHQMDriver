@@ -84,21 +84,21 @@
                 "f_01": 5909800000.0,
                 "confusion_matrix": [
                     [
-                        0.9716,
-                        0.0284
+                        0.9755,
+                        0.0245
                     ],
                     [
-                        0.0673,
-                        0.9327
+                        0.069,
+                        0.931
                     ]
                 ],
                 "operations": {
                     "readout": {
                         "length": 800,
                         "amplitude": 0.014,
-                        "threshold": 0.0002899941666696817,
-                        "rus_exit_threshold": -0.00021974449293925516,
-                        "integration_weights_angle": -21.78055613144878,
+                        "threshold": 0.00026323703330832467,
+                        "rus_exit_threshold": -0.0002650877911145281,
+                        "integration_weights_angle": -21.81853447061864,
                         "__class__": "quam.components.pulses.SquareReadoutPulse"
                     }
                 },
@@ -220,21 +220,21 @@
                 "f_01": 5828000000.0,
                 "confusion_matrix": [
                     [
-                        0.9675,
-                        0.0325
+                        0.972,
+                        0.028
                     ],
                     [
-                        0.065,
-                        0.935
+                        0.0565,
+                        0.9435
                     ]
                 ],
                 "operations": {
                     "readout": {
                         "length": 800,
                         "amplitude": 0.017,
-                        "threshold": -0.0009573230353006975,
-                        "rus_exit_threshold": -0.0014200311668207078,
-                        "integration_weights_angle": -14.975418436414383,
+                        "threshold": -0.0009266337924689085,
+                        "rus_exit_threshold": -0.0014317885615343893,
+                        "integration_weights_angle": -15.026901884307259,
                         "__class__": "quam.components.pulses.SquareReadoutPulse"
                     }
                 },
