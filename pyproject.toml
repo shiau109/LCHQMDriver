@@ -14,7 +14,7 @@ dependencies = [
     "quam>=0.4.2",
     "qualang-tools>=0.19.0",
     "qualibrate>=0.2.1",
-    "qm-qua>=1.2.3",
+    "qm-qua>=1.2.4a1",
     "tomli>=2.0.1; python_version < '3.11'",
     "quam-builder@git+https://github.com/qua-platform/quam-builder.git",
     "qualibration-libs@git+https://github.com/qua-platform/qualibration-libs.git",

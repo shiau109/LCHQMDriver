@@ -94,7 +94,7 @@
                 ],
                 "operations": {
                     "readout": {
-                        "length": 800,
+                        "length": 2000,
                         "amplitude": 0.014,
                         "threshold": 0.00026323703330832467,
                         "rus_exit_threshold": -0.0002650877911145281,
@@ -103,7 +103,7 @@
                     }
                 },
                 "opx_input": "#/wiring/qubits/q1/rr/opx_input",
-                "time_of_flight": 408,
+                "time_of_flight": 396,
                 "RF_frequency": 5909800000.0,
                 "opx_output": "#/wiring/qubits/q1/rr/opx_output",
                 "__class__": "quam_builder.architecture.superconducting.components.readout_resonator.ReadoutResonatorMW"
@@ -128,8 +128,9 @@
                 },
                 "intermediate_frequency": 0,
                 "opx_output": "#/wiring/qubits/q1/z/opx_output",
-                "joint_offset": -0.020915311454358935,
+                "joint_offset": 0.35,
                 "flux_point": "joint",
+                "settle_time": 200,
                 "__class__": "quam_builder.architecture.superconducting.components.flux_line.FluxLine"
             },
             "phi0_current": 37.99853628199706,
@@ -230,7 +231,7 @@
                 ],
                 "operations": {
                     "readout": {
-                        "length": 800,
+                        "length": 2000,
                         "amplitude": 0.017,
                         "threshold": -0.0009266337924689085,
                         "rus_exit_threshold": -0.0014317885615343893,
@@ -264,7 +265,7 @@
                 },
                 "intermediate_frequency": 0,
                 "opx_output": "#/wiring/qubits/q2/z/opx_output",
-                "joint_offset": -0.2982642662880538,
+                "joint_offset": 0.3,
                 "flux_point": "joint",
                 "__class__": "quam_builder.architecture.superconducting.components.flux_line.FluxLine"
             },
@@ -356,7 +357,7 @@
                 "f_01": 5993350000.0,
                 "operations": {
                     "readout": {
-                        "length": 800,
+                        "length": 2000,
                         "amplitude": 0.015,
                         "threshold": 0.0,
                         "integration_weights_angle": 4.947837580371351,
@@ -381,7 +382,7 @@
                     }
                 },
                 "opx_output": "#/wiring/qubits/q3/z/opx_output",
-                "joint_offset": 0.13,
+                "joint_offset": -0.13,
                 "flux_point": "joint",
                 "__class__": "quam_builder.architecture.superconducting.components.flux_line.FluxLine"
             },
@@ -405,7 +406,7 @@
                 },
                 "id": "coupler_q1_q2",
                 "opx_output": "#/wiring/qubit_pairs/q1-2/c/opx_output",
-                "decouple_offset": 0.13,
+                "decouple_offset": -0.13,
                 "__class__": "quam_builder.architecture.superconducting.components.tunable_coupler.TunableCoupler"
             },
             "__class__": "quam_builder.architecture.superconducting.qubit_pair.flux_tunable_transmon_pair.FluxTunableTransmonPair"

@@ -31,8 +31,10 @@ class NodeSpecificParameters(RunnableParameters):
     """Input line impedance in ohms. Default is 50 Ohm."""
     line_attenuation_in_db: Optional[int] = 0
     """Line attenuation in dB. Default is 0 dB."""
-    z_source_qubit: str = "q0"
+    z_source_qubit: Optional[str] = "q0"
     """Z source of specific qubit. Default is "q0"."""
+    xy_source_qubit: Optional[str] = "q0"
+    """XY source of specific qubit. Default is "q0"."""
 
 class Parameters(
     NodeParameters,

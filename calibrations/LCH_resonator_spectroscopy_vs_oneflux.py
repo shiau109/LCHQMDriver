@@ -45,7 +45,11 @@ node = QualibrationNode[Parameters, Quam](
 def custom_param(node: QualibrationNode[Parameters, Quam]):
     """Allow the user to locally set the node parameters for debugging purposes, or execution in the Python IDE."""
     # You can get type hinting in your IDE by typing node.parameters.
-    # node.parameters.qubits = ["q1", "q2"]
+    node.parameters.qubits = ["q1"]
+    node.parameters.simulate = True
+    node.parameters.z_source_qubit = "q1"
+    node.parameters.frequency_span_in_mhz = 1
+    node.parameters.frequency_step_in_mhz = 0.5
     pass
 
 
@@ -79,7 +83,10 @@ def create_qua_program(node: QualibrationNode[Parameters, Quam]):
     dfs = np.arange(-span / 2, +span / 2, step)
     flux_idle_case = node.parameters.flux_idle_case
 
-    z_source_qubit = node.machine.qubits[node.parameters.z_source_qubit]
+    if node.parameters.z_source_qubit is None:
+        z_source_qubit = None
+    else:
+        z_source_qubit = node.machine.qubits[node.parameters.z_source_qubit]
 
 
 
@@ -105,10 +112,17 @@ def create_qua_program(node: QualibrationNode[Parameters, Quam]):
                 save(n, n_st)
                 with for_(*from_array(dc, dcs)):
                     # Flux sweeping by tuning the OPX dc offset associated with the flux_line element
-                    z_source_qubit.z.set_dc_offset(dc)
-                    z_source_qubit.z.settle()
-                    z_source_qubit.align()
-                    
+
+                    if z_source_qubit is None:
+                        for i, qubit in multiplexed_qubits.items():
+                            qubit.z.set_dc_offset(dc)
+                            qubit.z.settle()
+                    else:
+                        z_source_qubit.z.set_dc_offset(dc)
+                        z_source_qubit.z.settle()
+
+                    align()
+
                     for i, qubit in multiplexed_qubits.items():
                         rr = qubit.resonator
                         print(f"Qubit {rr.name}")
@@ -119,10 +133,23 @@ def create_qua_program(node: QualibrationNode[Parameters, Quam]):
                             # readout the resonator
                             rr.measure("readout", qua_vars=(I[i], Q[i]))
                             # wait for the resonator to deplete
-                            rr.wait(rr.depletion_time * u.ns)
+                            rr.wait(rr.depletion_time//4 * u.ns)
                             # save data
                             save(I[i], I_st[i])
                             save(Q[i], Q_st[i])
+
+                    align()
+                    # Testing net zero flux biasing
+                    if z_source_qubit is None:
+                        for i, qubit in multiplexed_qubits.items():
+                            qubit.z.set_dc_offset(-dc)
+                            qubit.z.settle()
+                            qubit.z.align()
+                    else:
+                        z_source_qubit.z.set_dc_offset(-dc)
+                        z_source_qubit.z.settle()
+                    # wait((rr.depletion_time//4) * u.ns)
+                    align()
 
         with stream_processing():
             n_st.save("n")

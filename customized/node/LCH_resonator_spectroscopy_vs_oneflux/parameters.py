@@ -1,3 +1,4 @@
+from typing import Optional
 from qualibrate import NodeParameters
 from qualibrate.parameters import RunnableParameters
 from qualibration_libs.parameters import QubitsExperimentNodeParameters, CommonNodeParameters
@@ -23,7 +24,7 @@ class NodeSpecificParameters(RunnableParameters):
     """Line attenuation in dB. Default is 0 dB."""
     update_flux_min: bool = False
     """Flag to update flux minimum frequency point. Default is False."""
-    z_source_qubit: str = "q0"
+    z_source_qubit: Optional[str] = None
     """Z source of specific qubit. Default is "q0"."""
 
 class Parameters(
