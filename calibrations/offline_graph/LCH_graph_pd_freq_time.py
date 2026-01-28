@@ -16,22 +16,22 @@ class Parameters(GraphParameters):
 
 nodes = {}
 
-driving_amp_ratios = linspace(0.2, 1, 17)
+driving_amp_ratios = linspace(0.75, 0.9, 16)
 repeat_times = len(driving_amp_ratios)
 
 for i in range(repeat_times): 
     nodes[f"LCH_qubit_parametric_drive_time_{i}"] = library.nodes["LCH_qubit_parametric_drive_time"].copy(
             name=f"LCH_qubit_parametric_drive_time_{i}",
-            max_driving_time_ns = 60000,
+            max_driving_time_ns = 4000,
             min_driving_time_ns = 16,
-            driving_time_step = 400,
-            max_frequency_mhz = 238,
-            min_frequency_mhz = 231,
-            frequency_points = 141,
+            driving_time_step = 200,
+            max_frequency_mhz = 315,
+            min_frequency_mhz = 300,
+            frequency_points = 151,
             driving_amp_ratio = driving_amp_ratios[i],
             use_state_discrimination = True,
             simulate = False,
-            num_shots = 1000,
+            num_shots = 200,
             multiplexed = True
         )
 
@@ -47,5 +47,5 @@ g = QualibrationGraph(
     orchestrator=BasicOrchestrator(skip_failed=False),
 )
 
-g.run(qubits=["q2"])
+g.run(qubits=["q1"])
 
