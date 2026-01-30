@@ -78,7 +78,6 @@ def create_qua_program(node: QualibrationNode[Parameters, Quam]):
     span = node.parameters.frequency_span_in_mhz * u.MHz
     step = node.parameters.frequency_step_in_mhz * u.MHz
     dfs = np.arange(-span / 2, +span / 2, step)
-    flux_idle_case = node.parameters.flux_idle_case
     # Register the sweep axes to be added to the dataset when fetching data
     node.namespace["sweep_axes"] = {
         "qubit": xr.DataArray(qubits.get_names()),
@@ -101,7 +100,7 @@ def create_qua_program(node: QualibrationNode[Parameters, Quam]):
         for multiplexed_qubits in qubits.batch():
             # Initialize the QPU in terms of flux points (flux tunable transmons and/or tunable couplers)
             for qubit in multiplexed_qubits.values():
-                node.machine.initialize_qpu(target=qubit, flux_point=flux_idle_case)
+                node.machine.initialize_qpu(target=qubit)
             align()
 
             with for_(n, 0, n < n_avg, n + 1):
@@ -109,7 +108,7 @@ def create_qua_program(node: QualibrationNode[Parameters, Quam]):
                 with for_(*from_array(df, dfs)):
                     # Qubit initialization
                     for i, qubit in multiplexed_qubits.items():
-                        # Update the resonator frequencies
+                        # Update the resonator frequencies & reset the qubits
                         update_frequency(qubit.resonator.name, df + qubit.resonator.intermediate_frequency)
                         qubit.reset(node.parameters.reset_type, node.parameters.simulate)
                     align()
@@ -118,6 +117,7 @@ def create_qua_program(node: QualibrationNode[Parameters, Quam]):
                     for i, qubit in multiplexed_qubits.items():
                         # Measure the state of the resonators
                         qubit.resonator.measure("readout", qua_vars=(I_g[i], Q_g[i]))
+                        # save data to their respective streams
                         save(I_g[i], I_g_st[i])
                         save(Q_g[i], Q_g_st[i])
                     align()
@@ -134,6 +134,7 @@ def create_qua_program(node: QualibrationNode[Parameters, Quam]):
                         qubit.align()
                         # Measure the state of the resonators
                         qubit.resonator.measure("readout", qua_vars=(I_e[i], Q_e[i]))
+                        # save data to their respective streams
                         save(I_e[i], I_e_st[i])
                         save(Q_e[i], Q_e_st[i])
 

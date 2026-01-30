@@ -41,7 +41,7 @@ Prerequisites:
     - Having specified the desired flux point if relevant (qubit.z.flux_point).
 
 State update:
-    - The qubit pulse amplitude corresponding to the specified operation (x180, x90...) 
+    - The qubit pulse amplitude corresponding to the specified operation (x180, x90...)
     (qubit.xy.operations[operation].amplitude).
 """
 
@@ -92,7 +92,6 @@ def create_qua_program(node: QualibrationNode[Parameters, Quam]):
     )
     # Number of applied Rabi pulses sweep
     N_pi_vec = get_number_of_pulses(node.parameters)
-    flux_idle_case = node.parameters.flux_idle_case
     # Register the sweep axes to be added to the dataset when fetching data
     node.namespace["sweep_axes"] = {
         "qubit": xr.DataArray(qubits.get_names()),
@@ -107,12 +106,11 @@ def create_qua_program(node: QualibrationNode[Parameters, Quam]):
             state_st = [declare_stream() for _ in range(num_qubits)]
         a = declare(fixed)  # QUA variable for the qubit drive amplitude pre-factor
         npi = declare(int)  # QUA variable for the number of qubit pulses
-        count = declare(int)  # QUA variable for counting the qubit pulses
 
         for multiplexed_qubits in qubits.batch():
             # Initialize the QPU in terms of flux points (flux tunable transmons and/or tunable couplers)
             for qubit in multiplexed_qubits.values():
-                node.machine.initialize_qpu(target=qubit, flux_point=flux_idle_case)
+                node.machine.initialize_qpu(target=qubit)
             align()
 
             with for_(n, 0, n < n_avg, n + 1):
@@ -127,6 +125,7 @@ def create_qua_program(node: QualibrationNode[Parameters, Quam]):
                         # Qubit manipulation
                         for i, qubit in multiplexed_qubits.items():
                             # Loop for error amplification (perform many qubit pulses)
+                            count = declare(int)  # QUA variable for counting the qubit pulses
                             with for_(count, 0, count < npi, count + 1):
                                 qubit.xy.play(operation, amplitude_scale=a)
                         align()
