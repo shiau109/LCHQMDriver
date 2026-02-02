@@ -25,8 +25,8 @@ for i in range(repeat_times):
     driving_freq_center_mhz = driving_list[i][1]/1e6
     nodes[f"LCH_qubit_parametric_drive_time_{i}"] = library.nodes["LCH_qubit_parametric_drive_time"].copy(
             name=f"LCH_qubit_parametric_drive_time_{i}",
-            max_driving_time_ns = 4000,
-            min_driving_time_ns = 16,
+            max_driving_time_ns = 8000,
+            min_driving_time_ns = 40,
             driving_time_step = 16,
             max_frequency_mhz = driving_freq_center_mhz + span/2,
             min_frequency_mhz = driving_freq_center_mhz - span/2,
@@ -34,7 +34,7 @@ for i in range(repeat_times):
             driving_amp_ratio = driving_list[i][0],
             use_state_discrimination = True,
             simulate = False,
-            num_shots = 1000,
+            num_shots = 2000,
             multiplexed = True
         )
 
