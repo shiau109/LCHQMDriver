@@ -15,23 +15,26 @@ class Parameters(GraphParameters):
     use_state_discrimination: bool = True
 
 nodes = {}
+driving_list = [(0.75, 292350000.0), (0.8, 294400000.0), (0.85, 296800000.0), (0.9, 299350000.0),(0.95, 302300000.0), (1.0, 305600000.0), (1.05, 309000000.0),(1.1, 312200000.0), (1.15, 315150000.0), (1.2, 317950000.0),(1.25, 320750000.0), (1.3, 323600000.0), (1.35, 326300000.0),(1.4, 328800000.0), (1.45, 330950000.0), (1.5, 332900000.0),(1.55, 334750000.0), (1.6, 336500000.0), (1.65, 338300000.0),(1.7, 340150000.0), (1.75, 342050000.0), (1.8, 344100000.0)]
 
-driving_amp_ratios = linspace(0.75, 0.9, 16)
-repeat_times = len(driving_amp_ratios)
+
+span = 0.3
+repeat_times = len(driving_list)
 
 for i in range(repeat_times): 
+    driving_freq_center_mhz = driving_list[i][1]/1e6
     nodes[f"LCH_qubit_parametric_drive_time_{i}"] = library.nodes["LCH_qubit_parametric_drive_time"].copy(
             name=f"LCH_qubit_parametric_drive_time_{i}",
             max_driving_time_ns = 4000,
             min_driving_time_ns = 16,
-            driving_time_step = 200,
-            max_frequency_mhz = 315,
-            min_frequency_mhz = 300,
-            frequency_points = 151,
-            driving_amp_ratio = driving_amp_ratios[i],
+            driving_time_step = 16,
+            max_frequency_mhz = driving_freq_center_mhz + span/2,
+            min_frequency_mhz = driving_freq_center_mhz - span/2,
+            frequency_points = 31,
+            driving_amp_ratio = driving_list[i][0],
             use_state_discrimination = True,
             simulate = False,
-            num_shots = 200,
+            num_shots = 1000,
             multiplexed = True
         )
 
