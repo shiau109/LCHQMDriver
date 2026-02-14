@@ -27,7 +27,7 @@ description = """
 
 # Be sure to include [Parameters, Quam] so the node has proper type hinting
 node = QualibrationNode[Parameters, Quam](
-    name="LCH_qubit_parametric_drive_time",  # Name should be unique
+    name="LCH_qubit_parametric_drive_freq_time",  # Name should be unique
     description=description,  # Describe what the node is doing, which is also reflected in the QUAlibrate GUI
     parameters=Parameters(),  # Node parameters defined under quam_experiment/experiments/node_name
 )
@@ -120,10 +120,10 @@ def create_qua_program(node: QualibrationNode[Parameters, Quam]):
                             # if i == 0:                        
                             qubit.xy.play("x180")
                         align()
-                        wait( (200*u.ns)//4)
+                        wait( 200//4 )
                         for i, qubit in multiplexed_qubits.items():
                             if i == 0:
-                                qubit.z.reset_if_phase()                   
+                                qubit.z.reset_if_phase() 
                                 qubit.z.play("param",amplitude_scale=p.driving_amp_ratio, duration=tt)
                         align()
 

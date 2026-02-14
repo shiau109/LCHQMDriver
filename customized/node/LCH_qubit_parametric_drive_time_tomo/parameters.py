@@ -26,8 +26,9 @@ class NodeSpecificParameters(RunnableParameters):
     """Number of frequency points to sample. Default is 51."""
     driving_amp_ratio: float = 1.0
     """Amplitude ratio for the driving pulse. Default is 1.0."""
-
-
+    prepare_state: str = "x90"
+    """State to prepare before the driving pulse. Default is "x90"."""
+    
 class Parameters(
     NodeParameters,
     CommonNodeParameters,

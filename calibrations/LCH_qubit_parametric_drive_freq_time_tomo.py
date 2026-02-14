@@ -13,7 +13,7 @@ from qualang_tools.units import unit
 
 from qualibrate import QualibrationNode
 from quam_config import Quam
-from customized.node.LCH_qubit_parametric_drive_fixed_time import Parameters
+from customized.node.LCH_qubit_parametric_drive_time_tomo import Parameters
 from qualibration_libs.parameters import get_qubits
 from qualibration_libs.runtime import simulate_and_plot
 from qualibration_libs.data import XarrayDataFetcher
@@ -27,7 +27,7 @@ description = """
 
 # Be sure to include [Parameters, Quam] so the node has proper type hinting
 node = QualibrationNode[Parameters, Quam](
-    name="LCH_qubit_parametric_drive_fixed_time",  # Name should be unique
+    name="LCH_qubit_parametric_drive_time_tomo",  # Name should be unique
     description=description,  # Describe what the node is doing, which is also reflected in the QUAlibrate GUI
     parameters=Parameters(),  # Node parameters defined under quam_experiment/experiments/node_name
 )
@@ -40,17 +40,17 @@ def custom_param(node: QualibrationNode[Parameters, Quam]):
     """Allow the user to locally set the node parameters for debugging purposes, or execution in the Python IDE."""
     # You can get type hinting in your IDE by typing node.parameters.
     node.parameters.qubits = ["q2"]
-    node.parameters.max_amp_ratio = 1.8
-    node.parameters.min_amp_ratio = 1.4
-    node.parameters.amp_ratio_points = 9
-    node.parameters.max_frequency_mhz = 350
-    node.parameters.min_frequency_mhz = 330
-    node.parameters.frequency_points = 201
+    node.parameters.max_driving_time_ns = 20000
+    node.parameters.min_driving_time_ns = 16
+    node.parameters.driving_time_step = 400
+    node.parameters.max_frequency_mhz = 337
+    node.parameters.min_frequency_mhz = 336
+    node.parameters.frequency_points = 11
+    node.parameters.driving_amp_ratio = 1.55
     node.parameters.use_state_discrimination = True
     node.parameters.simulate = False
-    node.parameters.num_shots = 100
+    node.parameters.num_shots = 200
     node.parameters.multiplexed = True
-    node.parameters.driving_time_in_ns = 8000
     pass
 
 
@@ -66,29 +66,35 @@ def create_qua_program(node: QualibrationNode[Parameters, Quam]):
     u = unit(coerce_to_integer=True)
     # Get the active qubits from the node and organize them by batches
     node.namespace["qubits"] = qubits = get_qubits(node)
-    num_qubits = len(qubits)
     p = node.parameters
+    num_qubits = len(qubits)
+
     n_avg = node.parameters.num_shots  # The number of averages
 
     # Qubit detuning sweep with respect to their resonance frequencies
-    r_amps = np.linspace( p.min_amp_ratio, p.max_amp_ratio, p.amp_ratio_points)
+    time_tick = np.arange(p.min_driving_time_ns//4, p.max_driving_time_ns//4, p.driving_time_step//4)
+    time_ns =  time_tick*4  # in ns
 
     freqs = np.linspace( p.min_frequency_mhz*u.MHz, p.max_frequency_mhz*u.MHz, p.frequency_points)
-
     flux_idle_case = node.parameters.flux_idle_case
+
+    readout_basis_array = [0, 1, 2]  # X, Y, Z
+
     # Register the sweep axes to be added to the dataset when fetching data
     node.namespace["sweep_axes"] = {
         "qubit": xr.DataArray(qubits.get_names()),
-        "amplitude_ratio": xr.DataArray(r_amps, attrs={"long_name": "amplitude ratio", "units": "arb."}),
         "driving_frequency": xr.DataArray(freqs, attrs={"long_name": "driving frequency", "units": "Hz"}),
-
+        "driving_time": xr.DataArray(time_ns, attrs={"long_name": "readout frequency", "units": "Hz"}),
+        "basis": xr.DataArray(readout_basis_array, attrs={"long_name": "basis for state tomography"})
     }
 
     with program() as node.namespace["qua_program"]:
         # Macro to declare I, Q, n and their respective streams for a given number of qubit
         I, I_st, Q, Q_st, n, n_st = node.machine.declare_qua_variables()
-        ra = declare(float)  # QUA variable for the qubit frequency
+        tt = declare(int)  # QUA variable for the qubit frequency
         f_drive = declare(int)  # QUA variable for the qubit frequency
+        rbi = declare(int)
+
         if node.parameters.use_state_discrimination:
             state = [declare(int) for _ in range(num_qubits)]
             state_st = [declare_stream() for _ in range(num_qubits)]
@@ -102,48 +108,60 @@ def create_qua_program(node: QualibrationNode[Parameters, Quam]):
 
             with for_(n, 0, n < n_avg, n + 1):
                 save(n, n_st)
-                with for_(*from_array(ra, r_amps)):
-                    with for_(*from_array(f_drive, freqs)): 
+                with for_(*from_array(f_drive, freqs)): 
 
-                        for i, qubit in multiplexed_qubits.items():
-                            qubit.reset(
-                                node.parameters.reset_type,
-                                node.parameters.simulate,
-                                log_callable=node.log,
-                            )
-                            # Update the qubit frequency
-                            qubit.z.update_frequency(f_drive)
+                    with for_(*from_array(tt, time_tick)):        
+                        with for_each_(rbi, readout_basis_array):                
+                            for i, qubit in multiplexed_qubits.items():
+                                qubit.reset(
+                                    node.parameters.reset_type,
+                                    node.parameters.simulate,
+                                    log_callable=node.log,
+                                )
 
-                        for i, qubit in multiplexed_qubits.items():
-                            # if i == 0:                        
-                            qubit.xy.play("x180")
-                        align()
-                        wait( 200//4 )
-                        for i, qubit in multiplexed_qubits.items(): 
+                                # Update the qubit frequency
+                                qubit.z.update_frequency(f_drive)
                             
-                            if i == 0:              
-                                qubit.z.reset_if_phase()    
-                                qubit.z.play("param",amplitude_scale=ra, duration=p.driving_time_in_ns*u.ns//4)
-                        align()
+                            for i, qubit in multiplexed_qubits.items():
+                                # if i == 0:                        
+                                qubit.xy.play(node.parameters.prepare_state)
+                            align()
+                            wait( 200//4 )
+                            for i, qubit in multiplexed_qubits.items():
+                                if i == 0:
+                                    qubit.z.reset_if_phase() 
+                                    qubit.z.play("param",amplitude_scale=p.driving_amp_ratio, duration=tt)
+                            align()
+                            
+                            # The qubit manipulation sequence
+                            for i, qubit in multiplexed_qubits.items():
+                                with switch_(rbi):
+                                    with case_(0):
+                                        qubit.xy.play("-y90")
+                                    with case_(1):
+                                        qubit.xy.play("x90")
+                                    with case_(2):
+                                        qubit.xy.play("y90", amplitude_scale=0)
+                            align()
 
-                        for i, qubit in multiplexed_qubits.items():
-                            if node.parameters.use_state_discrimination:
-                                qubit.readout_state(state[i])
-                                save(state[i], state_st[i])
-                            else:
-                                qubit.resonator.measure("readout", qua_vars=(I[i], Q[i]))
-                                save(I[i], I_st[i])
-                                save(Q[i], Q_st[i])
-                        align()
+                            for i, qubit in multiplexed_qubits.items():
+                                if node.parameters.use_state_discrimination:
+                                    qubit.readout_state(state[i])
+                                    save(state[i], state_st[i])
+                                else:
+                                    qubit.resonator.measure("readout", qua_vars=(I[i], Q[i]))
+                                    save(I[i], I_st[i])
+                                    save(Q[i], Q_st[i])
+                            align()
 
         with stream_processing():
             n_st.save("n")
             for i in range(num_qubits):
                 if node.parameters.use_state_discrimination:
-                    state_st[i].buffer(len(freqs)).buffer(len(r_amps)).average().save(f"state{i + 1}")
+                    state_st[i].buffer(len(readout_basis_array)).buffer(len(time_tick)).buffer(len(freqs)).average().save(f"state{i + 1}")
                 else:
-                    I_st[i].buffer(len(freqs)).buffer(len(r_amps)).average().save(f"I{i + 1}")
-                    Q_st[i].buffer(len(freqs)).buffer(len(r_amps)).average().save(f"Q{i + 1}")
+                    I_st[i].buffer(len(readout_basis_array)).buffer(len(time_tick)).buffer(len(freqs)).average().save(f"I{i + 1}")
+                    Q_st[i].buffer(len(readout_basis_array)).buffer(len(time_tick)).buffer(len(freqs)).average().save(f"Q{i + 1}")
 
 
 # %% {Simulate}
@@ -230,19 +248,50 @@ def plot_data(node: QualibrationNode[Parameters, Quam]):
     
     for sq_data in sep_data:
         qubit_name = sq_data["qubit"].values.item()
-        fig, ax = plt.subplots()
         
-        # Plot 2D colormap
-        sq_data.signal.plot(ax=ax, x="driving_frequency", y="amplitude_ratio", add_colorbar=True, cmap="viridis")
+        # Create figure with 4 subplots (2x2) for the 3 basis measurements (X, Y, Z) + calculated plot
+        fig, axes = plt.subplots(2, 2, figsize=(12, 10))
+        axes = axes.flatten()  # Flatten to make indexing easier
+        basis_labels = ['X', 'Y', 'Z', 'Coherent']
+        
+        # Store basis data for calculation
+        basis_data_dict = {}
+        
+        for i, basis_idx in enumerate([0, 1, 2]):
+            ax = axes[i]
+            
+            # Select data for specific basis
+            basis_data = sq_data.sel(basis=basis_idx)
+            basis_data_dict[basis_idx] = basis_data
+            
+            # Plot 2D colormap for this basis
+            basis_data.signal.plot(ax=ax, x="driving_frequency", y="driving_time", add_colorbar=True, cmap="viridis")
+            ax.set_xlabel("Driving Frequency [Hz]")
+            ax.set_ylabel("Driving Time [ns]")
+            ax.set_title(f"{qubit_name} - {basis_labels[i]} Basis")
+        
+        # Calculate and plot the 4th subplot: sqrt((X-0.5)^2 + (Y-0.5)^2)
+        ax = axes[3]
+        x_data = basis_data_dict[0].signal  # X basis (basis_idx=0)
+        y_data = basis_data_dict[1].signal  # Y basis (basis_idx=1)
+        
+        # Calculate distance: sqrt((X-0.5)^2 + (Y-0.5)^2)
+        distance_data = np.sqrt((x_data - 0.5)**2 + (y_data - 0.5)**2)
+        
+        # Plot the calculated distance
+        distance_data.plot(ax=ax, x="driving_frequency", y="driving_time", add_colorbar=True, cmap="plasma")
         ax.set_xlabel("Driving Frequency [Hz]")
-        ax.set_ylabel("Amplitude Ratio")
-        ax.set_title(f"{qubit_name} - Signal vs Driving Frequency and Amplitude Ratio")
+        ax.set_ylabel("Driving Time [ns]")
+        ax.set_title(f"{qubit_name} - {basis_labels[3]}")
+        
+        # Add overall title to the figure
+        fig.suptitle(f"{qubit_name} - State Tomography: Signal vs Driving Frequency and Time", fontsize=14)
+        plt.tight_layout()
         
         # Store the figure for this qubit
         node.results["figures"][qubit_name] = fig
     
-    plt.show()
-
+    # plt.show()
 
 # %% {Update_state}
 @node.run_action(skip_if=node.parameters.simulate)
