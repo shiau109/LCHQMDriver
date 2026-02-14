@@ -129,10 +129,10 @@ def create_qua_program(node: QualibrationNode[Parameters, Quam]):
                 I_st[i].buffer(len(prepared_states)).buffer(n_runs).save(f"I{i + 1}")
                 Q_st[i].buffer(len(prepared_states)).buffer(n_runs).save(f"Q{i + 1}")
 
-    from qm import generate_qua_script
-    sourceFile = open('debug_LCH_readout_fidelity.py', 'w')
-    print(generate_qua_script(node.namespace["qua_program"], node.machine.generate_config()), file=sourceFile) 
-    sourceFile.close()
+    # from qm import generate_qua_script
+    # sourceFile = open('debug_LCH_readout_fidelity.py', 'w')
+    # print(generate_qua_script(node.namespace["qua_program"], node.machine.generate_config()), file=sourceFile) 
+    # sourceFile.close()
 # %% {Simulate}
 @node.run_action(skip_if=node.parameters.load_data_id is not None or not node.parameters.simulate)
 def simulate_qua_program(node: QualibrationNode[Parameters, Quam]):
