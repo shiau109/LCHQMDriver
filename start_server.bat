@@ -3,7 +3,7 @@ REM Change directory to the one where the batch file was launched
 cd /d %~dp0
 
 REM Define variables
-set "ENV_NAME=ASQMDriver"
+set "ENV_NAME=QMofficial"
 set "ACTIVATE_PATH=%USERPROFILE%\miniconda3\Scripts\activate.bat"
 REM anaconda3 or miniconda3
 

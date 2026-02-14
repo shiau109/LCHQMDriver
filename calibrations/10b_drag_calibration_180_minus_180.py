@@ -1,1 +1,0 @@
-D:/github/qua-libs_official/qualibration_graphs/superconducting/calibrations/1Q_calibrations/10b_drag_calibration_180_minus_180.py

@@ -100,6 +100,62 @@ def get_subfolders(folder: Path) -> list[Path]:
     return sorted([d for d in folder.iterdir() if d.is_dir() and not d.name.startswith("__")])
 
 
+# Markers for auto-generated section in .gitignore
+GITIGNORE_START_MARKER = "# >>> AUTO-GENERATED SYMLINKS (do not edit manually) >>>"
+GITIGNORE_END_MARKER = "# <<< AUTO-GENERATED SYMLINKS <<<"
+
+
+def update_gitignore(script_dir: Path, symlink_paths: list[str]):
+    """
+    Update .gitignore with the created symlinks.
+    Preserves existing entries and replaces only the auto-generated section.
+    """
+    gitignore_path = script_dir / ".gitignore"
+    
+    # Read existing content
+    existing_content = ""
+    if gitignore_path.exists():
+        existing_content = gitignore_path.read_text(encoding="utf-8")
+    
+    # Remove old auto-generated section if it exists
+    lines = existing_content.splitlines()
+    new_lines = []
+    in_auto_section = False
+    
+    for line in lines:
+        if line.strip() == GITIGNORE_START_MARKER:
+            in_auto_section = True
+            continue
+        elif line.strip() == GITIGNORE_END_MARKER:
+            in_auto_section = False
+            continue
+        
+        if not in_auto_section:
+            new_lines.append(line)
+    
+    # Remove trailing empty lines from existing content
+    while new_lines and new_lines[-1].strip() == "":
+        new_lines.pop()
+    
+    # Build new content
+    final_content = "\n".join(new_lines)
+    
+    # Add auto-generated section if there are symlinks
+    if symlink_paths:
+        if final_content:
+            final_content += "\n\n"
+        final_content += GITIGNORE_START_MARKER + "\n"
+        for path in sorted(symlink_paths):
+            final_content += path + "\n"
+        final_content += GITIGNORE_END_MARKER + "\n"
+    elif final_content:
+        final_content += "\n"
+    
+    # Write back to .gitignore
+    gitignore_path.write_text(final_content, encoding="utf-8")
+    print(f"Updated .gitignore with {len(symlink_paths)} symlink entries.")
+
+
 def main():
     # Get script directory and load config
     script_dir = Path(__file__).parent.resolve()
@@ -140,6 +196,7 @@ def main():
 
     success_count = 0
     fail_count = 0
+    created_symlinks = []  # Track successfully created symlinks for .gitignore
 
     # === Process calibrations folder (files) ===
     if calibrations_source:
@@ -171,6 +228,8 @@ def main():
 
                 if create_symlink(link_path, target_path, is_directory=False):
                     success_count += 1
+                    # Use forward slash for .gitignore compatibility
+                    created_symlinks.append(f"calibrations/{link_name}")
                 else:
                     fail_count += 1
 
@@ -204,8 +263,15 @@ def main():
 
                 if create_symlink(link_path, target_path, is_directory=True):
                     success_count += 1
+                    # Use forward slash and trailing slash for directories
+                    created_symlinks.append(f"calibration_utils/{link_name}/")
                 else:
                     fail_count += 1
+
+    # Update .gitignore with created symlinks
+    print()
+    print("=== UPDATING .gitignore ===")
+    update_gitignore(script_dir, created_symlinks)
 
     print()
     print("=" * 60)
