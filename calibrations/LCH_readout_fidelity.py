@@ -13,13 +13,8 @@ from qualang_tools.units import unit
 
 from qualibrate import QualibrationNode
 from quam_config import Quam
-from calibration_utils.iq_blobs import (
+from customized.node.LCH_readout_fidelity import (
     Parameters,
-    process_raw_dataset,
-    fit_raw_data,
-    log_fitted_results,
-    plot_iq_blobs,
-    plot_confusion_matrices,
 )
 from qualibration_libs.parameters import get_qubits
 from qualibration_libs.runtime import simulate_and_plot
@@ -69,7 +64,6 @@ def create_qua_program(node: QualibrationNode[Parameters, Quam]):
     num_qubits = len(qubits)
 
     n_runs = node.parameters.num_shots  # Number of runs
-    flux_idle_case = node.parameters.flux_idle_case
     prepared_states = [0, 1]
 
     # Register the sweep axes to be added to the dataset when fetching data
@@ -87,7 +81,7 @@ def create_qua_program(node: QualibrationNode[Parameters, Quam]):
         for multiplexed_qubits in qubits.batch():
             # Initialize the QPU in terms of flux points (flux tunable transmons and/or tunable couplers)
             for qubit in multiplexed_qubits.values():
-                node.machine.initialize_qpu(target=qubit, flux_point=flux_idle_case)
+                node.machine.initialize_qpu(target=qubit)
             align()
 
             with for_(n, 0, n < n_runs, n + 1):

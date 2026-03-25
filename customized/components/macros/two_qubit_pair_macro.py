@@ -5,7 +5,7 @@ from quam.core import quam_dataclass
 
 from quam.components.quantum_components.qubit import Qubit
 from quam_builder.architecture.superconducting.qubit_pair import FluxTunableTransmonPair
-
+from quam_builder.architecture.superconducting.qubit.flux_tunable_transmon import FluxTunableTransmon
 
 __all__ = ["QubitPairMacro"]
 
@@ -28,13 +28,13 @@ class QubitPairMacro(QuamMacro, ABC):
             )
 
     @property
-    def qubit_control(self) -> Qubit:
+    def qubit_control(self) -> FluxTunableTransmon:
         return self.qubit_pair.qubit_control
 
     @property
-    def qubit_target(self) -> Qubit:
+    def qubit_target(self) -> FluxTunableTransmon:
         return self.qubit_pair.qubit_target
     
     @property
-    def coupler(self) -> Qubit:
+    def coupler(self) -> FluxTunableTransmon:
         return self.qubit_pair.coupler

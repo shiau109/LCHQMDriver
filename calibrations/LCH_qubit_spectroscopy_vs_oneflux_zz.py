@@ -12,7 +12,7 @@ from qualang_tools.results import progress_counter
 from qualang_tools.units import unit
 from qualibrate import QualibrationNode
 from quam_config import Quam
-from customized.node.LCH_qubit_spectroscopy_vs_oneflux import (
+from customized.node.LCH_qubit_spectroscopy_vs_oneflux_zz import (
     Parameters,
     fit_raw_data,
     log_fitted_results,
@@ -30,7 +30,7 @@ description = """
 
 
 node = QualibrationNode[Parameters, Quam](
-    name="LCH_qubit_spectroscopy_vs_oneflux",
+    name="LCH_qubit_spectroscopy_vs_oneflux_zz",
     description=description,
     parameters=Parameters(),
 )
@@ -41,11 +41,10 @@ node = QualibrationNode[Parameters, Quam](
 @node.run_action(skip_if=node.modes.external)
 def custom_param(node: QualibrationNode[Parameters, Quam]):
     # You can get type hinting in your IDE by typing node.parameters.
-    node.parameters.qubits = ["q1", "q2"]
+    node.parameters.qubits = ["q1"]
     node.parameters.simulate = True
-    node.parameters.xy_source_qubit = "q1"
-    node.parameters.z_source_qubit = "q1"
-    node.parameters.operation_len_in_ns = 1000
+    node.parameters.xy_source_qubit = "q2"
+    node.parameters.z_source_qubit = "q2"
     pass
 
 
@@ -90,7 +89,8 @@ def create_qua_program(node: QualibrationNode[Parameters, Quam]):
         xy_source_qubit = None
     else:
         xy_source_qubit = node.machine.qubits[node.parameters.xy_source_qubit]
-
+    print(z_source_qubit)
+    # print(xy_source_qubit)
     # TODO Should be remove after test
     # qubit_pair = node.machine.qubit_pairs["q0-1"]
     # coupler = qubit_pair.coupler
@@ -124,7 +124,7 @@ def create_qua_program(node: QualibrationNode[Parameters, Quam]):
                         # Qubit initialization
                         for i, qubit in multiplexed_qubits.items():
                             # Update the qubit frequency
-                            qubit.xy.update_frequency(df + qubit.xy.intermediate_frequency)
+                            
                             # Wait for the qubits to decay to the ground state
                             qubit.reset(node.parameters.reset_type, node.parameters.simulate)
 
@@ -153,55 +153,55 @@ def create_qua_program(node: QualibrationNode[Parameters, Quam]):
                                 )
                                 # qubit.xy.wait(qubit.z.settle_time//4)
                         else:
-                            z_source_qubit.z.play(
-                                "const", amplitude_scale=dc / z_source_qubit.z.operations["const"].amplitude, duration=z_duration
-                            )
+                            for i, qubit in node.machine.qubits.items():
+                                if qubit.name == node.parameters.z_source_qubit:
+                                    z_source_qubit.z.play(
+                                        "const", amplitude_scale=dc / z_source_qubit.z.operations["const"].amplitude, duration=z_duration
+                                    )
                             # if z_source_qubit.z.settle_time is None:
                             #     wait(100//4)
                             # else:
                             #     wait(z_source_qubit.z.settle_time//8)
                             
-                        wait(xy_duration//4)
+                        wait(40//4)
                         if xy_source_qubit is None:
                             for i, qubit in multiplexed_qubits.items():
-
+                                qubit.xy.update_frequency(df + qubit.xy.intermediate_frequency)
                                 # Apply saturation pulse to all qubits
                                 qubit.xy.play(
                                     operation,
                                     amplitude_scale=operation_amp,
-                                    duration=xy_duration//2,
+                                    duration=xy_duration,
                                 )
                         else:
-                            xy_source_qubit.xy.play(
-                                operation,
-                                amplitude_scale=operation_amp,
-                                duration=xy_duration//2,
-                            )
+                            for i, qubit in node.machine.qubits.items():
+                                if qubit.name == node.parameters.xy_source_qubit:
+                                    qubit.xy.update_frequency(df + qubit.xy.intermediate_frequency)
+                                    qubit.xy.play(
+                                        operation,
+                                        amplitude_scale=operation_amp,
+                                        duration=xy_duration,
+                                    )
                             
                         align()
 
-
-
                         # Measure the state of the resonators
                         for i, qubit in multiplexed_qubits.items():
+                            # readout the resonator
                             if node.parameters.use_state_discrimination:
-                                qubit.readout_state(state[i])
-                                save(state[i], state_st[i])
+                                qubit.macros["measure_zz"].apply("readout", qua_vars=state[i], stream=state_st[i], use_state_discrimination=node.parameters.use_state_discrimination, xy_duration_ratio=5)
                             else:
-                                qubit.resonator.measure("readout", qua_vars=(I[i], Q[i]))
-                                # save data
-                                save(I[i], I_st[i])
-                                save(Q[i], Q_st[i])
+                                qubit.macros["measure_zz"].apply("readout", qua_vars=(I[i], Q[i]), stream=(I_st[i], Q_st[i]), use_state_discrimination=node.parameters.use_state_discrimination, xy_duration_ratio=5)
                         align()
 
                         if z_source_qubit is None:
                             for i, qubit in multiplexed_qubits.items():
                                 qubit.z.play(
-                                    "const", amplitude_scale=-dc / qubit.z.operations["const"].amplitude, duration=z_duration//2
+                                    "const", amplitude_scale=-dc / qubit.z.operations["const"].amplitude, duration=z_duration//4
                                 )
                         else:
                             z_source_qubit.z.play(
-                                "const", amplitude_scale=-dc / z_source_qubit.z.operations["const"].amplitude, duration=z_duration//2
+                                "const", amplitude_scale=-dc / z_source_qubit.z.operations["const"].amplitude, duration=z_duration//4
                             )
                         align()
 

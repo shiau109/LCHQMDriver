@@ -8,7 +8,7 @@ from quam_config import Quam
 ########################################################################################################################
 # %%                                              Define static parameters
 ########################################################################################################################
-host_ip = "127.0.0.1"  # QOP IP address
+host_ip = "192.168.1.28"  # QOP IP address
 port = None  # QOP Port
 cluster_name = "Cluster_1"  # Name of the cluster
 calibration_db_path = None  # "/path/to/some/config/folder"
@@ -17,13 +17,13 @@ calibration_db_path = None  # "/path/to/some/config/folder"
 # %%                                      Define the available instrument setup
 ########################################################################################################################
 instruments = Instruments()
-instruments.add_opx_plus(controllers=[1, 2])
+instruments.add_opx_plus(controllers=[1])
 instruments.add_octave(indices=1)
 
 ########################################################################################################################
 # %%                                 Define which qubit ids are present in the system
 ########################################################################################################################
-qubits = [1, 2, 3, 4]
+qubits = [1, 2]
 qubit_pairs = [(qubits[i], qubits[i + 1]) for i in range(len(qubits) - 1)]
 
 ########################################################################################################################
@@ -31,6 +31,8 @@ qubit_pairs = [(qubits[i], qubits[i + 1]) for i in range(len(qubits) - 1)]
 ########################################################################################################################
 # multiplexed readout for qubits 1 to 5
 q1_res_ch = octave_spec(index=1, rf_out=1, rf_in=1)
+q2_xy_ch = opx_iq_octave_spec(con=1, out_port_i=7,out_port_q=8, rf_out=4)
+q2_z_ch = opx_spec(con=1, out_port=9)
 
 ########################################################################################################################
 # %%                 Allocate the wiring to the connectivity object based on the available instruments
@@ -39,9 +41,13 @@ connectivity = Connectivity()
 # The readout line
 connectivity.add_resonator_line(qubits=qubits, constraints=q1_res_ch)
 # The individual xy drive lines
-connectivity.add_qubit_drive_lines(qubits=qubits)
+connectivity.add_qubit_drive_lines(qubits=qubits[0])
+connectivity.add_qubit_drive_lines(qubits=qubits[1], constraints=q2_xy_ch)
+
 # The flux lines for the individual qubits
-connectivity.add_qubit_flux_lines(qubits=qubits)
+connectivity.add_qubit_flux_lines(qubits=qubits[0])
+connectivity.add_qubit_flux_lines(qubits=qubits[1], constraints=q2_z_ch)
+
 # The flux lines for the tunable couplers
 connectivity.add_qubit_pair_flux_lines(qubit_pairs=qubit_pairs)
 # Allocate the wiring
