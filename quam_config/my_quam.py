@@ -20,7 +20,7 @@ from customized.quam_builder.architecture.superconducting.qubit.charge_sensitive
 
 # Define the QUAM class that will be used in all calibration nodes
 # Should inherit from either FixedFrequencyQuam or FluxTunableQuam
-class Quam(FixedFrequencyQuam):
+class Quam(FluxTunableQuam):
     pass
     # qubit_type: ClassVar[Type[ChargeSensitiveTransmon]] = ChargeSensitiveTransmon
     # qubits: Dict[str, ChargeSensitiveTransmon] = field(default_factory=dict)

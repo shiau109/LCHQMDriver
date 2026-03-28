@@ -8,7 +8,7 @@ from quam_config import Quam
 ########################################################################################################################
 # %%                                              Define static parameters
 ########################################################################################################################
-host_ip = "192.168.1.28"  # QOP IP address
+host_ip = "192.168.1.91"  # QOP IP address
 port = None  # QOP Port
 cluster_name = "Cluster_1"  # Name of the cluster
 calibration_db_path = None  # "/path/to/some/config/folder"
@@ -24,7 +24,7 @@ instruments.add_octave(indices=1)
 # %%                                 Define which qubit ids are present in the system
 ########################################################################################################################
 qubits = [1, 2]
-qubit_pairs = [(qubits[i], qubits[i + 1]) for i in range(len(qubits) - 1)]
+# qubit_pairs = [(qubits[i], qubits[i + 1]) for i in range(len(qubits) - 1)]
 
 ########################################################################################################################
 # %%                                 Define any custom/hardcoded channel addresses
@@ -49,7 +49,7 @@ connectivity.add_qubit_flux_lines(qubits=qubits[0])
 connectivity.add_qubit_flux_lines(qubits=qubits[1], constraints=q2_z_ch)
 
 # The flux lines for the tunable couplers
-connectivity.add_qubit_pair_flux_lines(qubit_pairs=qubit_pairs)
+# connectivity.add_qubit_pair_flux_lines(qubit_pairs=qubit_pairs)
 # Allocate the wiring
 allocate_wiring(connectivity, instruments)
 
