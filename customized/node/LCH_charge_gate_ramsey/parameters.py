@@ -1,6 +1,5 @@
 from qualibrate import NodeParameters
-from qualibrate.parameters import RunnableParameters
-from customized.common_parameters import CommonFluxParameters
+from qualibrate.core.parameters import RunnableParameters
 from typing import Optional
 from qualibration_libs.parameters import QubitsExperimentNodeParameters, CommonNodeParameters, IdleTimeNodeParameters
 
@@ -16,14 +15,13 @@ class NodeSpecificParameters(RunnableParameters):
     """Charge gate voltage in V. Default is 0.1 V."""
     charge_gate_step_in_v: float = 0.05
     """Charge gate voltage in V. Default is 0.1 V."""
-    gate_period_in_volt: Optional[float] = 0.9174
-    """Gate period (min/max to min/max), in Volt. Default is 0.9174 V."""
+    gate_period_in_volt: Optional[float] = 0.93
+    """Gate period (min/max to min/max), in Volt. Default is 0.93 V."""
 class Parameters(
     NodeParameters,
     CommonNodeParameters,
     IdleTimeNodeParameters,
     NodeSpecificParameters,
     QubitsExperimentNodeParameters,
-    CommonFluxParameters,
 ):
     pass

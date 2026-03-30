@@ -101,7 +101,7 @@ def get_full_scale_power_dBm_and_amplitude(desired_power: float, max_amplitude: 
 # Note that the "coupled" ports O1 & I1, O2 & O3, O4 & O5, O6 & O7, and O8 & I2 must be in the same band.
 
 # Resonator frequencies
-rr_freq = np.array([4.912,4.8]) * u.GHz
+rr_freq = np.array([4.91225,4.8]) * u.GHz
 rr_LO = 5.0 * u.GHz
 rr_if = rr_freq - rr_LO  # The intermediate frequency is inferred from the LO and readout frequencies
 assert np.all(np.abs(rr_if) < 400 * u.MHz), (
@@ -138,11 +138,11 @@ for k, qubit in enumerate(machine.qubits.values()):
 # Note that the "coupled" ports O1 & I1, O2 & O3, O4 & O5, O6 & O7, and O8 & I2 must be in the same band.
 
 # Qubit drive frequencies
-xy_q_name = ["q1","q2"]
-xy_freq = np.array([3.079, 3.1]) * u.GHz
+xy_q_name = ["q1"]
+xy_freq = np.array([3.078604778, 3.1]) * u.GHz
 
 
-xy_LO = np.array([3.10, 3.12]) * u.GHz
+xy_LO = np.array([3.15, 3.12]) * u.GHz
 xy_if = xy_freq - xy_LO  # The intermediate frequency is inferred from the LO and qubit frequencies
 assert np.all(np.abs(xy_if) < 400 * u.MHz), (
     "The xy intermediate frequency must be within [-400; 400] MHz. \n"

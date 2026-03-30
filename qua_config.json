@@ -32,7 +32,7 @@
                             "shareable": false,
                             "sampling_rate": 1000000000.0,
                             "full_scale_power_dbm": -2,
-                            "upconverter_frequency": 3100000000.0
+                            "upconverter_frequency": 3150000000.0
                         }
                     },
                     "analog_inputs": {
@@ -64,7 +64,7 @@
                 "y90": "q1.xy.y90_DragCosine.pulse",
                 "-y90": "q1.xy.-y90_DragCosine.pulse"
             },
-            "intermediate_frequency": -21000000.0,
+            "intermediate_frequency": -71395222.0,
             "MWInput": {
                 "port": [
                     "con1",
@@ -78,7 +78,7 @@
             "operations": {
                 "readout": "q1.resonator.readout.pulse"
             },
-            "intermediate_frequency": -88000000.0,
+            "intermediate_frequency": -87750000.0,
             "MWOutput": {
                 "port": [
                     "con1",

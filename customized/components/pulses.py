@@ -1,5 +1,5 @@
 from quam.core import QuamComponent, quam_dataclass
-from quam.components.pulses import Pulse
+from quam.components.pulses import Pulse, ReadoutPulse
 
 import numpy as np
 
@@ -102,14 +102,78 @@ class CascadeFlatTopGaussianPulse(Pulse):
         return waveform
 
 
+@quam_dataclass
+class TwoStepPulse(Pulse):
+    """Two-step function pulse QUAM component.
+
+    Args:
+        length (int): The total length of the pulse in samples.
+        A1 (float): The amplitude of the first step in volts.
+        A2 (float): The amplitude of the second step in volts.
+        W1 (int): The length of the first amplitude step in samples.
+            The second step length is calculated as (length - W1).
+        axis_angle (float, optional): IQ axis angle of the output pulse in radians.
+            If None (default), the pulse is meant for a single channel or the I port
+                of an IQ channel
+            If not None, the pulse is meant for an IQ channel (0 is X, pi/2 is Y).
+
+    """
+
+    A1: float = 0.1
+    A2: float = 0.2
+    W1: int = 5
+    axis_angle: float = None
+
+    def waveform_function(self):
+        if self.W1 > self.length:
+            raise ValueError(
+                f"First step length W1 ({self.W1}) cannot be greater than total "
+                f"pulse length ({self.length})"
+            )
+
+        # Create the two-step waveform
+        waveform = np.concatenate([
+            np.full(self.W1, self.A1),  # First step with amplitude A1
+            np.full(self.length - self.W1, self.A2)  # Second step with amplitude A2
+        ])
+
+        if self.axis_angle is not None:
+            waveform = waveform * np.exp(1j * self.axis_angle)
+
+        return waveform
+
+@quam_dataclass
+class TwoStepReadoutPulse(ReadoutPulse, TwoStepPulse):
+    """Two-step function pulse QUAM component.
+
+    Args:
+        length (int): The total length of the pulse in samples.
+        A1 (float): The amplitude of the first step in volts.
+        A2 (float): The amplitude of the second step in volts.
+        W1 (int): The length of the first amplitude step in samples.
+            The second step length is calculated as (length - W1).
+        axis_angle (float, optional): IQ axis angle of the output pulse in radians.
+            If None (default), the pulse is meant for a single channel or the I port
+                of an IQ channel
+            If not None, the pulse is meant for an IQ channel (0 is X, pi/2 is Y).
+
+    """
+
+    pass
+
 
 if __name__ == "__main__":
-    # Example usage
-    pulse = RampPulse(length=10, start_value=0, end_value=0.5)
-    print(pulse.waveform_function())
-    print(pulse.__class__.__name__)
+    # # Example usage
+    # pulse = RampPulse(length=10, start_value=0, end_value=0.5)
+    # print(pulse.waveform_function())
+    # print(pulse.__class__.__name__)
     
-    # Example usage for CosinePulse
-    cosine_pulse = ParaCosinePulse(length=20, amplitude=0.5, frequency=0.1, phase=0.0)
-    print(cosine_pulse.waveform_function())
-    print(cosine_pulse.__class__.__name__)
+    # # Example usage for CosinePulse
+    # cosine_pulse = ParaCosinePulse(length=20, amplitude=0.5, frequency=0.1, phase=0.0)
+    # print(cosine_pulse.waveform_function())
+    # print(cosine_pulse.__class__.__name__)
+    
+    # Example usage for TwoStepPulse
+    two_step_pulse = TwoStepReadoutPulse(length=10, A1=0.3, A2=0.7, W1=4)
+    print(two_step_pulse.waveform_function())
+    print(two_step_pulse.__class__.__name__)

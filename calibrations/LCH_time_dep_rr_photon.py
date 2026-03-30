@@ -14,10 +14,6 @@ from qualibrate import QualibrationNode
 from quam_config import Quam
 from customized.node.LCH_time_dep_rr_photon import (
     Parameters,
-    fit_raw_data,
-    log_fitted_results,
-    plot_raw_data_with_fit,
-    process_raw_dataset,
 )
 from qualibration_libs.parameters import get_qubits
 from qualibration_libs.runtime import simulate_and_plot
@@ -42,7 +38,7 @@ node = QualibrationNode[Parameters, Quam](
 def custom_param(node: QualibrationNode[Parameters, Quam]):
     # You can get type hinting in your IDE by typing node.parameters.
     node.parameters.qubits = ["q1"]
-    
+    node.parameters.simulate = True
     pass
 
 
@@ -58,33 +54,33 @@ def create_qua_program(node: QualibrationNode[Parameters, Quam]):
     u = unit(coerce_to_integer=True)
     # Get the active qubits from the node and organize them by batches
     node.namespace["qubits"] = qubits = get_qubits(node)
+    p = node.parameters
     num_qubits = len(qubits)
     # Check if the qubits have a z-line attached
     if any([q.z is None for q in qubits]):
         warnings.warn("Found qubits without a flux line. Skipping")
 
-    ro_operation = node.parameters.ro_operation  # The resonator operation to play
+    ro_operation_name = p.ro_operation  # The resonator operation to play
+    test_operation_name = p.test_operation  # The test resonator operation to play
 
-    n_avg = node.parameters.num_shots
+    n_avg = p.num_shots
 
-    xy_operation = node.parameters.xy_operation  # The qubit operation to play
-    xy_operation_len = node.parameters.xy_operation_len_in_ns
-    xy_operation_amp = node.parameters.xy_operation_amplitude_factor
+    xy_operation = p.xy_operation  # The qubit operation to play
+    xy_operation_len = p.xy_operation_len_in_ns
+    xy_operation_amp = p.xy_operation_amplitude_factor
 
 
-    xy_time_resolution_in_ns = node.parameters.xy_time_resolution_in_ns * u.ns # ns
-    xy_max_delay_in_ns = node.parameters.xy_max_delay_in_ns  # ns
+    xy_time_resolution_in_ns = p.xy_time_resolution_in_ns * u.ns # ns
+    xy_max_delay_in_ns = p.xy_max_delay_in_ns  # ns
 
     delay_tick_array = np.arange(0, xy_max_delay_in_ns + 1, xy_time_resolution_in_ns) // 4
     delay_time_array = delay_tick_array * 4  # in ns
 
-    rr_depletion_time = node.parameters.rr_depletion_time
+    rr_depletion_time = p.rr_depletion_time
 
     # Qubit detuning sweep with respect to their resonance frequencies
-    point_freq = node.parameters.num_frequency_points
-    dfs = np.linspace(node.parameters.min_frequency_in_mhz* u.MHz, node.parameters.max_frequency_in_mhz* u.MHz, point_freq)
-    # Flux bias sweep in V
-    flux_idle_case = node.parameters.flux_idle_case
+    point_freq = p.num_frequency_points
+    dfs = np.linspace(p.min_frequency_in_mhz* u.MHz, p.max_frequency_in_mhz* u.MHz, point_freq)
 
 
     # Register the sweep axes to be added to the dataset when fetching data
@@ -99,14 +95,14 @@ def create_qua_program(node: QualibrationNode[Parameters, Quam]):
         I, I_st, Q, Q_st, n, n_st = node.machine.declare_qua_variables()
         df = declare(int)  # QUA variable for the qubit frequency
         delay_tick = declare(int)  # QUA variable for the flux dc level
-        if node.parameters.use_state_discrimination:
+        if p.use_state_discrimination:
             state = [declare(int) for _ in range(num_qubits)]
             state_st = [declare_stream() for _ in range(num_qubits)]
 
         for multiplexed_qubits in qubits.batch():
             # Initialize the QPU in terms of flux points (flux tunable transmons and/or tunable couplers)
             for qubit in multiplexed_qubits.values():
-                node.machine.initialize_qpu(target=qubit, flux_point=flux_idle_case)
+                node.machine.initialize_qpu(target=qubit)
             align()
 
             with for_(n, 0, n < n_avg, n + 1):
@@ -118,7 +114,7 @@ def create_qua_program(node: QualibrationNode[Parameters, Quam]):
                             # Update the qubit frequency
                             qubit.xy.update_frequency(df + qubit.xy.intermediate_frequency)
                             # Wait for the qubits to decay to the ground state
-                            qubit.reset(node.parameters.reset_type, node.parameters.simulate)
+                            qubit.reset(p.reset_type, p.simulate)
                             # Flux sweeping for a qubit
 
                             xy_duration = (
@@ -136,7 +132,7 @@ def create_qua_program(node: QualibrationNode[Parameters, Quam]):
                             # Apply saturation pulse to all qubits
 
                             wait( (xy_duration*5+16)//4, qubit.resonator.name)
-                            qubit.resonator.play(ro_operation)
+                            qubit.resonator.play(test_operation_name)
                             wait( delay_tick+4, qubit.xy.name)
                             qubit.xy.play(  xy_operation, duration=xy_duration//4, amplitude_scale=xy_operation_amp )
                             
@@ -148,11 +144,11 @@ def create_qua_program(node: QualibrationNode[Parameters, Quam]):
                         
                         # Measure the state of the resonators
                         for i, qubit in multiplexed_qubits.items():
-                            if node.parameters.use_state_discrimination:
+                            if p.use_state_discrimination:
                                 qubit.readout_state(state[i])
                                 save(state[i], state_st[i])
                             else:
-                                qubit.resonator.measure("readout", qua_vars=(I[i], Q[i]))
+                                qubit.resonator.measure(ro_operation_name, qua_vars=(I[i], Q[i]))
                                 # save data
                                 save(I[i], I_st[i])
                                 save(Q[i], Q_st[i])

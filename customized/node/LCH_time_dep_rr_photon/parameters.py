@@ -3,7 +3,6 @@ from typing import Optional
 from qualibrate import NodeParameters
 from qualibrate.parameters import RunnableParameters
 from qualibration_libs.parameters import QubitsExperimentNodeParameters, CommonNodeParameters
-from customized.common_parameters import CommonFluxParameters
 
 
 class NodeSpecificParameters(RunnableParameters):
@@ -27,6 +26,8 @@ class NodeSpecificParameters(RunnableParameters):
     """Number of frequency points. Default is 51."""
     ro_operation: str = "readout"
     """Operation to perform. Default is "readout"."""
+    test_operation: str = "readout_test"
+    """Operation to perform. Default is "readout_test"."""
     rr_depletion_time: Optional[int] = None
     """Resonator depletion time in ns. Default is the predefined depletion time."""
 
@@ -37,6 +38,5 @@ class Parameters(
     CommonNodeParameters,
     NodeSpecificParameters,
     QubitsExperimentNodeParameters,
-    CommonFluxParameters,
 ):
     pass

@@ -62,7 +62,7 @@ def create_qua_program(node: QualibrationNode[Parameters, Quam]):
     # Get the active qubits from the node and organize them by batches
     node.namespace["qubits"] = qubits = get_qubits(node)
     num_qubits = len(qubits)
-
+    operation = node.parameters.operation
     n_runs = node.parameters.num_shots  # Number of runs
     prepared_states = [0, 1]
 
@@ -109,7 +109,7 @@ def create_qua_program(node: QualibrationNode[Parameters, Quam]):
                         qubit.align()
                     # Qubit readout
                     for i, qubit in multiplexed_qubits.items():
-                        qubit.resonator.measure("readout", qua_vars=(I[i], Q[i]))
+                        qubit.resonator.measure(operation, qua_vars=(I[i], Q[i]))
                         qubit.align()
                         # save data
                         save(I[i], I_st[i])

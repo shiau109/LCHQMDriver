@@ -39,6 +39,7 @@ q1_drive_ch = mw_fem_spec(con=1, slot=6, out_port=2)
 # multiplexed xy drive for qubits 5 to 8 on MW-FEM 2 port 4
 # q2_drive_ch = mw_fem_spec(con=1, slot=7, out_port=3)
 q1_flux_ch = lf_fem_spec(con=1, out_slot=1, out_port=1)
+# q1_charge_ch = lf_fem_spec(con=1, out_slot=1, out_port=1)
 ########################################################################################################################
 # %%                Allocate the wiring to the connectivity object based on the available instruments
 ########################################################################################################################
@@ -53,11 +54,13 @@ connectivity.add_qubit_drive_lines(qubits=qubits[0], constraints=q1_drive_ch)
 #     connectivity.add_qubit_drive_lines(qubits=qubit, constraints=q5to8_drive_ch)
 #     allocate_wiring(connectivity, instruments, block_used_channels=False)
 # The flux lines for the individual qubits
-connectivity.add_qubit_flux_lines(qubits=qubits, constraints=q1_flux_ch)
+connectivity.add_qubit_flux_lines(qubits=qubits[0], constraints=q1_flux_ch)
+# connectivity.add_qubit_charge_lines(qubits=qubits, constraints=q1_charge_ch)
+
 # The flux lines for the tunable couplers
 # connectivity.add_qubit_pair_flux_lines(qubit_pairs=qubit_pairs)
 # Allocate the wiring
-allocate_wiring(connectivity, instruments)
+allocate_wiring(connectivity, instruments, block_used_channels=False)
 
 # View wiring schematic
 visualize(connectivity.elements, available_channels=instruments.available_channels)
@@ -70,6 +73,7 @@ user_input = input("Do you want to save the updated QUAM? (y/n)")
 if user_input.lower() == "y":
     machine = Quam()
     # Build the wiring (wiring.json) and initiate the QUAM
+    # self.register(line_type, ElementCategory.QUBIT)
     build_quam_wiring(connectivity, host_ip, cluster_name, machine)
 
     # Reload QUAM, build the QUAM object and save the state as state.json
