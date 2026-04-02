@@ -16,6 +16,16 @@ calibrations_source = [
 ]
 
 # ----------------------------------------------------------------------------
+# Known files with non-ASCII characters (e.g. π) that cause
+# UnicodeDecodeError on Windows cp950 locale when qualibrate scans them.
+# Workaround: patch qualibrate/q_runnnable.py line 31 to use encoding="utf-8"
+# ----------------------------------------------------------------------------
+# 17_pi_vs_flux_long_distortions.py   — contains π (U+03C0) in comment
+# 20a_cz_conditional_phase.py         — contains π (U+03C0) in comment
+# 20b_cz_conditional_phase_error_amp.py — contains π (U+03C0) in comment
+# 21_cz_phase_compensation.py         — contains non-ASCII Unicode in comment
+
+# ----------------------------------------------------------------------------
 # Source folders for calibration_utils (directories)
 # All subfolders in these folders will be linked into local calibration_utils/
 # Paths are relative to source_base

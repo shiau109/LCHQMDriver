@@ -1,5 +1,5 @@
 from qualibrate import NodeParameters
-from qualibrate.core.parameters import RunnableParameters
+from qualibrate.parameters import RunnableParameters
 from typing import Optional
 from qualibration_libs.parameters import QubitsExperimentNodeParameters, CommonNodeParameters, IdleTimeNodeParameters
 

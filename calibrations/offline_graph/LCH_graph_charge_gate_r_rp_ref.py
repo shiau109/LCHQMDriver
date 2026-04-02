@@ -16,7 +16,7 @@ class Parameters(GraphParameters):
     multiplexed: bool = True
     use_state_discrimination: bool = True
 
-nodes = {}
+nodes = {} 
 repeat_times = 20
 
 for i in range(repeat_times): 
@@ -34,8 +34,8 @@ for i in range(repeat_times):
             log_or_linear_sweep = "linear",
             num_shots = 50,
         )
-    nodes[f"LCH_charge_gate_readout_power_ref_{i}"] = library.nodes["LCH_charge_gate_readout_power_ref"].copy(
-            name=f"LCH_charge_gate_readout_power_ref_{i}",
+    nodes[f"LCH_charge_gate_readout_power_with_ref_{i}"] = library.nodes["LCH_charge_gate_readout_power_with_ref"].copy(
+            name=f"LCH_charge_gate_readout_power_with_ref_{i}",
             reset_type = "thermal",
             start_amp = 0,
             end_amp = 1.8,
@@ -46,7 +46,7 @@ for i in range(repeat_times):
             prepared_states = [0,1],
             num_shots = 10,
             ref_operation = "readout",
-            test_operation = "ts_readout",
+            test_operation = "readout_test",
             # add_charge_offset = True,
         )
 nodes[f"LCH_charge_gate_ramsey_{repeat_times}"] = library.nodes["LCH_charge_gate_ramsey"].copy(
@@ -65,16 +65,16 @@ nodes[f"LCH_charge_gate_ramsey_{repeat_times}"] = library.nodes["LCH_charge_gate
         )
 connectivity = []
 for i in range(repeat_times):
-    connectivity.append((f"LCH_charge_gate_ramsey_{i}", f"LCH_charge_gate_readout_power_ref_{i}"))
+    connectivity.append((f"LCH_charge_gate_ramsey_{i}", f"LCH_charge_gate_readout_power_with_ref_{i}"))
     # if i<repeat_times-1:
-    connectivity.append((f"LCH_charge_gate_readout_power_ref_{i}", f"LCH_charge_gate_ramsey_{i+1}"))
+    connectivity.append((f"LCH_charge_gate_readout_power_with_ref_{i}", f"LCH_charge_gate_ramsey_{i+1}"))
 
 g = QualibrationGraph(
     name="LCH_graph_charge_gate_r_rp_ref",
     parameters=Parameters(),
     nodes=nodes,
     connectivity=connectivity,
-    # orchestrator=BasicOrchestrator(skip_failed=False),
+    orchestrator=BasicOrchestrator(skip_failed=False),
 )
 
-# g.run(qubits=["q1"])
+g.run(qubits=["q1"])
