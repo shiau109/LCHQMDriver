@@ -17,12 +17,12 @@ class Parameters(GraphParameters):
     use_state_discrimination: bool = True
 
 nodes = {} 
-repeat_times = 20
+repeat_times = 100
 
 for i in range(repeat_times): 
     nodes[f"LCH_charge_gate_ramsey_{i}"] = library.nodes["LCH_charge_gate_ramsey"].copy(
             name=f"LCH_charge_gate_ramsey_{i}",
-            reset_type = "thermal",
+            reset_type = "active",
             frequency_detuning_in_mhz=0.2,
             min_wait_time_in_ns= 16,
             max_wait_time_in_ns = 60000,
@@ -31,27 +31,31 @@ for i in range(repeat_times):
             charge_gate_start_in_v = -0.45,
             charge_gate_end_in_v = 0.45,
             charge_gate_step_in_v = 0.18,
+            gate_period_in_volt = 1.0,
+            # Q1 gate_period_in_volt = 0.93,
             log_or_linear_sweep = "linear",
-            num_shots = 50,
+            num_shots = 100,
         )
     nodes[f"LCH_charge_gate_readout_power_with_ref_{i}"] = library.nodes["LCH_charge_gate_readout_power_with_ref"].copy(
             name=f"LCH_charge_gate_readout_power_with_ref_{i}",
             reset_type = "thermal",
             start_amp = 0,
-            end_amp = 1.8,
-            num_amps = 10,
+            end_amp = 1.90,
+            num_amps = 20,
             charge_gate_start_in_v = 0,
-            charge_gate_end_in_v = 0.480,
-            charge_gate_step_in_v = 0.005,
+            #Q1 charge_gate_end_in_v = 0.480,
+            charge_gate_end_in_v = 0.51,
+
+            charge_gate_step_in_v = 0.01,
             prepared_states = [0,1],
-            num_shots = 10,
+            num_shots = 20,
             ref_operation = "readout",
-            test_operation = "readout_test",
+            test_operation = "readout_three_step",
             # add_charge_offset = True,
         )
 nodes[f"LCH_charge_gate_ramsey_{repeat_times}"] = library.nodes["LCH_charge_gate_ramsey"].copy(
             name=f"LCH_charge_gate_ramsey_{repeat_times}",
-            reset_type = "thermal",
+            reset_type = "active",
             frequency_detuning_in_mhz=0.2,
             min_wait_time_in_ns= 16,
             max_wait_time_in_ns = 60000,
@@ -60,8 +64,9 @@ nodes[f"LCH_charge_gate_ramsey_{repeat_times}"] = library.nodes["LCH_charge_gate
             charge_gate_start_in_v = -0.45,
             charge_gate_end_in_v = 0.45,
             charge_gate_step_in_v = 0.18,
+            gate_period_in_volt = 1.0,
             log_or_linear_sweep = "linear",
-            num_shots = 50,
+            num_shots = 100,
         )
 connectivity = []
 for i in range(repeat_times):

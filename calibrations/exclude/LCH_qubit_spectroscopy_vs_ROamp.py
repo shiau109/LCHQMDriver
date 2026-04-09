@@ -107,12 +107,11 @@ def create_qua_program(node: QualibrationNode[Parameters, Quam]):
                 node.machine.initialize_qpu(target=qubit, flux_point=flux_idle_case)
             align()
 
-            with for_(n, 0, n < n_avg, n + 1):
+            
+            with for_(*from_array(amp_ratio, ro_amp_ratio_array)):
                 save(n, n_st)
-                with for_(*from_array(amp_ratio, ro_amp_ratio_array)):
-        
-                    with for_(*from_array(df, dfs)):
-                    
+                with for_(*from_array(df, dfs)):
+                    with for_(n, 0, n < n_avg, n + 1):
 
                         # Qubit initialization
                         for i, qubit in multiplexed_qubits.items():
@@ -122,7 +121,11 @@ def create_qua_program(node: QualibrationNode[Parameters, Quam]):
                             qubit.reset(node.parameters.reset_type, node.parameters.simulate)
                             # Flux sweeping for a qubit
 
-                            xy_duration = xy_operation_len 
+                            xy_duration = (
+                                xy_operation_len * u.ns
+                                if xy_operation_len is not None
+                                else (ro_operation_len-xy_delay) * u.ns
+                            )
 
                         align()
 
@@ -162,10 +165,10 @@ def create_qua_program(node: QualibrationNode[Parameters, Quam]):
             n_st.save("n")
             for i in range(num_qubits):
                 if node.parameters.use_state_discrimination:
-                    state_st[i].buffer(len(dfs)).buffer(len(ro_amp_ratio_array)).average().save(f"state{i + 1}")
+                    state_st[i].buffer(n_avg).map(FUNCTIONS.average()).buffer(len(dfs)).buffer(len(ro_amp_ratio_array)).save(f"state{i + 1}")
                 else:
-                    I_st[i].buffer(len(dfs)).buffer(len(ro_amp_ratio_array)).average().save(f"I{i + 1}")
-                    Q_st[i].buffer(len(dfs)).buffer(len(ro_amp_ratio_array)).average().save(f"Q{i + 1}")
+                    I_st[i].buffer(n_avg).map(FUNCTIONS.average()).buffer(len(dfs)).buffer(len(ro_amp_ratio_array)).save(f"I{i + 1}")
+                    Q_st[i].buffer(n_avg).map(FUNCTIONS.average()).buffer(len(dfs)).buffer(len(ro_amp_ratio_array)).save(f"Q{i + 1}")
 
 
 

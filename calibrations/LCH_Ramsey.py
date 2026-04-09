@@ -32,6 +32,12 @@ node = QualibrationNode[Parameters, Quam](name="LCH_Ramsey", description=descrip
 def custom_param(node: QualibrationNode[Parameters, Quam]):
     # You can get type hinting in your IDE by typing node.parameters.
     # node.parameters.qubits = ["q1", "q2"]
+    node.parameters.frequency_detuning_in_mhz = 0.5
+    node.parameters.num_shots = 50  
+    node.parameters.log_or_linear_sweep = "linear"
+    node.parameters.wait_time_num_points = 100
+    node.parameters.max_wait_time_in_ns = 4000
+    node.parameters.reset_type = "active"
     pass
 
 
@@ -81,7 +87,7 @@ def create_qua_program(node: QualibrationNode[Parameters, Quam]):
                 with for_each_(idle_time, idle_times):
                     # Qubit initialization
                     for i, qubit in multiplexed_qubits.items():
-                        qubit.reset(node.parameters.reset_type, node.parameters.simulate)
+                        qubit.reset(node.parameters.reset_type, node.parameters.simulate,log_callable=node.log)
                     align()
                     # Qubit manipulation
                     for i, qubit in multiplexed_qubits.items():
@@ -94,8 +100,9 @@ def create_qua_program(node: QualibrationNode[Parameters, Quam]):
                         # with strict_timing_():
                         qubit.xy.play("y90")
                         qubit.xy.frame_rotation_2pi(virtual_detuning_phases[i])
-                        qubit.xy.wait(idle_time)
+                        qubit.wait(idle_time)
                         qubit.xy.play("x90")
+
 
                     align()
                     for i, qubit in multiplexed_qubits.items():

@@ -108,7 +108,7 @@ def create_qua_program(node: QualibrationNode[Parameters, Quam]):
                     for qubit in multiplexed_qubits.values():
                         qubit.z.set_dc_offset(charge_gate)
                     align()
-                    wait(1/4 * u.us)
+                    wait(1000000)
                     with for_(*from_array(a, amps)):
 
                         with for_(n, 0, n < n_runs, n + 1):

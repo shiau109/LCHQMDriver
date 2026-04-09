@@ -119,22 +119,22 @@ class TwoStepPulse(Pulse):
 
     """
 
-    A1: float = 0.1
-    A2: float = 0.2
-    W1: int = 5
+    up_amp_ratio: float = 5.0
+    amplitude: float = 0.1
+    up_width: int = 5
     axis_angle: float = None
 
     def waveform_function(self):
-        if self.W1 > self.length:
+        if self.up_width > self.length:
             raise ValueError(
-                f"First step length W1 ({self.W1}) cannot be greater than total "
+                f"First step length W1 ({self.up_width}) cannot be greater than total "
                 f"pulse length ({self.length})"
             )
 
         # Create the two-step waveform
         waveform = np.concatenate([
-            np.full(self.W1, self.A1),  # First step with amplitude A1
-            np.full(self.length - self.W1, self.A2)  # Second step with amplitude A2
+            np.full(self.up_width, self.up_amp_ratio * self.amplitude),  # First step with amplitude A1
+            np.full(self.length - self.up_width, self.amplitude)  # Second step with amplitude A2
         ])
 
         if self.axis_angle is not None:
@@ -148,10 +148,79 @@ class TwoStepReadoutPulse(ReadoutPulse, TwoStepPulse):
 
     Args:
         length (int): The total length of the pulse in samples.
-        A1 (float): The amplitude of the first step in volts.
-        A2 (float): The amplitude of the second step in volts.
-        W1 (int): The length of the first amplitude step in samples.
-            The second step length is calculated as (length - W1).
+        up_amp_ratio (float): The amplitude ratio of the first step to the second step.
+        amplitude (float): The amplitude of the second step in volts.
+        up_width (int): The length of the first amplitude step in samples.
+            The second step length is calculated as (length - up_width).
+        axis_angle (float, optional): IQ axis angle of the output pulse in radians.
+            If None (default), the pulse is meant for a single channel or the I port
+                of an IQ channel
+            If not None, the pulse is meant for an IQ channel (0 is X, pi/2 is Y).
+
+    """
+
+    pass
+
+
+@quam_dataclass
+class ThreeStepPulse(Pulse):
+    """Three-step function pulse QUAM component.
+
+    Args:
+        length (int): The total length of the pulse in samples.
+        up_amp_ratio (float): The amplitude ratio of the first step to the second step.
+        amplitude (float): The amplitude of the second (middle) step in volts.
+        down_amp_ratio (float): The amplitude ratio of the third step to the second step.
+        up_width (int): The length of the first step in samples.
+        down_width (int): The length of the third step in samples.
+            The second step length is calculated as (length - up_width - down_width).
+        axis_angle (float, optional): IQ axis angle of the output pulse in radians.
+            If None (default), the pulse is meant for a single channel or the I port
+                of an IQ channel
+            If not None, the pulse is meant for an IQ channel (0 is X, pi/2 is Y).
+
+    """
+
+    up_amp_ratio: float = 5.0
+    amplitude: float = 0.1
+    down_amp_ratio: float = 0.5
+    up_width: int = 5
+    down_width: int = 5
+    axis_angle: float = None
+
+    def waveform_function(self):
+        mid_width = self.length - self.up_width - self.down_width
+        if mid_width < 0:
+            raise ValueError(
+                f"up_width ({self.up_width}) + down_width ({self.down_width}) "
+                f"cannot be greater than total pulse length ({self.length})"
+            )
+
+        # Create the three-step waveform
+        waveform = np.concatenate([
+            np.full(self.up_width, self.up_amp_ratio * self.amplitude),
+            np.full(mid_width, self.amplitude),
+            np.full(self.down_width, self.down_amp_ratio * self.amplitude),
+        ])
+
+        if self.axis_angle is not None:
+            waveform = waveform * np.exp(1j * self.axis_angle)
+
+        return waveform
+
+
+@quam_dataclass
+class ThreeStepReadoutPulse(ReadoutPulse, ThreeStepPulse):
+    """Three-step function readout pulse QUAM component.
+
+    Args:
+        length (int): The total length of the pulse in samples.
+        up_amp_ratio (float): The amplitude ratio of the first step to the second step.
+        amplitude (float): The amplitude of the second (middle) step in volts.
+        down_amp_ratio (float): The amplitude ratio of the third step to the second step.
+        up_width (int): The length of the first step in samples.
+        down_width (int): The length of the third step in samples.
+            The second step length is calculated as (length - up_width - down_width).
         axis_angle (float, optional): IQ axis angle of the output pulse in radians.
             If None (default), the pulse is meant for a single channel or the I port
                 of an IQ channel
@@ -174,6 +243,11 @@ if __name__ == "__main__":
     # print(cosine_pulse.__class__.__name__)
     
     # Example usage for TwoStepPulse
-    two_step_pulse = TwoStepReadoutPulse(length=10, A1=0.3, A2=0.7, W1=4)
+    two_step_pulse = TwoStepReadoutPulse(length=10, up_amp_ratio=3.0, amplitude=0.2, up_width=2)
     print(two_step_pulse.waveform_function())
     print(two_step_pulse.__class__.__name__)
+
+    # Example usage for ThreeStepReadoutPulse
+    three_step_pulse = ThreeStepReadoutPulse(length=10, up_amp_ratio=3.0, amplitude=0.2, down_amp_ratio=-3.0, up_width=2, down_width=2)
+    print(three_step_pulse.waveform_function())
+    print(three_step_pulse.__class__.__name__)
