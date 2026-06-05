@@ -2,6 +2,7 @@ from quam.core import QuamComponent, quam_dataclass
 from quam.components.pulses import Pulse, ReadoutPulse
 
 import numpy as np
+from typing import List, Tuple, Union
 
 @quam_dataclass
 class RampPulse(Pulse):
@@ -227,8 +228,15 @@ class ThreeStepReadoutPulse(ReadoutPulse, ThreeStepPulse):
             If not None, the pulse is meant for an IQ channel (0 is X, pi/2 is Y).
 
     """
+    # pass
+    integration_weights: Union[List[float], List[Tuple[float, int]]] = (
+        "#./default_integration_weights"
+    )
+    integration_weights_angle: float = 0
 
-    pass
+    @property
+    def default_integration_weights(self) -> List[Tuple[float, int]]:
+        return [(1, self.length - self.down_width), (0, self.down_width)]
 
 
 if __name__ == "__main__":

@@ -203,7 +203,7 @@ def analyse_data(node: QualibrationNode[Parameters, Quam]):
         ANALYSIS_KWARGS = {
             # "force_model": "beat",       # force damped beat for every charge-gate slice
             "f_c_fixed": (p.frequency_detuning_in_mhz)*1e-3,        # user-supplied centre frequency (skip auto-calc)
-            # "abscos_frequency_hint": 0.55,  # seed for |cos| fit frequency (V^-1)
+            "abscos_phase_bounds": (-0.5, 0.5),  # (min, max) bounds for |cos| phase parameter
         }
          # analysis.all_ave_freq = (p.frequency_detuning_in_mhz)*1e-3
         if p.gate_period_in_volt is not None:

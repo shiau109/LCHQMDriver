@@ -17,7 +17,7 @@ class Parameters(GraphParameters):
     use_state_discrimination: bool = True
 
 nodes = {} 
-repeat_times = 100
+repeat_times = 1
 
 for i in range(repeat_times): 
     nodes[f"LCH_charge_gate_ramsey_{i}"] = library.nodes["LCH_charge_gate_ramsey"].copy(
@@ -39,18 +39,18 @@ for i in range(repeat_times):
     nodes[f"LCH_charge_gate_readout_power_with_ref_{i}"] = library.nodes["LCH_charge_gate_readout_power_with_ref"].copy(
             name=f"LCH_charge_gate_readout_power_with_ref_{i}",
             reset_type = "thermal",
-            start_amp = 0,
-            end_amp = 1.90,
-            num_amps = 20,
-            charge_gate_start_in_v = 0,
-            charge_gate_end_in_v = 0.480, #Q1
+            start_amp = 1.1,
+            end_amp = 1.1,
+            num_amps = 1,
+            charge_gate_start_in_v = 0.20, #0.34,
+            charge_gate_end_in_v = 0.20, #Q1
             # charge_gate_end_in_v = 0.480, #Q2
 
             charge_gate_step_in_v = 0.01,
-            prepared_states = [0,1],
-            num_shots = 20,
+            prepared_states = [0],
+            num_shots = 10000,
             ref_operation = "readout",
-            test_operation = "readout_square",
+            test_operation = "readout_three_step",
             # add_charge_offset = True,
         )
 nodes[f"LCH_charge_gate_ramsey_{repeat_times}"] = library.nodes["LCH_charge_gate_ramsey"].copy(

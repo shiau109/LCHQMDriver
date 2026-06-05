@@ -8,37 +8,50 @@ from quam_config import Quam
 ########################################################################################################################
 # %%                                              Define static parameters
 ########################################################################################################################
-host_ip = "10.21.19.201"  # QOP IP address
-port = 9515  # QOP Port
-cluster_name = "QPX1000_5"  # Name of the cluster
+host_ip = "10.21.30.201"  # QOP IP address
+port = 9516  # QOP Port
+cluster_name = "QPX1000_6"  # Name of the cluster
 
 ########################################################################################################################
 # %%                                      Define the available instrument setup
 ########################################################################################################################
 instruments = Instruments()
-instruments.add_mw_fem(controller=1, slots=[6])
-instruments.add_lf_fem(controller=1, slots=[1])
+instruments.add_mw_fem(controller=1, slots=[7])
+instruments.add_lf_fem(controller=1, slots=[2])
 
 ########################################################################################################################
 # %%                                 Define which qubit ids are present in the system
 ########################################################################################################################
-qubits = [1]
-# qubit_pairs = [(qubits[i], qubits[i + 1]) for i in range(len(qubits) - 1)]
+qubits = [1,2,3,4]
+qubit_pairs = [(1,2), (2,3), (3,4), (4,1)]
 
 ########################################################################################################################
 # %%                                 Define any custom/hardcoded channel addresses
 ########################################################################################################################
 # multiplexed readout for qubits 1 to 4 and 5 to 8 on two feed-lines
-q1to4_res_ch = mw_fem_spec(con=1, slot=6, in_port=1, out_port=1)
+q1to4_res_ch = mw_fem_spec(con=1, slot=7, in_port=1, out_port=1)
 # q5to8_res_ch = mw_fem_spec(con=1, slot=2, in_port=1, out_port=1)
 # Q1 slot 7, port 2
 # Q2 slot 7, port 3
 # RO slot 7, port 1
 # individual xy drive for qubits 1 to 4 on MW-FEM 1
-q1_drive_ch = mw_fem_spec(con=1, slot=6, out_port=2)
+q1_drive_ch = mw_fem_spec(con=1, slot=7, out_port=2)
+q2_drive_ch = mw_fem_spec(con=1, slot=7, out_port=3)
+q3_drive_ch = mw_fem_spec(con=1, slot=7, out_port=4)
+q4_drive_ch = mw_fem_spec(con=1, slot=7, out_port=5)
+
+
 # multiplexed xy drive for qubits 5 to 8 on MW-FEM 2 port 4
 # q2_drive_ch = mw_fem_spec(con=1, slot=7, out_port=3)
-q1_flux_ch = lf_fem_spec(con=1, out_slot=1, out_port=1)
+q1_flux_ch = lf_fem_spec(con=1, out_slot=2, out_port=1)
+q2_flux_ch = lf_fem_spec(con=1, out_slot=2, out_port=3)
+q3_flux_ch = lf_fem_spec(con=1, out_slot=2, out_port=5)
+q4_flux_ch = lf_fem_spec(con=1, out_slot=2, out_port=7)
+
+c12_flux_ch = lf_fem_spec(con=1, out_slot=2, out_port=2)
+c23_flux_ch = lf_fem_spec(con=1, out_slot=2, out_port=4)
+c34_flux_ch = lf_fem_spec(con=1, out_slot=2, out_port=6)
+c41_flux_ch = lf_fem_spec(con=1, out_slot=2, out_port=8)
 # q1_charge_ch = lf_fem_spec(con=1, out_slot=1, out_port=1)
 ########################################################################################################################
 # %%                Allocate the wiring to the connectivity object based on the available instruments
@@ -48,6 +61,10 @@ connectivity = Connectivity()
 connectivity.add_resonator_line(qubits=qubits, constraints=q1to4_res_ch)
 # The xy drive lines
 connectivity.add_qubit_drive_lines(qubits=qubits[0], constraints=q1_drive_ch)
+connectivity.add_qubit_drive_lines(qubits=qubits[1], constraints=q2_drive_ch)
+connectivity.add_qubit_drive_lines(qubits=qubits[2], constraints=q3_drive_ch)
+connectivity.add_qubit_drive_lines(qubits=qubits[3], constraints=q4_drive_ch)
+
 # connectivity.add_qubit_drive_lines(qubits=qubits[1], constraints=q2_drive_ch)
 
 # for qubit in qubits[4:]:
@@ -55,10 +72,18 @@ connectivity.add_qubit_drive_lines(qubits=qubits[0], constraints=q1_drive_ch)
 #     allocate_wiring(connectivity, instruments, block_used_channels=False)
 # The flux lines for the individual qubits
 connectivity.add_qubit_flux_lines(qubits=qubits[0], constraints=q1_flux_ch)
+connectivity.add_qubit_flux_lines(qubits=qubits[1], constraints=q2_flux_ch)
+connectivity.add_qubit_flux_lines(qubits=qubits[2], constraints=q3_flux_ch)
+connectivity.add_qubit_flux_lines(qubits=qubits[3], constraints=q4_flux_ch)
 # connectivity.add_qubit_charge_lines(qubits=qubits, constraints=q1_charge_ch)
 
 # The flux lines for the tunable couplers
 # connectivity.add_qubit_pair_flux_lines(qubit_pairs=qubit_pairs)
+connectivity.add_qubit_pair_flux_lines(qubit_pairs=qubit_pairs[0], constraints=c12_flux_ch)
+connectivity.add_qubit_pair_flux_lines(qubit_pairs=qubit_pairs[1], constraints=c23_flux_ch)
+connectivity.add_qubit_pair_flux_lines(qubit_pairs=qubit_pairs[2], constraints=c34_flux_ch)
+connectivity.add_qubit_pair_flux_lines(qubit_pairs=qubit_pairs[3], constraints=c41_flux_ch)
+
 # Allocate the wiring
 allocate_wiring(connectivity, instruments, block_used_channels=False)
 

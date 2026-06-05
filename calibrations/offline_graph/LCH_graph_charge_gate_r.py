@@ -25,15 +25,15 @@ for i in range(repeat_times):
             reset_type = "active",
             frequency_detuning_in_mhz=0.2,
             min_wait_time_in_ns= 16,
-            max_wait_time_in_ns = 80000,
-            wait_time_num_points = 100,
+            max_wait_time_in_ns = 60000,
+            wait_time_num_points = 60,
             # use_state_discrimination = True,
             charge_gate_start_in_v = -0.48,
             charge_gate_end_in_v = 0.48,
             charge_gate_step_in_v = 0.04,
             gate_period_in_volt = 0.93,
             log_or_linear_sweep = "linear",
-            num_shots = 100,
+            num_shots = 200,
         )
 
 connectivity = []

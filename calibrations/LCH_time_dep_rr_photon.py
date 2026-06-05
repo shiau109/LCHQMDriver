@@ -234,43 +234,44 @@ def analyse_data(node: QualibrationNode[Parameters, Quam]):
 @node.run_action(skip_if=node.parameters.simulate)
 def plot_data(node: QualibrationNode[Parameters, Quam]):
     """Plot the raw and fitted data in specific figures whose shape is given by qubit.grid_location."""
-    node.results["figures"] = {}
-    from qcat.parser.qm_reader import repetition_data
-    from qcat.utilities.simple_visualization import plot_2d_colormap_from_h5
-    ds = node.results["ds_raw"]
+    pass
+    # node.results["figures"] = {}
+    # from qcat.parser.qm_reader import repetition_data
+    # from qcat.utilities.simple_visualization import plot_2d_colormap_from_h5
+    # ds = node.results["ds_raw"]
 
-    for sq_data in repetition_data(ds):
-        qubit_name = sq_data["qubit"].values.item()
+    # for sq_data in repetition_data(ds):
+    #     qubit_name = sq_data["qubit"].values.item()
 
 
-        from qcat.analysis.readout_pulse_photon.analysis import Readout_pulse_shaping
-        from qcat.analysis.readout_pulse_photon.visualization import plot_all
+    #     from qcat.analysis.readout_pulse_photon.analysis import Readout_pulse_shaping
+    #     from qcat.analysis.readout_pulse_photon.visualization import plot_all
 
-        plot_info=dict(P_rescale=False, #normalize contrast to population
-               Dis=None,
-               linecut=0, 
-               readout_qubit_info=True,
-               color_bound=False,
-               bound_value=[0,1],
-               log_scale=False)
+    #     plot_info=dict(P_rescale=False, #normalize contrast to population
+    #            Dis=None,
+    #            linecut=0, 
+    #            readout_qubit_info=True,
+    #            color_bound=False,
+    #            bound_value=[0,1],
+    #            log_scale=False)
 
-        fit_info=dict(Photon_convert=False,
-                    Ac_info=None,
-                    X_eff=None)
+    #     fit_info=dict(Photon_convert=False,
+    #                 Ac_info=None,
+    #                 X_eff=None)
         
-        from types import SimpleNamespace
-        Raw_data = SimpleNamespace(
-            meas_q = qubit_name,
-            first_samples=ds.coords["detuning"].values,
-            second_samples=ds.coords["delay_time"].values
-        )
-        Process_data_rpsh = { "data": [sq_data["I"].transpose('delay_time','detuning').values],
-                    "first_samples":sq_data.coords["detuning"].values,
-                    "second_samples":sq_data.coords["delay_time"].values
-        }
+    #     from types import SimpleNamespace
+    #     Raw_data = SimpleNamespace(
+    #         meas_q = qubit_name,
+    #         first_samples=ds.coords["detuning"].values,
+    #         second_samples=ds.coords["delay_time"].values
+    #     )
+    #     Process_data_rpsh = { "data": [sq_data["I"].transpose('delay_time','detuning').values],
+    #                 "first_samples":sq_data.coords["detuning"].values,
+    #                 "second_samples":sq_data.coords["delay_time"].values
+    #     }
 
-        result_rpsh = Readout_pulse_shaping(Raw_data,Process_data_rpsh)
-        node.results["figures"][qubit_name] = plot_all(Raw_data,Process_data_rpsh,result_rpsh,fit_info,plot_info, Save=False, Save_graph_path=None, id=None)        
+    #     result_rpsh = Readout_pulse_shaping(Raw_data,Process_data_rpsh)
+    #     node.results["figures"][qubit_name] = plot_all(Raw_data,Process_data_rpsh,result_rpsh,fit_info,plot_info, Save=False, Save_graph_path=None, id=None)        
 
 
 

@@ -26,9 +26,17 @@ Superconducting qubit calibration system for Quantum Machines OPX1000 hardware (
 - `customized/components/` → shared pulse shapes, macros, QUAM extensions
 
 ## Key Entrypoints
-- `quam_config/my_quam.py` → defines `Quam(FluxTunableQuam)` with `qubit_type = ChargeTunableTransmon`. Imported by every calibration node and config script.
+- `quam_config/my_quam.py` → defines the `Quam(FluxTunableQuam)` class imported by every calibration node and config script. The custom-type bindings (`qubit_type = ChargeTunableTransmon`, `qubit_pair_type = LCH_FluxTunableTransmonQCQPair`) are **toggled in/out per experiment** — they are intentionally commented out by default and uncommented only when a run needs the custom charge-tunable types. Do NOT treat either state as "wrong"; read the live class body to see what is active, and ask before flipping it.
 - `customized/quam_builder/` → custom qubit type `ChargeTunableTransmon`
 - `customized/qubit_pair/` → custom qubit pair `LCH_FluxTunableTransmonQCQPair`
+
+## Operational Notes (verified against the working tree)
+- **Symlinks are auto-generated, not committed.** Official `calibrations/<name>.py` and `calibration_utils/<name>/` are real on-disk symlinks created by `create_calibration_links.py` from `calibration_links.toml`, pointing at an external `qua-libs_official` checkout. They are listed in `.gitignore`, so `git ls-files` shows no symlinks — only `LCH_*` and other in-tree files are tracked.
+- **`calibrations/offline_graph/`** holds `LCH_graph_*.py` post-processing/graph scripts. Editable lab code, same `LCH_` convention as nodes.
+- **Run / setup** (Windows, conda env `LCHQM`):
+  - `start_server.bat` → `qualibrate start` (launches the GUI server)
+  - `setup_qualibrate_config.bat` → `setup-qualibrate-config`
+- **Packaging:** `pyproject.toml` — Python `>=3.9,<3.13`, black `line-length = 120`. Wheel packages: `calibrations`, `quam_config`, `calibration_utils`.
 
 ## Workspace Packages (Read-Only)
 The following dependency packages are available in the workspace for reference. Do NOT modify them.
