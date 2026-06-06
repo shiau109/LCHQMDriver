@@ -131,6 +131,39 @@ def get_subfolders(folder: Path) -> list:
     return sorted(d for d in folder.iterdir() if d.is_dir() and not d.name.startswith("__"))
 
 
+def read_prior_vendored(script_dir: Path) -> list:
+    """Read the list of paths vendored by the previous sync, from the stamp."""
+    stamp_path = script_dir / STAMP_FILE
+    if not stamp_path.exists():
+        return []
+    try:
+        data = json.loads(stamp_path.read_text(encoding="utf-8"))
+        return list(data.get("vendored_paths", []))
+    except (ValueError, OSError):
+        return []
+
+
+def prune_stale(script_dir: Path, prior: list, current: set) -> list:
+    """
+    Remove paths vendored by a previous sync that the current sync no longer
+    produces (upstream renamed/removed them). Only ever touches paths this script
+    itself vendored before -- never LCH_*/customized files.
+    """
+    removed = []
+    for rel in prior:
+        if rel in current:
+            continue
+        # Safety: only prune inside the two vendored roots.
+        if not (rel.startswith("calibrations/") or rel.startswith("calibration_utils/")):
+            continue
+        path = script_dir / rel
+        if path.exists() or path.is_symlink():
+            remove_existing(path)
+            removed.append(rel)
+            print(f"   PRUNED stale: {rel}")
+    return removed
+
+
 def source_git_commit(source_base: Path) -> str:
     """Best-effort short git commit of the official checkout, for the stamp."""
     try:
@@ -145,14 +178,15 @@ def source_git_commit(source_base: Path) -> str:
     return "unknown"
 
 
-def write_stamp(script_dir: Path, source_base: Path, copied: dict) -> None:
-    """Record which official version was vendored, for traceability."""
+def write_stamp(script_dir: Path, source_base: Path, copied: dict, vendored_paths: list) -> None:
+    """Record which official version was vendored, for traceability and pruning."""
     stamp = {
         "synced_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "source_base": str(source_base),
         "source_git_commit": source_git_commit(source_base),
         "calibration_files": copied["files"],
         "calibration_utils_dirs": copied["dirs"],
+        "vendored_paths": sorted(vendored_paths),
     }
     (script_dir / STAMP_FILE).write_text(json.dumps(stamp, indent=2) + "\n", encoding="utf-8")
     print(f"Wrote {STAMP_FILE} (official commit {stamp['source_git_commit'][:8]}).")
@@ -184,6 +218,8 @@ def main() -> int:
     success_count = 0
     fail_count = 0
     copied = {"files": 0, "dirs": 0}
+    vendored_paths = []  # relative paths produced by this run, for the stamp + pruning
+    prior_paths = read_prior_vendored(script_dir)
 
     # === calibrations (files) ===
     if calibrations_source:
@@ -207,6 +243,7 @@ def main() -> int:
                 if copy_file(target, dst):
                     success_count += 1
                     copied["files"] += 1
+                    vendored_paths.append(f"calibrations/{target.name}")
                 else:
                     fail_count += 1
 
@@ -230,15 +267,22 @@ def main() -> int:
                 if mirror_dir(target, dst):
                     success_count += 1
                     copied["dirs"] += 1
+                    vendored_paths.append(f"calibration_utils/{target.name}")
                 else:
                     fail_count += 1
 
+    # Prune files a previous sync vendored that upstream has since renamed/removed.
+    print("\n=== PRUNE STALE (from previous sync) ===")
+    removed = prune_stale(script_dir, prior_paths, set(vendored_paths))
+    if not removed:
+        print("   Nothing to prune.")
+
     print("\n=== STAMP ===")
-    write_stamp(script_dir, source_base, copied)
+    write_stamp(script_dir, source_base, copied, vendored_paths)
 
     print()
     print("=" * 60)
-    print(f"Done. Copied: {success_count}, Failed: {fail_count}")
+    print(f"Done. Copied: {success_count}, Failed: {fail_count}, Pruned: {len(removed)}")
     print(f"({copied['files']} node files, {copied['dirs']} util dirs)")
     print("Review with `git diff`, then commit the vendored update.")
     print("=" * 60)
