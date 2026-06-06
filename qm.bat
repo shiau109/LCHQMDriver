@@ -7,7 +7,7 @@ REM          double-click   -> same as "start"
 REM ===========================================================================
 
 REM --- Edit this to target a different conda environment -----------------------
-set "ENV_NAME=LCHQM"
+set "ENV_NAME=LCHQM_test"
 REM ----------------------------------------------------------------------------
 
 REM Run from the folder this script lives in (so relative config paths resolve)
