@@ -38,7 +38,7 @@ build-backend = "hatchling.build"
 dev = ["ipykernel>=7.0.0a1", "pytest>=8.3.5"]
 
 [tool.hatch.build.targets.wheel]
-packages = ["calibrations", "quam_config", "calibration_utils"]
+packages = ["calibrations", "calibration_utils", "quam_config", "customized"]
 
 [tool.hatch.metadata]
 allow-direct-references = true

@@ -1,13 +1,17 @@
-# Configuration for symbolic links to external calibration files
-# Edit this file to add/remove links - no need to modify the Python script
+# Configuration for vendoring official calibration files into this repo.
+# Consumed by sync_official.py, which COPIES (not symlinks) these files so the
+# repo stays self-contained and upstream updates show up as reviewable git diffs.
+# Edit this file to add/remove sources - no need to modify the Python script.
 
-# Base source directory (common prefix for all targets)
-# Use forward slashes (/) for cross-platform compatibility
+# Base source directory (common prefix for all targets).
+# Use forward slashes (/) for cross-platform compatibility.
+# Override at runtime with the QUA_LIBS_OFFICIAL environment variable, which
+# takes precedence over this value (handy on machines with a different layout).
 source_base = "D:/github/qua-libs_official/qualibration_graphs/superconducting"
 
 # ----------------------------------------------------------------------------
 # Source folders for calibrations (files)
-# All .py files in these folders will be linked into local calibrations/
+# All .py files in these folders are copied into local calibrations/
 # Paths are relative to source_base
 # ----------------------------------------------------------------------------
 calibrations_source = [
@@ -16,18 +20,8 @@ calibrations_source = [
 ]
 
 # ----------------------------------------------------------------------------
-# Known files with non-ASCII characters (e.g. π) that cause
-# UnicodeDecodeError on Windows cp950 locale when qualibrate scans them.
-# Workaround: patch qualibrate/q_runnnable.py line 31 to use encoding="utf-8"
-# ----------------------------------------------------------------------------
-# 17_pi_vs_flux_long_distortions.py   — contains π (U+03C0) in comment
-# 20a_cz_conditional_phase.py         — contains π (U+03C0) in comment
-# 20b_cz_conditional_phase_error_amp.py — contains π (U+03C0) in comment
-# 21_cz_phase_compensation.py         — contains non-ASCII Unicode in comment
-
-# ----------------------------------------------------------------------------
 # Source folders for calibration_utils (directories)
-# All subfolders in these folders will be linked into local calibration_utils/
+# All subfolders in these folders are mirrored into local calibration_utils/
 # Paths are relative to source_base
 # ----------------------------------------------------------------------------
 calibration_utils_source = [
