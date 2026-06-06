@@ -1,5 +1,5 @@
 from qualibrate import NodeParameters
-from qualibrate.parameters import RunnableParameters
+from qualibrate.core.parameters import RunnableParameters
 from customized.common_parameters import CommonFluxParameters
 from typing import Optional
 

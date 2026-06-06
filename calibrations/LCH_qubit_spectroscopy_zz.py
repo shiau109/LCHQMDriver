@@ -203,7 +203,7 @@ def analyse_data(node: QualibrationNode[Parameters, Quam]):
 @node.run_action(skip_if=node.parameters.simulate)
 def plot_data(node: QualibrationNode[Parameters, Quam]):
     """Plot the raw and fitted data in specific figures whose shape is given by qubit.grid_location."""
-    from qcat.parser.qm_reader import load_xarray_h5, repetition_data
+    from scqat.parsers import load_xarray_h5, repetition_data
 
     ds = node.results["ds_raw"]
     sep_data = repetition_data(ds, repetition_dim="qubit")

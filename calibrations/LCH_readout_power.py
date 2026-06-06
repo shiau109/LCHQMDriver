@@ -181,22 +181,26 @@ def analyse_data(node: QualibrationNode[Parameters, Quam]):
 # %% {Plot_data}
 @node.run_action(skip_if=node.parameters.simulate)
 def plot_data(node: QualibrationNode[Parameters, Quam]):
-    """Plot the raw and fitted data in specific figures whose shape is given by qubit.grid_location."""
-    from qcat.parser.qm_reader import load_xarray_h5, repetition_data
-    from qcat.analysis.readout_power.analysis import ROFidelityPower
+    """Analyse readout-power fidelity with scqat and store the figures.
 
+    Note: scqat's ReadoutPowerFidelityAnalyzer does NOT port qcat's
+    power-specific linear mean-drift refit (fit_means_vs_amp_prefactor); the
+    core per-amplitude state-discrimination sweep is preserved."""
+    from scqat.parsers import repetition_data
+    from scqat.protocols.readout_fidelity import ReadoutPowerFidelityAnalyzer
+
+    # ds_raw already carries the I/Q vars and shot_idx/amp_prefactor/prepared_state
+    # coords that scqat expects (see sweep_axes above), so no renaming is needed.
     ds = node.results["ds_raw"]
     sep_data = repetition_data(ds, repetition_dim="qubit")
+    node.results["fit_results"] = {}
     node.results["figures"] = {}
+    analyzer = ReadoutPowerFidelityAnalyzer()
     for sq_data in sep_data:
         qubit_name = sq_data["qubit"].values.item()
-        # Rename n_runs to shot_idx if present
-        # sq_data = sq_data.rename({'n_runs': 'shot_idx','state': 'prepared_state'})
-        print(sq_data)
-        analysis = ROFidelityPower(sq_data)
-        analysis._start_analysis()
-       
-        node.results["figures"][qubit_name] = analysis._plot_results(qubit_name)
+        results, figs = analyzer.analyze(sq_data, output_dir=None)
+        node.results["fit_results"][qubit_name] = results
+        node.results["figures"][qubit_name] = figs
 
 
 # %% {Update_state}

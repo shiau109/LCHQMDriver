@@ -183,34 +183,32 @@ def load_data(node: QualibrationNode[Parameters, Quam]):
 # %% {Analyse_data}
 @node.run_action(skip_if=node.parameters.simulate)
 def analyse_data(node: QualibrationNode[Parameters, Quam]):
-    """Analyse the raw data and store the fitted data in another xarray dataset "ds_fit" and the fitted results in the "fit_results" dictionary."""
-    pass
-    # node.results["ds_raw"] = process_raw_dataset(node.results["ds_raw"], node)
-    from qcat.parser.qm_reader import repetition_data
-    from qcat.analysis.ramsey.analysis import RamseyAnalysis
+    """Analyse the raw data with scqat: fit each qubit's Ramsey and store the fit
+    results and figures. scqat auto-detects single vs beat (charge-dispersion) and
+    returns result keys a_1/a_2/f_1/f_2/... consumed by update_state below."""
+    from scqat.parsers import repetition_data
+    from scqat.protocols.ramsey import RamseyAnalyzer
+
     if node.parameters.use_state_discrimination:
         ds = node.results["ds_raw"].rename({"state": "signal"})
     else:
-        ds = node.results["ds_raw"].rename({"I": "signal"}) 
+        ds = node.results["ds_raw"].rename({"I": "signal"})
 
     sep_data = repetition_data(ds, repetition_dim="qubit")
     node.results["fit_results"] = {}
+    node.results["figures"] = {}
+    analyzer = RamseyAnalyzer()
     for sq_data in sep_data:
         qubit_name = sq_data["qubit"].values.item()
-        print(qubit_name)
-        analysis = RamseyAnalysis(sq_data)
-        node.results["fit_results"][qubit_name] = analysis
+        results, figs = analyzer.analyze(sq_data, output_dir=None)
+        node.results["fit_results"][qubit_name] = results
+        node.results["figures"][qubit_name] = figs
 
 # %% {Plot_data}
 @node.run_action(skip_if=node.parameters.simulate)
 def plot_data(node: QualibrationNode[Parameters, Quam]):
-    """Plot the raw and fitted data in specific figures whose shape is given by qubit.grid_location."""
-    node.results["figures"] = {}
-    for key, value in node.results["fit_results"].items():    
-
-        node.results["fit_results"][key]=value.fit_result.best_values
-    # # Store the generated figures
-        node.results["figures"][key] = value._plot_results()
+    """Figures are produced by the scqat analyzer in analyse_data."""
+    pass
 
 
 # %% {Update_state}
@@ -221,7 +219,8 @@ def update_state(node: QualibrationNode[Parameters, Quam]):
     detuning = int(node.parameters.frequency_detuning_in_mhz * 1e6)
     with node.record_state_updates():
         for q in node.namespace["qubits"]:
-            a_2 = float(node.results["fit_results"][q.name]["a_2"])
+            # scqat omits a_2 for the single-frequency model; treat absence as 0.
+            a_2 = float(node.results["fit_results"][q.name].get("a_2", 0.0))
             f_1 = float(node.results["fit_results"][q.name]["f_1"])*1e9
             if a_2 == 0:
                 d_f_01 = int(f_1)-detuning

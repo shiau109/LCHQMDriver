@@ -186,8 +186,7 @@ def load_data(node: QualibrationNode[Parameters, Quam]):
 @node.run_action(skip_if=node.parameters.simulate)
 def analyse_data(node: QualibrationNode[Parameters, Quam]):
     """Analyse the raw data and store the fitted data in another xarray dataset "ds_fit" and the fitted results in the "fit_results" dictionary."""
-    from qcat.parser.qm_reader import repetition_data
-    # from qcat.analysis.charge_gate_ramsey.analysis import ChargeGateRamseyAnalysis
+    from scqat.parsers import repetition_data
     from scqat.protocols.charge_gate_ramsey import ChargeGateRamseyAnalyzer
     p = node.parameters
     if p.use_state_discrimination:

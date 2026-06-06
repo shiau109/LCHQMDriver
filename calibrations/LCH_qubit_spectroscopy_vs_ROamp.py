@@ -242,54 +242,28 @@ def analyse_data(node: QualibrationNode[Parameters, Quam]):
 # %% {Plot_data}
 @node.run_action(skip_if=node.parameters.simulate)
 def plot_data(node: QualibrationNode[Parameters, Quam]):
-    """Plot the raw and fitted data in specific figures whose shape is given by qubit.grid_location."""
-    node.results["figures"] = {}
-    from qcat.analysis.ac_stark_shift.analysis import Ac_stark_shift
-    from qcat.analysis.ac_stark_shift.visualization import Ac_stark_shift_plot
+    """Analyse the AC-Stark shift (qubit spectroscopy vs readout amplitude) with
+    scqat and store the figures.
 
-    from qcat.parser.qm_reader import repetition_data
+    Note: scqat's AcStarkShiftAnalyzer extracts f01 per amplitude slice (via
+    QubitSpectroscopyAnalyzer) and fits the shift vs amp**2. It does NOT port
+    qcat's full cavity-model fit (the kc/ki/g/X_eff/f_bare ``given_factors`` used
+    to predict wiring attenuation / target photon number). Pass ``chi_eff=...`` to
+    convert the detuning to a photon number once the units are confirmed."""
+    from scqat.parsers import repetition_data
+    from scqat.protocols.ac_stark_shift import AcStarkShiftAnalyzer
+
+    # ds_raw already carries I/Q and the detuning/readout_amp_ratio coords that
+    # scqat expects, so no renaming is needed.
     ds = node.results["ds_raw"]
-
-    
+    node.results["fit_results"] = {}
+    node.results["figures"] = {}
+    analyzer = AcStarkShiftAnalyzer()
     for sq_data in repetition_data(ds):
         qubit_name = sq_data["qubit"].values.item()
-        print(f"Plotting {qubit_name}.")
-        from types import SimpleNamespace
-
-        Raw_data = SimpleNamespace(
-                first_samples=sq_data.coords["detuning"].values,
-                second_samples=sq_data.coords["readout_amp_ratio"].values
-        )
-
-
-        # Create Processed_data as a copy of sq_data with 'I' renamed to 'data'
-        
-        Processed_data = { "data": [sq_data["I"].transpose('readout_amp_ratio','detuning').values],
-                        "first_samples":sq_data.coords["detuning"].values,
-                        "second_samples":sq_data.coords["readout_amp_ratio"].values
-            }
-
-        plot_info = dict(P_rescale=False, #normalize contrast to population
-                    Dis=None,
-                    linecut=0, 
-                    readout_qubit_info=True,
-                    color_bound=False,
-                    bound_value=[0,1])
-
-        fit_info = dict(fit_window_data_index=[0,21],
-                    given_factors=dict(kc=1.43*1e6,
-                                        ki=0.074*1e6,
-                                        g= 91.3*1e6,
-                                        X_eff=1.3709*1e6,
-                                        f_bare=5.991*1e9,
-                                        f_eff_bare=5.99625*1e9,
-                                        R_F=None),
-                    target_average_photon_number=9, #! Use it to predict the wiring attenuation     
-                    ro_output_att=0)
-
-        # Example usage:
-        result_acss = Ac_stark_shift(Raw_data, Processed_data)
-        figs = Ac_stark_shift_plot(Raw_data, Processed_data, result_acss, fit_info, plot_info, None, None, None)
+        print(f"Analysing {qubit_name}.")
+        results, figs = analyzer.analyze(sq_data, output_dir=None)
+        node.results["fit_results"][qubit_name] = results
         node.results["figures"][qubit_name] = figs
 
 

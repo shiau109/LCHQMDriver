@@ -1,6 +1,6 @@
 from typing import List
 from qualibrate.orchestration.basic_orchestrator import BasicOrchestrator
-from qualibrate.parameters import GraphParameters
+from qualibrate.core.parameters import GraphParameters
 from qualibrate.qualibration_graph import QualibrationGraph
 from qualibrate.qualibration_library import QualibrationLibrary
 

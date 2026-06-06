@@ -185,21 +185,21 @@ def analyse_data(node: QualibrationNode[Parameters, Quam]):
 @node.run_action(skip_if=node.parameters.simulate)
 def plot_data(node: QualibrationNode[Parameters, Quam]):
     """Plot the raw and fitted data in specific figures whose shape is given by qubit.grid_location."""
-    from qcat.parser.qm_reader import load_xarray_h5, repetition_data
-    from qcat.analysis.readout_freq.analysis import ROFidelityFreq
+    from scqat.parsers import repetition_data
+    from scqat.protocols.readout_fidelity import ReadoutFreqFidelityAnalyzer
 
+    # ds_raw already carries the I/Q vars and shot_idx/frequency/prepared_state
+    # coords that scqat expects (see sweep_axes above), so no renaming is needed.
     ds = node.results["ds_raw"]
     sep_data = repetition_data(ds, repetition_dim="qubit")
+    node.results["fit_results"] = {}
     node.results["figures"] = {}
+    analyzer = ReadoutFreqFidelityAnalyzer()
     for sq_data in sep_data:
         qubit_name = sq_data["qubit"].values.item()
-        # Rename n_runs to shot_idx if present
-        # sq_data = sq_data.rename({'n_runs': 'shot_idx','state': 'prepared_state'})
-        print(sq_data)
-        analysis = ROFidelityFreq(sq_data)
-        analysis._start_analysis()
-       
-        node.results["figures"][qubit_name] = analysis._plot_results(qubit_name)
+        results, figs = analyzer.analyze(sq_data, output_dir=None)
+        node.results["fit_results"][qubit_name] = results
+        node.results["figures"][qubit_name] = figs
 
 
 # %% {Update_state}

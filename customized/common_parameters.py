@@ -1,5 +1,5 @@
 from typing import Optional
-from qualibrate.parameters import RunnableParameters
+from qualibrate.core.parameters import RunnableParameters
 from quam_builder.architecture.superconducting.qpu import AnyQuam
 from quam_builder.architecture.superconducting.qubit import AnyTransmon
 from quam_builder.architecture.superconducting.qubit_pair import AnyTransmonPair
