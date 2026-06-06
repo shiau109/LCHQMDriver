@@ -236,16 +236,15 @@ def plot_data(node: QualibrationNode[Parameters, Quam]):
     """Plot the raw and fitted data in specific figures whose shape is given by qubit.grid_location."""
     pass
     # node.results["figures"] = {}
-    # from qcat.parser.qm_reader import repetition_data
-    # from qcat.utilities.simple_visualization import plot_2d_colormap_from_h5
+    # from scqat.parsers import repetition_data
+    # raw-2D colormap is now provided by scqat.protocols.readout_pulse_photon.ReadoutPulsePhotonAnalyzer
     # ds = node.results["ds_raw"]
 
     # for sq_data in repetition_data(ds):
     #     qubit_name = sq_data["qubit"].values.item()
 
 
-    #     from qcat.analysis.readout_pulse_photon.analysis import Readout_pulse_shaping
-    #     from qcat.analysis.readout_pulse_photon.visualization import plot_all
+    #     from scqat.protocols.readout_pulse_photon import ReadoutPulsePhotonAnalyzer
 
     #     plot_info=dict(P_rescale=False, #normalize contrast to population
     #            Dis=None,

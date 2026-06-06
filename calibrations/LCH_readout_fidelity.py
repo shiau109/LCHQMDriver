@@ -199,17 +199,20 @@ def plot_data(node: QualibrationNode[Parameters, Quam]):
     Plot the raw and fitted data in specific figures whose shape is given by
     qubit.grid_location.
     """
-    from qcat.parser.qm_reader import repetition_data
-    from qcat.analysis.state_discrimination.analysis import StateDiscrimination
+    from scqat.parsers import repetition_data
+    from scqat.protocols.state_discrimination import StateDiscriminationAnalyzer
+
+    # ds_raw already carries the I/Q vars and shot_idx/prepared_state coords that
+    # scqat expects (see sweep_axes above), so no renaming is needed.
     sep_data = repetition_data(node.results["ds_raw"], repetition_dim="qubit")
+    node.results["fit_results"] = {}
     node.results["figures"] = {}
+    analyzer = StateDiscriminationAnalyzer()
     for sq_data in sep_data:
         qubit_name = sq_data["qubit"].values.item()
-
-        # print(sq_data)
-        analysis = StateDiscrimination(sq_data)
-        analysis._start_analysis()
-        node.results["figures"][qubit_name] = analysis._plot_results(qubit_name)
+        results, figs = analyzer.analyze(sq_data, output_dir=None)
+        node.results["fit_results"][qubit_name] = results
+        node.results["figures"][qubit_name] = figs
 
 
 # %% {Update_state}

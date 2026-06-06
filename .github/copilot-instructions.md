@@ -41,7 +41,7 @@ This repo is intended to become the **QM reference backend** for **`scqo`**, a v
   - `qm.bat` (Windows) / `qm.command` (macOS/Linux) → wrappers that activate the env and run `qualibrate start` (launches the GUI server). These replaced the old Windows-only `start_server.bat` / `setup_qualibrate_config.bat`.
   - `setup-qualibrate-config` → one-time qualibrate config setup.
 - **Packaging:** `pyproject.toml` — Python `>=3.10,<3.13`, black `line-length = 120`. Wheel packages: `calibrations`, `calibration_utils`, `quam_config`, `customized`.
-- **External analysis dependency.** LCH analysis nodes (the `plot_data` actions in ~15 `LCH_*.py` files) lazily `import qcat` — the lab's own analysis tool (`D:\github\QCAT`, being migrated to `D:\github\SCqubit-analysis-tool`), installed editable. It is **not declared in `pyproject.toml`** and is **not yet installed in `LCHQM_test`**, so those nodes raise `ImportError` at plot time there until it is installed. Official (non-`LCH_`) nodes do not depend on it and run regardless.
+- **External analysis dependency.** LCH analysis nodes lazily import `scqat` (`D:\github\SCqubit-analysis-tool`, the lab's analysis tool that **replaced** the older `qcat`/`D:\github\QCAT`), installed editable. It is **not declared in `pyproject.toml`** and must be installed in the runtime env — present in `LCHQM`, **not yet in `LCHQM_test`** — or those nodes raise `ImportError` at plot time. Official (non-`LCH_`) nodes do not depend on it and run regardless. The qcat→scqat migration of the active `LCH_*` nodes is complete (`calibrations/exclude/` still references qcat); see `ANALYSIS_MIGRATION.md`.
 
 ## Workspace Packages (Read-Only)
 The following dependency packages are available in the workspace for reference. Do NOT modify them.

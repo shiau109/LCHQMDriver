@@ -219,7 +219,7 @@ def load_data(node: QualibrationNode[Parameters, Quam]):
 # %% {Analyse_data}
 @node.run_action(skip_if=node.parameters.simulate)
 def analyse_data(node: QualibrationNode[Parameters, Quam]):
-    # from qcat.parser.qm_reader import repetition_data
+    # from scqat.parsers import repetition_data
     # if node.parameters.use_state_discrimination:
     #     ds = node.results["ds_raw"].rename({"state": "signal"})
     # else:
@@ -236,7 +236,7 @@ def analyse_data(node: QualibrationNode[Parameters, Quam]):
 # %% {Plot_data}
 @node.run_action(skip_if=node.parameters.simulate)
 def plot_data(node: QualibrationNode[Parameters, Quam]):
-    from qcat.parser.qm_reader import repetition_data
+    from scqat.parsers import repetition_data
     if node.parameters.use_state_discrimination:
         ds = node.results["ds_raw"].rename({"state": "signal"})
     else:
