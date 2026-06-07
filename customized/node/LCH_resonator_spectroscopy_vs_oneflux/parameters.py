@@ -24,8 +24,13 @@ class NodeSpecificParameters(RunnableParameters):
     """Line attenuation in dB. Default is 0 dB."""
     update_flux_min: bool = False
     """Flag to update flux minimum frequency point. Default is False."""
+    outlier_n_sigma: float = 3.0
+    """Robust-sigma threshold for rejecting flux points whose fitted dip width or
+    amplitude are outliers before the frequency-vs-flux fit. Default is 3.0."""
     z_source_qubit: Optional[str] = None
-    """Z source of specific qubit. Default is "q0"."""
+    """Name of the single qubit whose z-line drives the flux sweep. When None,
+    every measured qubit applies the flux to its own z-line (same as the official
+    02c node). Default is None."""
 
 class Parameters(
     NodeParameters,

@@ -2,7 +2,6 @@
 import matplotlib.pyplot as plt
 import numpy as np
 import xarray as xr
-from dataclasses import asdict
 import warnings
 
 from qm.qua import *
@@ -19,17 +18,37 @@ from customized.node.LCH_resonator_spectroscopy_vs_oneflux import (
     process_raw_dataset,
     fit_raw_data,
     log_fitted_results,
+    fit_flux_dependence,
+    log_dispersion_results,
     plot_raw_data_with_fit,
+    plot_flux_dispersion,
 )
 from qualibration_libs.parameters import get_qubits
 from qualibration_libs.runtime import simulate_and_plot
 from qualibration_libs.data import XarrayDataFetcher
 
 
-# %% {Initialisation}
+# %% {Node initialisation}
 description = """
-        Ask LCH
+        RESONATOR SPECTROSCOPY VERSUS FLUX — SINGLE FLUX SOURCE (LCH / scqat analysis)
+Maps the resonator response by sweeping a flux bias and the readout frequency, then extracts the
+resonator centre frequency as a function of flux.
+
+Unlike the official 02c node — which forces every measured qubit to drive its own z-line — this node
+adds a `z_source_qubit` parameter: when set, that single qubit's z-line drives the flux sweep while all
+qubits in `qubits` are read out (e.g. to see how one flux line shifts other resonators). When
+`z_source_qubit` is None the behaviour is identical to 02c (each qubit fluxes itself).
+
+Analysis is done by the scqat ResonatorSpectroscopyVsFluxAnalyzer, which fits the resonator dip
+flux-by-flux (single inverted Lorentzian per slice) to reduce the 2-D (flux, detuning) map to a 1-D
+centre-frequency(flux) trace. Turning that trace into state updates (sweet spot, idle offset, phi0) is
+deferred — `update_state` is currently a no-op.
+
+Prerequisites:
+    - Having calibrated the resonator frequency (nodes 02a, 02b and/or 02c).
+    - Having specified the desired flux point (qubit.z.flux_point).
 """
+
 
 # Be sure to include [Parameters, Quam] so the node has proper type hinting
 node = QualibrationNode[Parameters, Quam](
@@ -45,11 +64,9 @@ node = QualibrationNode[Parameters, Quam](
 def custom_param(node: QualibrationNode[Parameters, Quam]):
     """Allow the user to locally set the node parameters for debugging purposes, or execution in the Python IDE."""
     # You can get type hinting in your IDE by typing node.parameters.
-    node.parameters.qubits = ["q1"]
-    node.parameters.simulate = True
-    node.parameters.z_source_qubit = "q1"
-    node.parameters.frequency_span_in_mhz = 1
-    node.parameters.frequency_step_in_mhz = 0.5
+    node.parameters.qubits = ["q4", "q5"]
+    node.parameters.z_source_qubit = "q5"  # sweep only q1's flux while reading the listed resonators
+    # node.parameters.simulate = True
     pass
 
 
@@ -82,13 +99,14 @@ def create_qua_program(node: QualibrationNode[Parameters, Quam]):
     step = node.parameters.frequency_step_in_mhz * u.MHz
     dfs = np.arange(-span / 2, +span / 2, step)
 
+    # Resolve the single flux-source qubit (if any). When None, each measured
+    # qubit drives its own z-line (identical to the official 02c node).
     if node.parameters.z_source_qubit is None:
         z_source_qubit = None
     else:
         z_source_qubit = node.machine.qubits[node.parameters.z_source_qubit]
 
-
-
+    # Register the sweep axes to be added to the dataset when fetching data
     node.namespace["sweep_axes"] = {
         "qubit": xr.DataArray(qubits.get_names()),
         "flux_bias": xr.DataArray(dcs, attrs={"long_name": "flux bias", "units": "V"}),
@@ -100,6 +118,7 @@ def create_qua_program(node: QualibrationNode[Parameters, Quam]):
         I, I_st, Q, Q_st, n, n_st = node.machine.declare_qua_variables()
         dc = declare(fixed)  # QUA variable for the flux bias
         df = declare(int)  # QUA variable for the readout frequency detuning
+        idx = declare(int)  # progress index over the outer flux loop
 
         for multiplexed_qubits in qubits.batch():
             # Initialize the QPU in terms of flux points (flux tunable transmons and/or tunable couplers)
@@ -107,54 +126,44 @@ def create_qua_program(node: QualibrationNode[Parameters, Quam]):
                 node.machine.initialize_qpu(target=qubit)
             align()
 
-            with for_(n, 0, n < n_avg, n + 1):
-                save(n, n_st)
-                with for_(*from_array(dc, dcs)):
-                    # Flux sweeping by tuning the OPX dc offset associated with the flux_line element
-
-                    if z_source_qubit is None:
-                        for i, qubit in multiplexed_qubits.items():
-                            qubit.z.set_dc_offset(dc)
-                            qubit.z.settle()
-                    else:
-                        z_source_qubit.z.set_dc_offset(dc)
-                        z_source_qubit.z.settle()
-
-                    align()
-
+            assign(idx, 0)
+            with for_(*from_array(dc, dcs)):
+                # Save the flux-point counter for the progress bar
+                save(idx, n_st)
+                assign(idx, idx + 1)
+                # Apply the flux: either from the single source qubit, or per-qubit (== 02c).
+                if z_source_qubit is None:
                     for i, qubit in multiplexed_qubits.items():
-                        rr = qubit.resonator
-                        print(f"Qubit {rr.name}")
+                        qubit.z.set_dc_offset(dc)
+                        qubit.z.settle()
+                else:
+                    z_source_qubit.z.set_dc_offset(dc)
+                    z_source_qubit.z.settle()
+                align()
 
-                        with for_(*from_array(df, dfs)):
-                            # Update the resonator frequencies for resonator
-                            rr.update_frequency(df + rr.intermediate_frequency)
+                # Read out every measured qubit's resonator at this flux bias.
+                for i, qubit in multiplexed_qubits.items():
+                    rr = qubit.resonator
+                    with for_(*from_array(df, dfs)):
+                        # Update the resonator frequencies for resonator
+                        rr.update_frequency(df + rr.intermediate_frequency)
+                        # Average innermost: repeat the measurement n_avg times per point
+                        with for_(n, 0, n < n_avg, n + 1):
                             # readout the resonator
                             rr.measure("readout", qua_vars=(I[i], Q[i]))
                             # wait for the resonator to deplete
-                            rr.wait(rr.depletion_time//4 * u.ns)
+                            rr.wait(rr.depletion_time * u.ns)
                             # save data
                             save(I[i], I_st[i])
                             save(Q[i], Q_st[i])
-
-                    align()
-                    # Testing net zero flux biasing
-                    if z_source_qubit is None:
-                        for i, qubit in multiplexed_qubits.items():
-                            qubit.z.set_dc_offset(-dc)
-                            qubit.z.settle()
-                            qubit.z.align()
-                    else:
-                        z_source_qubit.z.set_dc_offset(-dc)
-                        z_source_qubit.z.settle()
-                    # wait((rr.depletion_time//4) * u.ns)
-                    align()
+                align()
 
         with stream_processing():
             n_st.save("n")
             for i in range(num_qubits):
-                I_st[i].buffer(len(dfs)).buffer(len(dcs)).average().save(f"I{i + 1}")
-                Q_st[i].buffer(len(dfs)).buffer(len(dcs)).average().save(f"Q{i + 1}")
+                # Average the innermost n_avg shots, then buffer detuning then flux
+                I_st[i].buffer(n_avg).map(FUNCTIONS.average()).buffer(len(dfs)).buffer(len(dcs)).save(f"I{i + 1}")
+                Q_st[i].buffer(n_avg).map(FUNCTIONS.average()).buffer(len(dfs)).buffer(len(dcs)).save(f"Q{i + 1}")
 
 
 # %% {Simulate}
@@ -188,7 +197,7 @@ def execute_qua_program(node: QualibrationNode[Parameters, Quam]):
         for dataset in data_fetcher:
             progress_counter(
                 data_fetcher.get("n", 0),
-                node.parameters.num_shots,
+                node.parameters.num_flux_points,
                 start_time=data_fetcher.t_start,
             )
         # Display the execution report to expose possible runtime errors
@@ -197,7 +206,7 @@ def execute_qua_program(node: QualibrationNode[Parameters, Quam]):
     node.results["ds_raw"] = dataset
 
 
-# %% {Load_data}
+# %% {Load_historical_data}
 @node.run_action(skip_if=node.parameters.load_data_id is None)
 def load_data(node: QualibrationNode[Parameters, Quam]):
     """Load a previously acquired dataset."""
@@ -212,56 +221,89 @@ def load_data(node: QualibrationNode[Parameters, Quam]):
 # %% {Analyse_data}
 @node.run_action(skip_if=node.parameters.simulate)
 def analyse_data(node: QualibrationNode[Parameters, Quam]):
-    """Analyse the raw data and store the fitted data in another xarray dataset "ds_fit" and the fitted results in the "fit_results" dictionary."""
-    node.results["ds_raw"] = process_raw_dataset(node.results["ds_raw"], node)
-    # node.results["ds_fit"], fit_results = fit_raw_data(node.results["ds_raw"], node)
-    # node.results["fit_results"] = {k: asdict(v) for k, v in fit_results.items()}
+    """Fit the resonator dip flux-by-flux with scqat to reduce the 2-D map to a
+    1-D centre-frequency(flux) trace. The per-qubit (slice, results) pairs are kept
+    in the namespace so plot_data can redraw the figures without refitting."""
+    ds = process_raw_dataset(node.results["ds_raw"], node)
+    node.results["ds_raw"] = ds
+    sep_results, fit_results = fit_raw_data(ds, node)
+    node.namespace["sep_results"] = sep_results
+    node.results["fit_results"] = fit_results
 
-    # Log the relevant information extracted from the data analysis
-    # log_fitted_results(node.results["fit_results"], log_callable=node.log)
-    # node.outcomes = {
-    #     qubit_name: ("successful" if fit_result["success"] else "failed")
-    #     for qubit_name, fit_result in node.results["fit_results"].items()
-    # }
+    # Log the per-slice (flux-by-flux) dip-fit summary
+    log_fitted_results(node.results["fit_results"], log_callable=node.log)
+
+    # Second stage: fit the centre-frequency(flux) trace with the full-transmon
+    # dispersive model (sweet spot, dv_phi0, f_r0; g is conditional for now).
+    dispersion_sep, dispersion_results = fit_flux_dependence(sep_results, node)
+    node.namespace["dispersion_sep"] = dispersion_sep
+    node.results["dispersion_results"] = dispersion_results
+    log_dispersion_results(dispersion_results, log_callable=node.log)
+
+    # The dispersive fit is the deliverable that gates the state update, so the
+    # node outcome reflects its per-qubit success.
+    node.outcomes = {
+        qubit_name: ("successful" if disp["success"] else "failed")
+        for qubit_name, disp in node.results["dispersion_results"].items()
+    }
 
 
 # %% {Plot_data}
 @node.run_action(skip_if=node.parameters.simulate or not node.parameters.plot)
 def plot_data(node: QualibrationNode[Parameters, Quam]):
-    """Plot the raw and fitted data in specific figures whose shape is given by qubit.grid_location."""
-    fig_raw_fit = plot_raw_data_with_fit(node.results["ds_raw"], node.namespace["qubits"])
+    """Plot, for each qubit, the 2-D |IQ| map with the fitted resonator-centre trace
+    overlaid, plus the dispersive centre-frequency(flux) fit."""
+    figures = plot_raw_data_with_fit(node.namespace["sep_results"])
+    dispersion_figures = plot_flux_dispersion(node.namespace["dispersion_sep"])
+    # Merge the per-qubit figure dicts so both views are stored under each qubit.
+    for qubit_name, figs in dispersion_figures.items():
+        figures.setdefault(qubit_name, {}).update(figs)
+    node.results["figures"] = figures
     plt.show()
-    # Store the generated figures
-    node.results["figures"] = {
-        "amplitude": fig_raw_fit,
-    }
 
 
 # %% {Update_state}
 @node.run_action(skip_if=node.parameters.simulate)
 def update_state(node: QualibrationNode[Parameters, Quam]):
-    """Update the relevant parameters if the qubit data analysis was successful."""
-    pass
-    # with node.record_state_updates():
-    #     for q in node.namespace["qubits"]:
-    #         if node.outcomes[q.name] == "failed":
-    #             continue
+    """Write the robust dispersive-fit outputs to the QUAM state: the idle
+    (sweet-spot) flux offset, the minimum-frequency flux point, the resonator
+    readout frequency at the sweet spot, and the flux period (phi0).
 
-    #         fit_results = node.results["fit_results"][q.name]
+    Only the degeneracy-independent quantities are written; g / f_q_max stay out
+    of the state (they are conditional until a spectroscopy prior is supplied).
 
-    #         # Update the idle offset
-    #         if q.z.flux_point == "independent":
-    #             q.z.independent_offset = fit_results["idle_offset"]
-    #         else:
-    #             q.z.joint_offset = fit_results["idle_offset"]
-    #         # Update the min offset
-    #         if node.parameters.update_flux_min:
-    #             q.z.min_offset = fit_results["min_offset"]
-    #         # Update the readout frequency for the given flux point
-    #         q.resonator.f_01 += fit_results["frequency_shift"]
-    #         q.resonator.RF_frequency += fit_results["frequency_shift"]
-    #         q.phi0_voltage = fit_results["dv_phi0"]
-    #         q.phi0_current = fit_results["phi0_current"]
+    When a single external flux source drives the sweep (z_source_qubit set), only
+    that qubit measures its own resonator-vs-its-own-flux; every other measured
+    resonator is crosstalk from the source's flux line, so its z offsets / readout
+    frequency must NOT be updated from this run."""
+    z_src = node.parameters.z_source_qubit
+    with node.record_state_updates():
+        for q in node.namespace["qubits"]:
+            if q.z is None or node.outcomes[q.name] == "failed":
+                continue
+            # Skip crosstalk qubits: only the flux-source qubit's fit is a valid
+            # self-flux calibration (when z_source_qubit is None, every qubit fluxes
+            # itself, so none are skipped).
+            if z_src is not None and q.name != z_src:
+                node.log(f"Skipping state update for {q.name}: crosstalk under z_source_qubit={z_src}")
+                continue
+
+            disp = node.results["dispersion_results"][q.name]
+
+            # Idle (sweet-spot) flux offset — the flux of maximum resonator frequency.
+            if q.z.flux_point == "independent":
+                q.z.independent_offset = disp["sweet_spot_flux"]
+            else:
+                q.z.joint_offset = disp["sweet_spot_flux"]
+            # Minimum-frequency flux point (half a period from the sweet spot).
+            if node.parameters.update_flux_min:
+                q.z.min_offset = disp["min_offset"]
+            # Resonator readout frequency at the sweet spot (absolute).
+            q.resonator.f_01 = disp["sweet_spot_freq"]
+            q.resonator.RF_frequency = disp["sweet_spot_freq"]
+            # Flux quantum in voltage / current.
+            q.phi0_voltage = disp["dv_phi0"]
+            q.phi0_current = disp["phi0_current"]
 
 
 # %% {Save_results}
