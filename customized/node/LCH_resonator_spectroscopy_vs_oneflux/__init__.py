@@ -6,7 +6,7 @@ from .analysis import (
     fit_flux_dependence,
     log_dispersion_results,
 )
-from .plotting import plot_raw_data_with_fit, plot_flux_dispersion
+from .plotting import plot_combined
 
 __all__ = [
     "Parameters",
@@ -15,6 +15,5 @@ __all__ = [
     "log_fitted_results",
     "fit_flux_dependence",
     "log_dispersion_results",
-    "plot_raw_data_with_fit",
-    "plot_flux_dispersion",
+    "plot_combined",
 ]

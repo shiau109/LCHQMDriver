@@ -20,8 +20,7 @@ from customized.node.LCH_resonator_spectroscopy_vs_oneflux import (
     log_fitted_results,
     fit_flux_dependence,
     log_dispersion_results,
-    plot_raw_data_with_fit,
-    plot_flux_dispersion,
+    plot_combined,
 )
 from qualibration_libs.parameters import get_qubits
 from qualibration_libs.runtime import simulate_and_plot
@@ -251,14 +250,11 @@ def analyse_data(node: QualibrationNode[Parameters, Quam]):
 # %% {Plot_data}
 @node.run_action(skip_if=node.parameters.simulate or not node.parameters.plot)
 def plot_data(node: QualibrationNode[Parameters, Quam]):
-    """Plot, for each qubit, the 2-D |IQ| map with the fitted resonator-centre trace
-    overlaid, plus the dispersive centre-frequency(flux) fit."""
-    figures = plot_raw_data_with_fit(node.namespace["sep_results"])
-    dispersion_figures = plot_flux_dispersion(node.namespace["dispersion_sep"])
-    # Merge the per-qubit figure dicts so both views are stored under each qubit.
-    for qubit_name, figs in dispersion_figures.items():
-        figures.setdefault(qubit_name, {}).update(figs)
-    node.results["figures"] = figures
+    """One combined figure per qubit: the 2-D |IQ| raw map, the per-flux fitted
+    resonator centres, and the dispersive centre-frequency(flux) fit curve."""
+    node.results["figures"] = plot_combined(
+        node.namespace["sep_results"], node.namespace["dispersion_sep"]
+    )
     plt.show()
 
 
