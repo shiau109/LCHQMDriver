@@ -1,7 +1,7 @@
 from qualibrate import NodeParameters
 from qualibrate.core.parameters import RunnableParameters
 from qualibration_libs.parameters import QubitsExperimentNodeParameters, CommonNodeParameters, IdleTimeNodeParameters
-from customized.common_parameters import CommonFluxParameters, PlottingParameters
+from customized.common_parameters import PlottingParameters
 from typing import List, Optional, Literal
 
 
@@ -19,7 +19,6 @@ class Parameters(
     IdleTimeNodeParameters,
     NodeSpecificParameters,
     QubitsExperimentNodeParameters,
-    CommonFluxParameters,
     PlottingParameters,
 ):
     pass

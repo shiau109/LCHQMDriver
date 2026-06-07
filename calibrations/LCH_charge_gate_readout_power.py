@@ -60,7 +60,6 @@ def create_qua_program(node: QualibrationNode[Parameters, Quam]):
 
     n_runs = p.num_shots  # Number of runs
     amps = np.linspace(p.start_amp, p.end_amp, p.num_amps)
-    flux_idle_case = p.flux_idle_case
     print(f"{qubits[0].charge_offset} charge offset")
     charge_gate_volts = np.arange(p.charge_gate_start_in_v, p.charge_gate_end_in_v +p.charge_gate_step_in_v/2, p.charge_gate_step_in_v)
     relative_charge_gate_volts = charge_gate_volts
@@ -88,7 +87,7 @@ def create_qua_program(node: QualibrationNode[Parameters, Quam]):
         for multiplexed_qubits in qubits.batch():
             # Initialize the QPU in terms of flux points (flux tunable transmons and/or tunable couplers)
             for qubit in multiplexed_qubits.values():
-                node.machine.initialize_qpu(target=qubit, flux_point=flux_idle_case)
+                node.machine.initialize_qpu(target=qubit)
             align()
             with for_each_(ps, prepared_states):
 

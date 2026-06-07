@@ -62,7 +62,6 @@ def create_qua_program(node: QualibrationNode[Parameters, Quam]):
     # Extract the sweep parameters and axes from the node parameters
     n_avg = node.parameters.num_shots
     idle_times = get_idle_times_in_clock_cycles(node.parameters)
-    flux_idle_case = node.parameters.flux_idle_case
 
     flux_amp_array = np.linspace(
         node.parameters.min_flux_amp_in_v,
@@ -88,7 +87,7 @@ def create_qua_program(node: QualibrationNode[Parameters, Quam]):
         for multiplexed_qubits in qubits.batch():
             # Initialize the QPU in terms of flux points (flux tunable transmons and/or tunable couplers)
             for qubit in multiplexed_qubits.values():
-                node.machine.initialize_qpu(target=qubit, flux_point=flux_idle_case)
+                node.machine.initialize_qpu(target=qubit)
 
             with for_(n, 0, n < n_avg, n + 1):
                 save(n, n_st)

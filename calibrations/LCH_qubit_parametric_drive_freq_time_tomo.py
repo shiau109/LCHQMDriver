@@ -76,7 +76,6 @@ def create_qua_program(node: QualibrationNode[Parameters, Quam]):
     time_ns =  time_tick*4  # in ns
 
     freqs = np.linspace( p.min_frequency_mhz*u.MHz, p.max_frequency_mhz*u.MHz, p.frequency_points)
-    flux_idle_case = node.parameters.flux_idle_case
 
     readout_basis_array = [0, 1, 2]  # X, Y, Z
 
@@ -103,7 +102,7 @@ def create_qua_program(node: QualibrationNode[Parameters, Quam]):
         for multiplexed_qubits in qubits.batch():
             # Initialize the QPU in terms of flux points (flux tunable transmons and/or tunable couplers)
             for qubit in multiplexed_qubits.values():
-                node.machine.initialize_qpu(target=qubit, flux_point=flux_idle_case)
+                node.machine.initialize_qpu(target=qubit)
             align()
 
             with for_(n, 0, n < n_avg, n + 1):
