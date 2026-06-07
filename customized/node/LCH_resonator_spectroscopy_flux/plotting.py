@@ -1,4 +1,4 @@
-"""Plotting for the LCH_resonator_spectroscopy_vs_oneflux node.
+"""Plotting for the LCH_resonator_spectroscopy_flux node.
 
 A single combined figure per qubit overlaying, on one absolute-frequency axis:
   * the 2-D ``|IQ|`` amplitude map (raw data) over (flux, frequency),

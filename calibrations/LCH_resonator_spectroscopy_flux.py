@@ -13,7 +13,7 @@ from qualang_tools.units import unit
 
 from qualibrate import QualibrationNode
 from quam_config import Quam
-from customized.node.LCH_resonator_spectroscopy_vs_oneflux import (
+from customized.node.LCH_resonator_spectroscopy_flux import (
     Parameters,
     process_raw_dataset,
     fit_raw_data,
@@ -51,7 +51,7 @@ Prerequisites:
 
 # Be sure to include [Parameters, Quam] so the node has proper type hinting
 node = QualibrationNode[Parameters, Quam](
-    name="LCH_resonator_spectroscopy_vs_oneflux",  # Name should be unique
+    name="LCH_resonator_spectroscopy_flux",  # Name should be unique
     description=description,  # Describe what the node is doing, which is also reflected in the QUAlibrate GUI
     parameters=Parameters(),  # Node parameters defined under quam_experiment/experiments/node_name
 )

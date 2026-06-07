@@ -1,4 +1,4 @@
-"""Analysis wrappers for the LCH_resonator_spectroscopy_vs_oneflux node.
+"""Analysis wrappers for the LCH_resonator_spectroscopy_flux node.
 
 These thin wrappers delegate the actual fitting to the scqat
 ``ResonatorSpectroscopyVsFluxAnalyzer``, which collapses the 2-D
