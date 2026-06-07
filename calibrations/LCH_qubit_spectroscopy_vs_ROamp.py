@@ -244,24 +244,24 @@ def plot_data(node: QualibrationNode[Parameters, Quam]):
     """Analyse the AC-Stark shift (qubit spectroscopy vs readout amplitude) with
     scqat and store the figures.
 
-    Note: scqat's AcStarkShiftAnalyzer extracts f01 per amplitude slice (via
-    QubitSpectroscopyAnalyzer) and fits the shift vs amp**2. It does NOT port
+    Note: scqat's AcStarkShiftEstimator extracts f01 per amplitude slice (via
+    QubitSpectroscopyEstimator) and fits the shift vs amp**2. It does NOT port
     qcat's full cavity-model fit (the kc/ki/g/X_eff/f_bare ``given_factors`` used
     to predict wiring attenuation / target photon number). Pass ``chi_eff=...`` to
     convert the detuning to a photon number once the units are confirmed."""
     from scqat.parsers import repetition_data
-    from scqat.protocols.ac_stark_shift import AcStarkShiftAnalyzer
+    from scqat.estimators.ac_stark_shift import AcStarkShiftEstimator
 
     # ds_raw already carries I/Q and the detuning/readout_amp_ratio coords that
     # scqat expects, so no renaming is needed.
     ds = node.results["ds_raw"]
     node.results["fit_results"] = {}
     node.results["figures"] = {}
-    analyzer = AcStarkShiftAnalyzer()
+    estimator = AcStarkShiftEstimator()
     for sq_data in repetition_data(ds):
         qubit_name = sq_data["qubit"].values.item()
         print(f"Analysing {qubit_name}.")
-        results, figs = analyzer.analyze(sq_data, output_dir=None)
+        results, figs = estimator.analyze(sq_data, output_dir=None)
         node.results["fit_results"][qubit_name] = results
         node.results["figures"][qubit_name] = figs
 

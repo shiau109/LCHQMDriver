@@ -187,7 +187,7 @@ def analyse_data(node: QualibrationNode[Parameters, Quam]):
     results and figures. scqat auto-detects single vs beat (charge-dispersion) and
     returns result keys a_1/a_2/f_1/f_2/... consumed by update_state below."""
     from scqat.parsers import repetition_data
-    from scqat.protocols.ramsey import RamseyAnalyzer
+    from scqat.estimators.ramsey import RamseyEstimator
 
     if node.parameters.use_state_discrimination:
         ds = node.results["ds_raw"].rename({"state": "signal"})
@@ -197,17 +197,17 @@ def analyse_data(node: QualibrationNode[Parameters, Quam]):
     sep_data = repetition_data(ds, repetition_dim="qubit")
     node.results["fit_results"] = {}
     node.results["figures"] = {}
-    analyzer = RamseyAnalyzer()
+    estimator = RamseyEstimator()
     for sq_data in sep_data:
         qubit_name = sq_data["qubit"].values.item()
-        results, figs = analyzer.analyze(sq_data, output_dir=None)
+        results, figs = estimator.analyze(sq_data, output_dir=None)
         node.results["fit_results"][qubit_name] = results
         node.results["figures"][qubit_name] = figs
 
 # %% {Plot_data}
 @node.run_action(skip_if=node.parameters.simulate)
 def plot_data(node: QualibrationNode[Parameters, Quam]):
-    """Figures are produced by the scqat analyzer in analyse_data."""
+    """Figures are produced by the scqat estimator in analyse_data."""
     pass
 
 

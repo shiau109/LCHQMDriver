@@ -208,7 +208,7 @@ def plot_data(node: QualibrationNode[Parameters, Quam]):
     """Plot the raw and fitted data in specific figures whose shape is given by qubit.grid_location."""
     pass
     # from scqat.parsers import load_xarray_h5, repetition_data
-    # from scqat.protocols.readout_fidelity import ReadoutPowerFidelityAnalyzer
+    # from scqat.estimators.readout_fidelity import ReadoutPowerFidelityEstimator
 
     # ds = node.results["ds_raw"]
     # sep_data = repetition_data(ds, repetition_dim="qubit")

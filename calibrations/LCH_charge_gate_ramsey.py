@@ -187,7 +187,7 @@ def load_data(node: QualibrationNode[Parameters, Quam]):
 def analyse_data(node: QualibrationNode[Parameters, Quam]):
     """Analyse the raw data and store the fitted data in another xarray dataset "ds_fit" and the fitted results in the "fit_results" dictionary."""
     from scqat.parsers import repetition_data
-    from scqat.protocols.charge_gate_ramsey import ChargeGateRamseyAnalyzer
+    from scqat.estimators.charge_gate_ramsey import ChargeGateRamseyEstimator
     p = node.parameters
     if p.use_state_discrimination:
         ds = node.results["ds_raw"].rename({"state": "signal"})
@@ -209,8 +209,8 @@ def analyse_data(node: QualibrationNode[Parameters, Quam]):
             # analysis.fixed_frequency = 1/(p.gate_period_in_volt*2)  
             ANALYSIS_KWARGS["abscos_frequency_fixed"] = 1/(p.gate_period_in_volt*2)      
         # analysis = ChargeGateRamseyAnalysis()
-        analyzer = ChargeGateRamseyAnalyzer()
-        results, figs = analyzer.analyze(
+        estimator = ChargeGateRamseyEstimator()
+        results, figs = estimator.analyze(
             sq_data,
             output_dir=None,
             **ANALYSIS_KWARGS,

@@ -185,7 +185,7 @@ def analyse_data(node: QualibrationNode[Parameters, Quam]):
 def plot_data(node: QualibrationNode[Parameters, Quam]):
     """Plot the raw and fitted data in specific figures whose shape is given by qubit.grid_location."""
     from scqat.parsers import repetition_data
-    from scqat.protocols.readout_fidelity import ReadoutFreqFidelityAnalyzer
+    from scqat.estimators.readout_fidelity import ReadoutFreqFidelityEstimator
 
     # ds_raw already carries the I/Q vars and shot_idx/frequency/prepared_state
     # coords that scqat expects (see sweep_axes above), so no renaming is needed.
@@ -193,10 +193,10 @@ def plot_data(node: QualibrationNode[Parameters, Quam]):
     sep_data = repetition_data(ds, repetition_dim="qubit")
     node.results["fit_results"] = {}
     node.results["figures"] = {}
-    analyzer = ReadoutFreqFidelityAnalyzer()
+    estimator = ReadoutFreqFidelityEstimator()
     for sq_data in sep_data:
         qubit_name = sq_data["qubit"].values.item()
-        results, figs = analyzer.analyze(sq_data, output_dir=None)
+        results, figs = estimator.analyze(sq_data, output_dir=None)
         node.results["fit_results"][qubit_name] = results
         node.results["figures"][qubit_name] = figs
 

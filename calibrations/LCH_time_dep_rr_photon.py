@@ -237,14 +237,14 @@ def plot_data(node: QualibrationNode[Parameters, Quam]):
     pass
     # node.results["figures"] = {}
     # from scqat.parsers import repetition_data
-    # raw-2D colormap is now provided by scqat.protocols.readout_pulse_photon.ReadoutPulsePhotonAnalyzer
+    # raw-2D colormap is now provided by scqat.estimators.readout_pulse_photon.ReadoutPulsePhotonEstimator
     # ds = node.results["ds_raw"]
 
     # for sq_data in repetition_data(ds):
     #     qubit_name = sq_data["qubit"].values.item()
 
 
-    #     from scqat.protocols.readout_pulse_photon import ReadoutPulsePhotonAnalyzer
+    #     from scqat.estimators.readout_pulse_photon import ReadoutPulsePhotonEstimator
 
     #     plot_info=dict(P_rescale=False, #normalize contrast to population
     #            Dis=None,

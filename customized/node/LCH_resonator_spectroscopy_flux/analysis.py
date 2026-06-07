@@ -1,7 +1,7 @@
 """Analysis wrappers for the LCH_resonator_spectroscopy_flux node.
 
 These thin wrappers delegate the actual fitting to the scqat
-``ResonatorSpectroscopyVsFluxAnalyzer``, which collapses the 2-D
+``ResonatorSpectroscopyVsFluxEstimator``, which collapses the 2-D
 ``(flux_bias, detuning)`` map into a 1-D ``center_frequency(flux)`` trace by
 fitting the resonator dip flux-by-flux (single inverted Lorentzian per slice).
 
@@ -23,7 +23,7 @@ from qualibration_libs.data import add_amplitude_and_phase, convert_IQ_to_V
 
 
 def process_raw_dataset(ds: xr.Dataset, node: QualibrationNode) -> xr.Dataset:
-    """Convert the raw I/Q to volts and attach the coordinates the analyzer and
+    """Convert the raw I/Q to volts and attach the coordinates the estimator and
     plots need: the absolute readout frequency ``full_freq`` and the flux-line
     ``current`` / ``attenuated_current`` (kept for the deferred downstream step)."""
     # Convert the 'I' and 'Q' quadratures from demodulation units to V.
@@ -47,28 +47,28 @@ def process_raw_dataset(ds: xr.Dataset, node: QualibrationNode) -> xr.Dataset:
 
 def fit_raw_data(ds: xr.Dataset, node: QualibrationNode) -> Tuple[Dict, Dict]:
     """Fit the resonator dip flux-by-flux for every qubit with the scqat
-    ``ResonatorSpectroscopyVsFluxAnalyzer``.
+    ``ResonatorSpectroscopyVsFluxEstimator``.
 
     Returns
     -------
     (sep_results, fit_results)
-        ``sep_results[qubit] = (slice_ds, analyzer_results)`` — the per-qubit
-        dataset slice and full analyzer output, kept so ``plot_data`` can redraw
+        ``sep_results[qubit] = (slice_ds, estimator_results)`` — the per-qubit
+        dataset slice and full estimator output, kept so ``plot_data`` can redraw
         the figure without refitting.
         ``fit_results[qubit]`` — a compact scalar summary (success flag, number
         of fitted flux points, centre-frequency span) used for logging / outcomes.
     """
     from scqat.parsers import repetition_data
-    from scqat.protocols.resonator_spectroscopy_vs_flux import ResonatorSpectroscopyVsFluxAnalyzer
+    from scqat.estimators.resonator_spectroscopy_vs_flux import ResonatorSpectroscopyVsFluxEstimator
 
-    analyzer = ResonatorSpectroscopyVsFluxAnalyzer()
+    estimator = ResonatorSpectroscopyVsFluxEstimator()
     sep_results: Dict = {}
     fit_results: Dict = {}
     n_sigma = float(getattr(node.parameters, "outlier_n_sigma", 3.0))
 
     for sq in repetition_data(ds, repetition_dim="qubit"):
         qubit_name = sq["qubit"].values.item()
-        results = analyzer.analyze(sq, output_dir=None, skip_figures=True, n_sigma=n_sigma)[0]
+        results = estimator.analyze(sq, output_dir=None, skip_figures=True, n_sigma=n_sigma)[0]
         sep_results[qubit_name] = (sq, results)
 
         # Centre-frequency span computed over the kept (good) points only.
@@ -107,7 +107,7 @@ def log_fitted_results(fit_results: Dict, log_callable=None) -> None:
 
 def fit_flux_dependence(sep_results: Dict, node: QualibrationNode) -> Tuple[Dict, Dict]:
     """Fit each qubit's ``center_frequency(flux)`` trace with the scqat
-    ``ResonatorFluxDispersionAnalyzer`` (full-transmon dispersive model).
+    ``ResonatorFluxDispersionEstimator`` (full-transmon dispersive model).
 
     Consumes the per-qubit ``(slice_ds, vs_flux_results)`` pairs from
     ``fit_raw_data`` and runs the dispersion fit on the extracted centre trace.
@@ -115,14 +115,14 @@ def fit_flux_dependence(sep_results: Dict, node: QualibrationNode) -> Tuple[Dict
     Returns
     -------
     (dispersion_sep, dispersion_results)
-        ``dispersion_sep[qubit] = (trace_ds, analyzer_results)`` kept for redraw;
+        ``dispersion_sep[qubit] = (trace_ds, estimator_results)`` kept for redraw;
         ``dispersion_results[qubit]`` is a compact scalar summary (sweet spot,
         period dv_phi0, f_r0, conditional g, ...). ``g`` is conditional on the
         assumed ``f_q_max`` until a spectroscopy prior is wired in.
     """
-    from scqat.protocols.resonator_flux_dispersion import ResonatorFluxDispersionAnalyzer
+    from scqat.estimators.resonator_flux_dispersion import ResonatorFluxDispersionEstimator
 
-    analyzer = ResonatorFluxDispersionAnalyzer()
+    estimator = ResonatorFluxDispersionEstimator()
     dispersion_sep: Dict = {}
     dispersion_results: Dict = {}
 
@@ -139,10 +139,10 @@ def fit_flux_dependence(sep_results: Dict, node: QualibrationNode) -> Tuple[Dict
         )
         # NOTE: an f_q_max prior (from qubit spectroscopy / the QUAM state) could
         # be passed here to make g physical; deferred for now (g stays conditional).
-        res = analyzer.analyze(trace, output_dir=None, skip_figures=True)[0]
+        res = estimator.analyze(trace, output_dir=None, skip_figures=True)[0]
         dispersion_sep[qubit_name] = (trace, res)
 
-        # Instrument/state-level conversions (kept out of the physics analyzer):
+        # Instrument/state-level conversions (kept out of the physics estimator):
         # the minimum-frequency flux point sits half a period from the sweet spot
         # (toward 0, clamped to the line range), and the flux quantum in current.
         sweet = float(res["sweet_spot_flux"])

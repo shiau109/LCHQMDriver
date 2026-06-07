@@ -182,11 +182,11 @@ def analyse_data(node: QualibrationNode[Parameters, Quam]):
 def plot_data(node: QualibrationNode[Parameters, Quam]):
     """Analyse readout-power fidelity with scqat and store the figures.
 
-    Note: scqat's ReadoutPowerFidelityAnalyzer does NOT port qcat's
+    Note: scqat's ReadoutPowerFidelityEstimator does NOT port qcat's
     power-specific linear mean-drift refit (fit_means_vs_amp_prefactor); the
     core per-amplitude state-discrimination sweep is preserved."""
     from scqat.parsers import repetition_data
-    from scqat.protocols.readout_fidelity import ReadoutPowerFidelityAnalyzer
+    from scqat.estimators.readout_fidelity import ReadoutPowerFidelityEstimator
 
     # ds_raw already carries the I/Q vars and shot_idx/amp_prefactor/prepared_state
     # coords that scqat expects (see sweep_axes above), so no renaming is needed.
@@ -194,10 +194,10 @@ def plot_data(node: QualibrationNode[Parameters, Quam]):
     sep_data = repetition_data(ds, repetition_dim="qubit")
     node.results["fit_results"] = {}
     node.results["figures"] = {}
-    analyzer = ReadoutPowerFidelityAnalyzer()
+    estimator = ReadoutPowerFidelityEstimator()
     for sq_data in sep_data:
         qubit_name = sq_data["qubit"].values.item()
-        results, figs = analyzer.analyze(sq_data, output_dir=None)
+        results, figs = estimator.analyze(sq_data, output_dir=None)
         node.results["fit_results"][qubit_name] = results
         node.results["figures"][qubit_name] = figs
 

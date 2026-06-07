@@ -1,7 +1,7 @@
 """Analysis wrappers for the LCH_qubit_spectroscopy_flux node.
 
 These thin wrappers delegate the actual fitting to the scqat
-``QubitSpectroscopyFluxAnalyzer``, which collapses the 2-D ``(flux_bias,
+``QubitSpectroscopyFluxEstimator``, which collapses the 2-D ``(flux_bias,
 detuning)`` map into a 1-D ``qubit_frequency(flux)`` trace by fitting the qubit
 peak flux-by-flux (most-prominent single Lorentzian per slice), with strict
 window enforcement and robust width/amplitude outlier rejection.
@@ -24,7 +24,7 @@ from qualibration_libs.data import add_amplitude_and_phase, convert_IQ_to_V
 
 
 def process_raw_dataset(ds: xr.Dataset, node: QualibrationNode) -> xr.Dataset:
-    """Convert the raw I/Q to volts and attach the coordinates the analyzer and
+    """Convert the raw I/Q to volts and attach the coordinates the estimator and
     plots need: the absolute drive frequency ``full_freq`` (from the xy line) and
     the flux-line ``current`` / ``attenuated_current`` (kept for the deferred
     downstream step)."""
@@ -49,22 +49,22 @@ def process_raw_dataset(ds: xr.Dataset, node: QualibrationNode) -> xr.Dataset:
 
 def fit_raw_data(ds: xr.Dataset, node: QualibrationNode) -> Tuple[Dict, Dict]:
     """Fit the qubit peak flux-by-flux for every qubit with the scqat
-    ``QubitSpectroscopyFluxAnalyzer``.
+    ``QubitSpectroscopyFluxEstimator``.
 
     Returns
     -------
     (sep_results, fit_results)
-        ``sep_results[qubit] = (slice_ds, analyzer_results)`` — the per-qubit
-        dataset slice and full analyzer output (a peak point-cloud), kept so
+        ``sep_results[qubit] = (slice_ds, estimator_results)`` — the per-qubit
+        dataset slice and full estimator output (a peak point-cloud), kept so
         ``plot_data`` can redraw the figure without refitting.
         ``fit_results[qubit]`` — a compact scalar summary (peak / kept / outlier
         counts, qubit-frequency span over the kept peaks) used for logging /
         outcomes.
     """
     from scqat.parsers import repetition_data
-    from scqat.protocols.qubit_spectroscopy_flux import QubitSpectroscopyFluxAnalyzer
+    from scqat.estimators.qubit_spectroscopy_flux import QubitSpectroscopyFluxEstimator
 
-    analyzer = QubitSpectroscopyFluxAnalyzer()
+    estimator = QubitSpectroscopyFluxEstimator()
     sep_results: Dict = {}
     fit_results: Dict = {}
     n_sigma = float(getattr(node.parameters, "outlier_n_sigma", 3.0))
@@ -73,7 +73,7 @@ def fit_raw_data(ds: xr.Dataset, node: QualibrationNode) -> Tuple[Dict, Dict]:
 
     for sq in repetition_data(ds, repetition_dim="qubit"):
         qubit_name = sq["qubit"].values.item()
-        results = analyzer.analyze(
+        results = estimator.analyze(
             sq, output_dir=None, skip_figures=True,
             n_sigma=n_sigma, prominence=prominence, max_peaks=max_peaks,
         )[0]

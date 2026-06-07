@@ -38,7 +38,7 @@ adds a `z_source_qubit` parameter: when set, that single qubit's z-line drives t
 qubits in `qubits` are read out (e.g. to see how one flux line shifts other resonators). When
 `z_source_qubit` is None the behaviour is identical to 02c (each qubit fluxes itself).
 
-Analysis is done by the scqat ResonatorSpectroscopyVsFluxAnalyzer, which fits the resonator dip
+Analysis is done by the scqat ResonatorSpectroscopyVsFluxEstimator, which fits the resonator dip
 flux-by-flux (single inverted Lorentzian per slice) to reduce the 2-D (flux, detuning) map to a 1-D
 centre-frequency(flux) trace. Turning that trace into state updates (sweet spot, idle offset, phi0) is
 deferred — `update_state` is currently a no-op.

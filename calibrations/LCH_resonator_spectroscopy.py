@@ -22,7 +22,7 @@ description = """
         1D RESONATOR SPECTROSCOPY (LCH / scqat analysis)
 This sequence involves measuring the resonator by sending a readout pulse and demodulating the signals to extract the
 'I' and 'Q' quadratures across varying readout intermediate frequencies for all the active qubits.
-The data is then post-processed by the scqat ResonatorSpectroscopyAnalyzer (single inverted-Lorentzian fit of the
+The data is then post-processed by the scqat ResonatorSpectroscopyEstimator (single inverted-Lorentzian fit of the
 |IQ| amplitude dip) to determine the resonator resonance frequency.
 This frequency is used to update the readout frequency in the state.
 
@@ -175,22 +175,22 @@ def analyse_data(node: QualibrationNode[Parameters, Quam]):
     (dataset, results) pairs are kept in the namespace so plot_data can redraw the
     figures without refitting."""
     from scqat.parsers import repetition_data
-    from scqat.protocols.resonator_spectroscopy import ResonatorSpectroscopyAnalyzer
+    from scqat.estimators.resonator_spectroscopy import ResonatorSpectroscopyEstimator
 
     ds = node.results["ds_raw"]  # carries I/Q and the qubit/detuning coords
-    analyzer = ResonatorSpectroscopyAnalyzer()
-    node.namespace["analyzer"] = analyzer
+    estimator = ResonatorSpectroscopyEstimator()
+    node.namespace["estimator"] = estimator
     node.namespace["sep_results"] = {}
     node.results["fit_results"] = {}
 
     for sq in repetition_data(ds, repetition_dim="qubit"):
         qubit_name = sq["qubit"].values.item()
         q = next(x for x in node.namespace["qubits"] if x.name == qubit_name)
-        # Add the absolute readout-frequency axis so the analyzer can report f_01
+        # Add the absolute readout-frequency axis so the estimator can report f_01
         sq = sq.assign_coords(
             full_freq=("detuning", (sq.detuning + q.resonator.RF_frequency).values)
         )
-        results = analyzer.analyze(sq, output_dir=None, skip_figures=True)[0]
+        results = estimator.analyze(sq, output_dir=None, skip_figures=True)[0]
         # scqat reports full_freq when the coord is present; fall back to detuning + RF
         frequency = float(
             results.get("full_freq", results["detuning"] + q.resonator.RF_frequency)
@@ -221,10 +221,10 @@ def analyse_data(node: QualibrationNode[Parameters, Quam]):
 def plot_data(node: QualibrationNode[Parameters, Quam]):
     """Redraw the scqat resonator-spectroscopy figure for each qubit from the stored
     (dataset, results) pairs and store them in node.results["figures"]."""
-    analyzer = node.namespace["analyzer"]
+    estimator = node.namespace["estimator"]
     node.results["figures"] = {}
     for qubit_name, (sq, results) in node.namespace["sep_results"].items():
-        figs = analyzer.generate_figures(sq, results)
+        figs = estimator.generate_figures(sq, results)
         node.results["figures"][qubit_name] = figs
     plt.show()
 

@@ -35,7 +35,7 @@ Built on the 03b frame, with two extra knobs:
   - `xy_source_qubit`: when set, that single qubit's xy-line plays the saturation drive (its frequency
     is swept). When None, each measured qubit drives its own xy-line (== 03b).
 
-Analysis is done by the scqat QubitSpectroscopyFluxAnalyzer, which fits the qubit peak flux-by-flux
+Analysis is done by the scqat QubitSpectroscopyFluxEstimator, which fits the qubit peak flux-by-flux
 (single Lorentzian per slice, with window enforcement + outlier rejection) to reduce the 2-D
 (flux, detuning) map to a 1-D frequency(flux) trace. Turning that trace into state updates (the
 flux-tunable transmon arch fit) is deferred — `update_state` is currently a no-op.
