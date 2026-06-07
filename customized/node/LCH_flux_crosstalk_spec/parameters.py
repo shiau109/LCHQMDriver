@@ -3,7 +3,7 @@ from typing import List, Optional
 from qualibrate import NodeParameters
 from qualibrate.core.parameters import RunnableParameters
 from qualibration_libs.parameters import QubitsExperimentNodeParameters, CommonNodeParameters
-from customized.common_parameters import CommonFluxParameters
+from customized.common_parameters import CommonFluxParameters, PlottingParameters
 
 
 class NodeSpecificParameters(RunnableParameters):
@@ -39,5 +39,6 @@ class Parameters(
     NodeSpecificParameters,
     QubitsExperimentNodeParameters,
     CommonFluxParameters,
+    PlottingParameters,
 ):
     pass

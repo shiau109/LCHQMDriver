@@ -1,4 +1,5 @@
 from typing import Optional
+from customized.common_parameters import PlottingParameters
 from qualibrate import NodeParameters
 from qualibrate.core.parameters import RunnableParameters
 from qualibration_libs.parameters import QubitsExperimentNodeParameters, CommonNodeParameters
@@ -37,5 +38,6 @@ class Parameters(
     CommonNodeParameters,
     NodeSpecificParameters,
     QubitsExperimentNodeParameters,
+    PlottingParameters,
 ):
     pass

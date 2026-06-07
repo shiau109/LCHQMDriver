@@ -216,7 +216,7 @@ def analyse_data(node: QualibrationNode[Parameters, Quam]):
     pass
 
 # %% {Plot_data}
-@node.run_action(skip_if=node.parameters.simulate)
+@node.run_action(skip_if=node.parameters.simulate or not node.parameters.plot)
 def plot_data(node: QualibrationNode[Parameters, Quam]):
     from scqat.parsers import repetition_data
     if node.parameters.use_state_discrimination:

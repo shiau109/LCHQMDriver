@@ -16,6 +16,14 @@ class CommonFluxParameters(RunnableParameters):
     """Flux point to control. Default is 'joint'."""
 
 
+class PlottingParameters(RunnableParameters):
+    """Common parameters for controlling figure generation in a node."""
+
+    plot: bool = True
+    """Generate and save figures. Set False for headless/AI runs to skip plotting
+    (faster, and no PNGs written to the data folder). Default is True."""
+
+
 
 class QubitPairsExperimentNodeParameters(RunnableParameters):
     """Common parameters for configuring a 2-qubit experiment in a quantum machine simulation or execution."""

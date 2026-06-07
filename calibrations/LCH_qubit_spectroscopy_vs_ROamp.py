@@ -240,7 +240,7 @@ def analyse_data(node: QualibrationNode[Parameters, Quam]):
 
 
 # %% {Plot_data}
-@node.run_action(skip_if=node.parameters.simulate)
+@node.run_action(skip_if=node.parameters.simulate or not node.parameters.plot)
 def plot_data(node: QualibrationNode[Parameters, Quam]):
     """Analyse the AC-Stark shift (qubit spectroscopy vs readout amplitude) with
     scqat and store the figures.

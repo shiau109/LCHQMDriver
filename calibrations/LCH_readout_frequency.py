@@ -182,7 +182,7 @@ def analyse_data(node: QualibrationNode[Parameters, Quam]):
     pass
 
 # %% {Plot_data}
-@node.run_action(skip_if=node.parameters.simulate)
+@node.run_action(skip_if=node.parameters.simulate or not node.parameters.plot)
 def plot_data(node: QualibrationNode[Parameters, Quam]):
     """Plot the raw and fitted data in specific figures whose shape is given by qubit.grid_location."""
     from scqat.parsers import repetition_data

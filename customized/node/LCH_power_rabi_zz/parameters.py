@@ -1,4 +1,5 @@
 from typing import Literal, Protocol, runtime_checkable
+from customized.common_parameters import PlottingParameters
 
 import numpy as np
 from qualibrate import NodeParameters
@@ -43,6 +44,7 @@ class Parameters(
     CommonNodeParameters,
     NodeSpecificParameters,
     QubitsExperimentNodeParameters,
+    PlottingParameters,
 ):
     """Parameter set for 04b_power_rabi."""
 

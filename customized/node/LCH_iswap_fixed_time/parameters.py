@@ -1,4 +1,5 @@
 from typing import ClassVar, List, Literal, Optional
+from customized.common_parameters import PlottingParameters
 
 import numpy as np
 from qualang_tools.bakery import baking
@@ -38,6 +39,7 @@ class Parameters(
     CommonNodeParameters,
     NodeSpecificParameters,
     QubitPairExperimentNodeParameters,
+    PlottingParameters,
 ):
     targets_name: ClassVar[str] = "qubit_pairs"
 
