@@ -26,6 +26,10 @@ class NodeSpecificParameters(RunnableParameters):
     """Whether to update the saturation pulse and x180/x90 pulse amplitudes based on the peak width. Default is False"""
     drive_qubit: Optional[str] = None
     """Qubit to apply the drive pulse on. Default is None."""
+    save_plot_data: bool = False
+    """Persist the scqat plot-data reconstruction artifact (per qubit) so figures can be
+    replotted later with NO re-fit. Default False to save space — it is re-derivable from
+    ds_raw. (Promote to common_parameters.PlottingParameters when other nodes adopt it.)"""
 
 class Parameters(
     NodeParameters,
