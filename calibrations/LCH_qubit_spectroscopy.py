@@ -194,17 +194,30 @@ def load_data(node: QualibrationNode[Parameters, Quam]):
 # %% {Analyse_data}
 @node.run_action(skip_if=node.parameters.simulate)
 def analyse_data(node: QualibrationNode[Parameters, Quam]):
-    """Analyse the raw data with scqat's QubitSpectroscopyEstimator: build the complex
-    IQ signal per qubit, fit the qubit line with a Lorentzian (peak detuning + FWHM),
-    then derive the QM-specific write-backs the state needs — the readout
-    integration-weight angle and the saturation / x180 amplitudes (from the fitted
-    FWHM). The per-qubit (dataset, results) pairs are kept in the namespace so plot_data
-    can redraw the figures without refitting."""
+    """Analyse the raw data with scqat's QubitSpectroscopyEstimator. ds_raw is enriched
+    once into the canonical, estimator-native form (I/Q + detuning + full_freq); the
+    estimator builds IQdata from I/Q and fits the qubit line (peak detuning + FWHM). The
+    QM-specific write-backs are then derived (readout integration-weight angle; saturation /
+    x180 amplitudes from the fitted FWHM). Per-qubit (dataset, results, plot_data) triples
+    are kept in the namespace so plot_data redraws without refitting, and an offline re-fit
+    reads the same ds_raw with no prep."""
     from scqat.parsers import repetition_data
     from scqat.estimators.qubit_spectroscopy import QubitSpectroscopyEstimator
     from quam_config.instrument_limits import instrument_limits
 
-    ds = node.results["ds_raw"]  # carries I/Q and the qubit/detuning coords
+    # Make ds_raw the canonical, estimator-native input: enrich it once with the absolute
+    # drive-frequency axis (the only QUAM-dependent piece). I/Q stay float (netCDF-safe) and
+    # the estimator builds IQdata from them, so both the live run and an offline re-fit read
+    # this same ds_raw via repetition_data -> analyze with no per-slice prep.
+    ds = node.results["ds_raw"]
+    if "full_freq" not in ds.coords:
+        rf = {q.name: q.xy.RF_frequency for q in node.namespace["qubits"]}
+        full_freq = ds.detuning.values[None, :] + np.array(
+            [rf[str(n)] for n in ds.qubit.values]
+        )[:, None]
+        ds = ds.assign_coords(full_freq=(("qubit", "detuning"), full_freq))
+        node.results["ds_raw"] = ds
+
     estimator = QubitSpectroscopyEstimator()
     node.namespace["estimator"] = estimator
     node.namespace["sep_results"] = {}
@@ -218,18 +231,16 @@ def analyse_data(node: QualibrationNode[Parameters, Quam]):
         q = next(x for x in node.namespace["qubits"] if x.name == qubit_name)
         limits = instrument_limits(q.xy)
 
-        # QubitSpectroscopyEstimator needs a complex IQdata var and (to report an
-        # absolute f_01) the full drive-frequency axis.
-        sq = sq.assign(IQdata=sq.I + 1j * sq.Q)
-        sq = sq.assign_coords(full_freq=("detuning", (sq.detuning + q.xy.RF_frequency).values))
-
-        # Keep only the single most-prominent peak (one qubit line per slice).
+        # sq already carries I/Q + detuning + full_freq (from ds_raw); the estimator builds
+        # IQdata from I/Q. Keep only the single most-prominent peak (one qubit line per slice).
         results = estimator.analyze(sq, output_dir=None, skip_figures=True, max_peaks=1)[0]
-        node.namespace["sep_results"][qubit_name] = (sq, results)
-        # Optionally persist the plot-data reconstruction artifact so the figures can be
-        # replotted later with no re-fit (gated separately from `plot`, which saves PNGs).
+        # Build the plot-data once (the estimator-native reconstruction Dataset): reused for the
+        # figure (plot_data run-action) and, when save_plot_data is set, persisted as
+        # plotdata_<qubit>.h5 — reloadable via load_xarray_h5 + generate_figures(plot_data=...).
+        plot_data = estimator.build_plot_data(sq, results)
+        node.namespace["sep_results"][qubit_name] = (sq, results, plot_data)
         if node.parameters.save_plot_data:
-            node.results[f"plotdata_{qubit_name}"] = estimator.build_plot_data(sq, results)
+            node.results[f"plotdata_{qubit_name}"] = plot_data
 
         peaks = results.get("peaks", [])
         if peaks:
@@ -292,11 +303,14 @@ def analyse_data(node: QualibrationNode[Parameters, Quam]):
 @node.run_action(skip_if=node.parameters.simulate or not node.parameters.plot)
 def plot_data(node: QualibrationNode[Parameters, Quam]):
     """Redraw the scqat qubit-spectroscopy figure for each qubit from the stored
-    (dataset, results) pairs and store them in node.results["figures"]."""
+    (dataset, results, plot_data) triples (no refit, no rebuild) and store them in
+    node.results["figures"]."""
     estimator = node.namespace["estimator"]
     node.results["figures"] = {}
-    for qubit_name, (sq, results) in node.namespace["sep_results"].items():
-        node.results["figures"][qubit_name] = estimator.generate_figures(sq, results)
+    for qubit_name, (sq, results, plot_data) in node.namespace["sep_results"].items():
+        node.results["figures"][qubit_name] = estimator.generate_figures(
+            sq, results, plot_data=plot_data
+        )
     plt.show()
 
 
