@@ -24,6 +24,11 @@ class NodeSpecificParameters(RunnableParameters):
     """Target peak width in Hz. Default is 3e6 Hz."""
     update_pulses_amplitude: bool = False
     """Whether to update the saturation pulse and x180/x90 pulse amplitudes based on the peak width. Default is False"""
+    max_peaks: Optional[int] = 4
+    """Maximum number of spectroscopy peaks the estimator keeps (most-prominent first).
+    The SNR gate still rejects noise, so fewer are returned when fewer lines are real;
+    set None to keep all. The peak driving the write-back is the one with the largest
+    Lorentzian area. Default 4."""
     drive_qubit: Optional[str] = None
     """Qubit to apply the drive pulse on. Default is None."""
     save_plot_data: bool = False

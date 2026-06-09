@@ -39,7 +39,8 @@ def log_fitted_results(fit_results: Dict, log_callable=None):
     if log_callable is None:
         log_callable = logging.getLogger(__name__).info
     for q in fit_results.keys():
-        s_qubit = f"Results for qubit {q}: "
+        n_peaks = len(fit_results[q].get("peaks", []))
+        s_qubit = f"Results for qubit {q} ({n_peaks} peak(s) detected): "
         s_freq = f"\tQubit frequency: {1e-9 * fit_results[q]['frequency']:.3f} GHz | "
         s_fwhm = f"FWHM: {1e-3 * fit_results[q]['fwhm']:.1f} kHz | "
         s_angle = f"The integration weight angle: {fit_results[q]['iw_angle']:.3f} rad\n "

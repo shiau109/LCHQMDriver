@@ -232,8 +232,11 @@ def analyse_data(node: QualibrationNode[Parameters, Quam]):
         limits = instrument_limits(q.xy)
 
         # sq already carries I/Q + detuning + full_freq (from ds_raw); the estimator builds
-        # IQdata from I/Q. Keep only the single most-prominent peak (one qubit line per slice).
-        results = estimator.analyze(sq, output_dir=None, skip_figures=True, max_peaks=1)[0]
+        # IQdata from I/Q. Keep up to node.parameters.max_peaks lines (SNR-gated, so fewer are
+        # returned when fewer are real); the write-back below picks the largest-area one.
+        results = estimator.analyze(
+            sq, output_dir=None, skip_figures=True, max_peaks=node.parameters.max_peaks,
+        )[0]
         # Build the plot-data once (the estimator-native reconstruction Dataset): reused for the
         # figure (plot_data run-action) and, when save_plot_data is set, persisted as
         # plotdata_<qubit>.h5 — reloadable via load_xarray_h5 + generate_figures(plot_data=...).
@@ -244,12 +247,15 @@ def analyse_data(node: QualibrationNode[Parameters, Quam]):
 
         peaks = results.get("peaks", [])
         if peaks:
-            peak = peaks[0]
+            # Pick the line with the largest Lorentzian area (∝ |amplitude|·fwhm) — a more
+            # robust "main transition" criterion than peak height when several lines appear.
+            peak = max(peaks, key=lambda p: abs(p["amplitude"]) * p["fwhm"])
             detuning = float(peak["detuning"])
             fwhm = float(peak["fwhm"])
             frequency = float(peak.get("full_freq", detuning + q.xy.RF_frequency))
             fit_ok = bool(np.isfinite(frequency) and np.isfinite(fwhm) and fwhm > 0)
         else:
+            peak = None
             detuning = fwhm = frequency = float("nan")
             fit_ok = False
 
@@ -289,6 +295,19 @@ def analyse_data(node: QualibrationNode[Parameters, Quam]):
             "saturation_amp": saturation_amp,
             "x180_amp": x180_amp,
             "success": success,
+            # All detected peaks (estimator's detuning order, so indices match the figure's
+            # `peak` axis); is_primary marks the largest-area line used for the write-back.
+            "peaks": [
+                {
+                    "detuning": float(p["detuning"]),
+                    "full_freq": float(p.get("full_freq", p["detuning"] + q.xy.RF_frequency)),
+                    "amplitude": float(p["amplitude"]),
+                    "fwhm": float(p["fwhm"]),
+                    "area": float(np.pi / 2 * abs(p["amplitude"]) * p["fwhm"]),
+                    "is_primary": p is peak,
+                }
+                for p in peaks
+            ],
         }
 
     # Log the relevant information extracted from the data analysis
