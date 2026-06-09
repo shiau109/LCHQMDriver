@@ -2,7 +2,6 @@
 import matplotlib.pyplot as plt
 import numpy as np
 import xarray as xr
-from dataclasses import asdict
 
 from qm.qua import *
 
@@ -15,10 +14,7 @@ from qualibrate import QualibrationNode
 from quam_config import Quam
 from customized.node.LCH_qubit_spectroscopy import (
     Parameters,
-    process_raw_dataset,
-    fit_raw_data,
     log_fitted_results,
-    plot_raw_data_with_fit,
 )
 from qualibration_libs.parameters import get_qubits
 from qualibration_libs.runtime import simulate_and_plot
@@ -198,10 +194,91 @@ def load_data(node: QualibrationNode[Parameters, Quam]):
 # %% {Analyse_data}
 @node.run_action(skip_if=node.parameters.simulate)
 def analyse_data(node: QualibrationNode[Parameters, Quam]):
-    """Analyse the raw data and store the fitted data in another xarray dataset "ds_fit" and the fitted results in the "fit_results" dictionary."""
-    node.results["ds_raw"] = process_raw_dataset(node.results["ds_raw"], node)
-    node.results["ds_fit"], fit_results = fit_raw_data(node.results["ds_raw"], node)
-    node.results["fit_results"] = {k: asdict(v) for k, v in fit_results.items()}
+    """Analyse the raw data with scqat's QubitSpectroscopyEstimator: build the complex
+    IQ signal per qubit, fit the qubit line with a Lorentzian (peak detuning + FWHM),
+    then derive the QM-specific write-backs the state needs — the readout
+    integration-weight angle and the saturation / x180 amplitudes (from the fitted
+    FWHM). The per-qubit (dataset, results) pairs are kept in the namespace so plot_data
+    can redraw the figures without refitting."""
+    from scqat.parsers import repetition_data
+    from scqat.estimators.qubit_spectroscopy import QubitSpectroscopyEstimator
+    from quam_config.instrument_limits import instrument_limits
+
+    ds = node.results["ds_raw"]  # carries I/Q and the qubit/detuning coords
+    estimator = QubitSpectroscopyEstimator()
+    node.namespace["estimator"] = estimator
+    node.namespace["sep_results"] = {}
+    node.results["fit_results"] = {}
+
+    op_amp_factor = node.parameters.operation_amplitude_factor
+    span_hz = abs(node.parameters.max_frequency_in_mhz - node.parameters.min_frequency_in_mhz) * 1e6
+
+    for sq in repetition_data(ds, repetition_dim="qubit"):
+        qubit_name = sq["qubit"].values.item()
+        q = next(x for x in node.namespace["qubits"] if x.name == qubit_name)
+        limits = instrument_limits(q.xy)
+
+        # QubitSpectroscopyEstimator needs a complex IQdata var and (to report an
+        # absolute f_01) the full drive-frequency axis.
+        sq = sq.assign(IQdata=sq.I + 1j * sq.Q)
+        sq = sq.assign_coords(full_freq=("detuning", (sq.detuning + q.xy.RF_frequency).values))
+
+        # Keep only the single most-prominent peak (one qubit line per slice).
+        results = estimator.analyze(sq, output_dir=None, skip_figures=True, max_peaks=1)[0]
+        node.namespace["sep_results"][qubit_name] = (sq, results)
+        # Optionally persist the plot-data reconstruction artifact so the figures can be
+        # replotted later with no re-fit (gated separately from `plot`, which saves PNGs).
+        if node.parameters.save_plot_data:
+            node.results[f"plotdata_{qubit_name}"] = estimator.build_plot_data(sq, results)
+
+        peaks = results.get("peaks", [])
+        if peaks:
+            peak = peaks[0]
+            detuning = float(peak["detuning"])
+            fwhm = float(peak["fwhm"])
+            frequency = float(peak.get("full_freq", detuning + q.xy.RF_frequency))
+            fit_ok = bool(np.isfinite(frequency) and np.isfinite(fwhm) and fwhm > 0)
+        else:
+            detuning = fwhm = frequency = float("nan")
+            fit_ok = False
+
+        # Readout integration-weight angle: rotate so the qubit-induced IQ shift lands on
+        # the I axis, evaluated at the fitted peak detuning (was: detuning of max |IQ_abs|).
+        if fit_ok:
+            at_peak = sq.sel(detuning=detuning, method="nearest")
+            d_angle = float(np.arctan2(
+                at_peak.Q - sq.Q.mean("detuning"),
+                at_peak.I - sq.I.mean("detuning"),
+            ))
+        else:
+            d_angle = 0.0
+        prev_angle = q.resonator.operations["readout"].integration_weights_angle
+        iw_angle = float((prev_angle + d_angle) % (2 * np.pi))
+
+        # Saturation / x180 amplitudes derived from the fitted FWHM (unchanged formulas).
+        used_amp = q.xy.operations["saturation"].amplitude * op_amp_factor
+        x180_length = q.xy.operations["x180"].length * 1e-9
+        if fit_ok:
+            saturation_amp = float(node.parameters.target_peak_width / fwhm * used_amp / op_amp_factor)
+            x180_amp = float(np.pi / (fwhm * x180_length) * used_amp)
+        else:
+            saturation_amp = x180_amp = float("nan")
+
+        # Success criteria preserved from the original node.
+        rf = q.xy.RF_frequency
+        freq_success = abs(frequency) < span_hz + rf
+        fwhm_success = abs(fwhm) < span_hz + rf
+        sat_success = abs(saturation_amp) < limits.max_wf_amplitude
+        success = bool(fit_ok and freq_success and fwhm_success and sat_success)
+
+        node.results["fit_results"][qubit_name] = {
+            "frequency": frequency,
+            "fwhm": fwhm,
+            "iw_angle": iw_angle,
+            "saturation_amp": saturation_amp,
+            "x180_amp": x180_amp,
+            "success": success,
+        }
 
     # Log the relevant information extracted from the data analysis
     log_fitted_results(node.results["fit_results"], log_callable=node.log)
@@ -214,13 +291,13 @@ def analyse_data(node: QualibrationNode[Parameters, Quam]):
 # %% {Plot_data}
 @node.run_action(skip_if=node.parameters.simulate or not node.parameters.plot)
 def plot_data(node: QualibrationNode[Parameters, Quam]):
-    """Plot the raw and fitted data in specific figures whose shape is given by qubit.grid_location."""
-    fig_raw_fit = plot_raw_data_with_fit(node.results["ds_raw"], node.namespace["qubits"], node.results["ds_fit"])
+    """Redraw the scqat qubit-spectroscopy figure for each qubit from the stored
+    (dataset, results) pairs and store them in node.results["figures"]."""
+    estimator = node.namespace["estimator"]
+    node.results["figures"] = {}
+    for qubit_name, (sq, results) in node.namespace["sep_results"].items():
+        node.results["figures"][qubit_name] = estimator.generate_figures(sq, results)
     plt.show()
-    # Store the generated figures
-    node.results["figures"] = {
-        "amplitude": fig_raw_fit,
-    }
 
 
 # %% {Update_state}
