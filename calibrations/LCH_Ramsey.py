@@ -201,7 +201,9 @@ def analyse_data(node: QualibrationNode[Parameters, Quam]):
     for sq_data in sep_data:
         qubit_name = sq_data["qubit"].values.item()
         results, figs = estimator.analyze(sq_data, output_dir=None)
-        node.results["fit_results"][qubit_name] = results
+        # Persist only the scalar fit params; dropping the estimator's diagnostic
+        # arrays (best_fit/fft_freq/fft_amp) keeps arrays.npz from being written.
+        node.results["fit_results"][qubit_name] = estimator.extract_metadata(results)
         node.results["figures"][qubit_name] = figs
 
 # %% {Plot_data}
