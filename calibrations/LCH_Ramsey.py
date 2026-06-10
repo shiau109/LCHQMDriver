@@ -20,7 +20,13 @@ from qualibration_libs.data import XarrayDataFetcher
 
 # %% {Description}
 description = """
-        Ask LCH
+        Ramsey with virtual detuning (x90 -> idle -> y90, the drive virtually
+        detuned by `frequency_detuning_in_mhz`). Sweeps the idle time and fits the
+        decaying fringe with scqat's RamseyEstimator, which selects between a
+        single damped sine, a two-frequency beat (charge dispersion), and a pure
+        relaxation decay (when the fringe frequency is ~0). The fitted frequency
+        calibrates the qubit: it updates `q.f_01` and `q.xy.RF_frequency`, and for
+        the beat case records `q.charge_dispersion` from the frequency split.
 """
 
 node = QualibrationNode[Parameters, Quam](name="LCH_Ramsey", description=description, parameters=Parameters())
@@ -31,13 +37,13 @@ node = QualibrationNode[Parameters, Quam](name="LCH_Ramsey", description=descrip
 @node.run_action(skip_if=node.modes.external)
 def custom_param(node: QualibrationNode[Parameters, Quam]):
     # You can get type hinting in your IDE by typing node.parameters.
-    # node.parameters.qubits = ["q1", "q2"]
-    node.parameters.frequency_detuning_in_mhz = 0.5
-    node.parameters.num_shots = 50  
+    node.parameters.qubits = ["q4","q5"]
+    node.parameters.frequency_detuning_in_mhz = 2
+    node.parameters.num_shots = 200  
     node.parameters.log_or_linear_sweep = "linear"
     node.parameters.wait_time_num_points = 100
-    node.parameters.max_wait_time_in_ns = 4000
-    node.parameters.reset_type = "active"
+    node.parameters.max_wait_time_in_ns = 2000
+    # node.parameters.reset_type = "active"
     pass
 
 
@@ -78,9 +84,9 @@ def create_qua_program(node: QualibrationNode[Parameters, Quam]):
         for multiplexed_qubits in qubits.batch():
             # Initialize the QPU in terms of flux points (flux tunable transmons and/or tunable couplers)
             for qubit in multiplexed_qubits.values():
-                node.machine.initialize_qpu(target=qubit)#, flux_point=flux_idle_case)
+                node.machine.initialize_qpu(target=qubit)
             align()
-            
+
             with for_(n, 0, n < n_avg, n + 1):
                 save(n, n_st)
 
@@ -96,13 +102,10 @@ def create_qua_program(node: QualibrationNode[Parameters, Quam]):
                             Cast.mul_fixed_by_int(detuning * 1e-9, 4 * idle_time),
                         )
 
-
-                        # with strict_timing_():
                         qubit.xy.play("y90")
                         qubit.xy.frame_rotation_2pi(virtual_detuning_phases[i])
                         qubit.wait(idle_time)
                         qubit.xy.play("x90")
-
 
                     align()
                     for i, qubit in multiplexed_qubits.items():
@@ -124,10 +127,7 @@ def create_qua_program(node: QualibrationNode[Parameters, Quam]):
                     I_st[i].buffer(len(idle_times)).average().save(f"I{i + 1}")
                     Q_st[i].buffer(len(idle_times)).average().save(f"Q{i + 1}")
 
-    # from qm import generate_qua_script
-    # sourceFile = open('debug_LCH_Ramsey.py', 'w')
-    # print(generate_qua_script(node.namespace["qua_program"], node.machine.generate_config()), file=sourceFile) 
-    # sourceFile.close()
+
 # %% {Simulate}
 @node.run_action(skip_if=node.parameters.load_data_id is not None or not node.parameters.simulate)
 def simulate_qua_program(node: QualibrationNode[Parameters, Quam]):
@@ -183,9 +183,12 @@ def load_data(node: QualibrationNode[Parameters, Quam]):
 # %% {Analyse_data}
 @node.run_action(skip_if=node.parameters.simulate)
 def analyse_data(node: QualibrationNode[Parameters, Quam]):
-    """Analyse the raw data with scqat: fit each qubit's Ramsey and store the fit
-    results and figures. scqat auto-detects single vs beat (charge-dispersion) and
-    returns result keys a_1/a_2/f_1/f_2/... consumed by update_state below."""
+    """estimate: fit each qubit's probed Ramsey with scqat's RamseyEstimator.
+
+    The estimator selects the model (single damped sine / beat / relaxation) and
+    returns `model_type` plus `f_1` (and `f_2` for the beat case), which
+    `update_state` consumes. Figures are produced here too — the scqat estimator
+    owns the plotting — so no separate plot step is needed."""
     from scqat.parsers import repetition_data
     from scqat.estimators.ramsey import RamseyEstimator
 
@@ -206,31 +209,31 @@ def analyse_data(node: QualibrationNode[Parameters, Quam]):
         node.results["fit_results"][qubit_name] = estimator.extract_metadata(results)
         node.results["figures"][qubit_name] = figs
 
-# %% {Plot_data}
-@node.run_action(skip_if=node.parameters.simulate)
-def plot_data(node: QualibrationNode[Parameters, Quam]):
-    """Figures are produced by the scqat estimator in analyse_data."""
-    pass
-
 
 # %% {Update_state}
 @node.run_action(skip_if=node.parameters.simulate)
 def update_state(node: QualibrationNode[Parameters, Quam]):
-    """Update the relevant parameters if the qubit data analysis was successful."""
-    # pass
+    """update: correct the qubit frequency from the fitted Ramsey fringe.
+
+    Branches on the estimator's authoritative `model_type`:
+      * beat       -> mean of (f_1, f_2) calibrates the qubit; the half-split is
+                      recorded as charge dispersion;
+      * single     -> f_1 calibrates the qubit;
+      * relaxation -> f_1 is reported as 0 (fringe unresolvable), so the
+                      single-frequency path applies a -detuning correction.
+    """
     detuning = int(node.parameters.frequency_detuning_in_mhz * 1e6)
     with node.record_state_updates():
         for q in node.namespace["qubits"]:
-            # scqat omits a_2 for the single-frequency model; treat absence as 0.
-            a_2 = float(node.results["fit_results"][q.name].get("a_2", 0.0))
-            f_1 = float(node.results["fit_results"][q.name]["f_1"])*1e9
-            if a_2 == 0:
-                d_f_01 = int(f_1)-detuning
-                q.charge_dispersion = 0
+            fit = node.results["fit_results"][q.name]
+            f_1 = float(fit["f_1"]) * 1e9
+            if fit.get("model_type") == "beat":
+                f_2 = float(fit["f_2"]) * 1e9
+                d_f_01 = int((f_1 + f_2) / 2) - detuning
+                q.charge_dispersion = int(abs(f_1 - f_2) / 2)
             else:
-                f_2 = float(node.results["fit_results"][q.name]["f_2"])*1e9
-                d_f_01 = int((f_1 + f_2) / 2) -detuning
-                q.charge_dispersion =int(abs(f_1 - f_2) / 2)
+                d_f_01 = int(f_1) - detuning
+                q.charge_dispersion = 0
             q.f_01 -= d_f_01
             q.xy.RF_frequency -= d_f_01
 
