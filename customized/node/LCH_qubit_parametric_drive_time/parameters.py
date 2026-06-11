@@ -26,6 +26,13 @@ class NodeSpecificParameters(RunnableParameters):
     """Number of frequency points to sample. Default is 51."""
     driving_amp_ratio: float = 1.0
     """Amplitude ratio for the driving pulse. Default is 1.0."""
+    tomography: bool = False
+    """If True, read out in the X/Y/Z bases for full single-qubit state tomography
+    (density-matrix reconstruction). If False, read out the excited-state population
+    only (rho_11). Default is False."""
+    prepare_state: str = "x180"
+    """State-preparation pulse played before the parametric drive. Default "x180"
+    (prepare |1>); use a superposition (e.g. "x90" / "-x90") when tomography is on."""
 
 
 class Parameters(
