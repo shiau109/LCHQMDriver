@@ -1,8 +1,6 @@
 # %% {Imports}
-import matplotlib.pyplot as plt
 import numpy as np
 import xarray as xr
-from dataclasses import asdict
 
 from qm.qua import *
 
@@ -21,7 +19,19 @@ from qualibration_libs.data import XarrayDataFetcher
 
 # %% {Node initialisation}
 description = """
-        Ask LCH
+        Parametric-drive qubit decoherence (rho_11 vs frequency and time).
+
+        Prepares the qubit, applies a fixed-amplitude parametric (flux-line) drive
+        while sweeping the drive frequency and duration, then reads out. With
+        `tomography=False` (default) it prepares |1> and reads out the excited-state
+        population directly (rho_11-only). With `tomography=True` it sweeps an extra
+        X/Y/Z readout-basis axis for full single-qubit state tomography (set
+        `prepare_state` to a superposition, e.g. "x90"/"-x90"). Either way scqat's
+        ParametricDriveDecoherenceEstimator reconstructs rho_11(t), fits the
+        non-Markovian amplitude-damping model per driving frequency, and reports
+        gamma / lambda / Delta and the exceptional-point figure of merit
+        8*lambda^2/gamma^2 vs frequency. Characterization only — no device-state
+        writeback.
 """
 
 
@@ -51,6 +61,9 @@ def custom_param(node: QualibrationNode[Parameters, Quam]):
     node.parameters.simulate = False
     node.parameters.num_shots = 200
     node.parameters.multiplexed = True
+    # Set tomography = True (and a superposition prepare_state) for full X/Y/Z tomography.
+    # node.parameters.tomography = True
+    # node.parameters.prepare_state = "-x90"
     pass
 
 
@@ -76,23 +89,76 @@ def create_qua_program(node: QualibrationNode[Parameters, Quam]):
     time_ns =  time_tick*4  # in ns
 
     freqs = np.linspace( p.min_frequency_mhz*u.MHz, p.max_frequency_mhz*u.MHz, p.frequency_points)
+
+    # X/Y/Z readout-basis axis — only swept when tomography is enabled.
+    readout_basis_array = [0, 1, 2]
+
     # Register the sweep axes to be added to the dataset when fetching data
     node.namespace["sweep_axes"] = {
         "qubit": xr.DataArray(qubits.get_names()),
         "driving_frequency": xr.DataArray(freqs, attrs={"long_name": "driving frequency", "units": "Hz"}),
-        "driving_time": xr.DataArray(time_ns, attrs={"long_name": "readout frequency", "units": "Hz"}),
+        "driving_time": xr.DataArray(time_ns, attrs={"long_name": "driving time", "units": "ns"}),
     }
+    if p.tomography:
+        node.namespace["sweep_axes"]["basis"] = xr.DataArray(
+            readout_basis_array, attrs={"long_name": "basis for state tomography"}
+        )
 
     with program() as node.namespace["qua_program"]:
         # Macro to declare I, Q, n and their respective streams for a given number of qubit
         I, I_st, Q, Q_st, n, n_st = node.machine.declare_qua_variables()
-        tt = declare(int)  # QUA variable for the qubit frequency
-        f_drive = declare(int)  # QUA variable for the qubit frequency
+        tt = declare(int)  # QUA variable for the driving time
+        f_drive = declare(int)  # QUA variable for the driving frequency
+        rbi = declare(int)  # readout-basis index (used only when tomography is on)
 
         if node.parameters.use_state_discrimination:
             state = [declare(int) for _ in range(num_qubits)]
             state_st = [declare_stream() for _ in range(num_qubits)]
 
+        def measure_shot(multiplexed_qubits, rbi_var):
+            """One prepare -> parametric-drive -> (optional basis rotation) -> readout
+            shot. When ``rbi_var`` is given, the readout basis is selected by it
+            (X: -y90, Y: x90, Z: identity) for state tomography."""
+            for i, qubit in multiplexed_qubits.items():
+                qubit.reset(
+                    node.parameters.reset_type,
+                    node.parameters.simulate,
+                    log_callable=node.log,
+                )
+                # Update the qubit frequency
+                qubit.z.update_frequency(f_drive)
+
+            for i, qubit in multiplexed_qubits.items():
+                qubit.xy.play(node.parameters.prepare_state)
+            align()
+            wait(200 // 4)
+            for i, qubit in multiplexed_qubits.items():
+                if i == 0:
+                    qubit.z.reset_if_phase()
+                    qubit.z.play("param", amplitude_scale=p.driving_amp_ratio, duration=tt)
+            align()
+
+            if rbi_var is not None:
+                # Rotate into the measured basis before readout.
+                for i, qubit in multiplexed_qubits.items():
+                    with switch_(rbi_var):
+                        with case_(0):
+                            qubit.xy.play("-y90")
+                        with case_(1):
+                            qubit.xy.play("x90")
+                        with case_(2):
+                            qubit.xy.play("y90", amplitude_scale=0)
+                align()
+
+            for i, qubit in multiplexed_qubits.items():
+                if node.parameters.use_state_discrimination:
+                    qubit.readout_state(state[i])
+                    save(state[i], state_st[i])
+                else:
+                    qubit.resonator.measure("readout", qua_vars=(I[i], Q[i]))
+                    save(I[i], I_st[i])
+                    save(Q[i], Q_st[i])
+            align()
 
         for multiplexed_qubits in qubits.batch():
             # Initialize the QPU in terms of flux points (flux tunable transmons and/or tunable couplers)
@@ -102,48 +168,25 @@ def create_qua_program(node: QualibrationNode[Parameters, Quam]):
 
             with for_(n, 0, n < n_avg, n + 1):
                 save(n, n_st)
-                with for_(*from_array(f_drive, freqs)): 
-
-                    with for_(*from_array(tt, time_tick)):                        
-                        for i, qubit in multiplexed_qubits.items():
-                            qubit.reset(
-                                node.parameters.reset_type,
-                                node.parameters.simulate,
-                                log_callable=node.log,
-                            )
-
-                            # Update the qubit frequency
-                            qubit.z.update_frequency(f_drive)
-                        
-                        for i, qubit in multiplexed_qubits.items():
-                            # if i == 0:                        
-                            qubit.xy.play("x180")
-                        align()
-                        wait( 200//4 )
-                        for i, qubit in multiplexed_qubits.items():
-                            if i == 0:
-                                qubit.z.reset_if_phase() 
-                                qubit.z.play("param",amplitude_scale=p.driving_amp_ratio, duration=tt)
-                        align()
-
-                        for i, qubit in multiplexed_qubits.items():
-                            if node.parameters.use_state_discrimination:
-                                qubit.readout_state(state[i])
-                                save(state[i], state_st[i])
-                            else:
-                                qubit.resonator.measure("readout", qua_vars=(I[i], Q[i]))
-                                save(I[i], I_st[i])
-                                save(Q[i], Q_st[i])
-                        align()
+                with for_(*from_array(f_drive, freqs)):
+                    with for_(*from_array(tt, time_tick)):
+                        if p.tomography:
+                            with for_each_(rbi, readout_basis_array):
+                                measure_shot(multiplexed_qubits, rbi)
+                        else:
+                            measure_shot(multiplexed_qubits, None)
 
         with stream_processing():
             n_st.save("n")
             for i in range(num_qubits):
                 if node.parameters.use_state_discrimination:
-                    state_st[i].buffer(len(time_tick)).buffer(len(freqs)).average().save(f"state{i + 1}")
+                    stream = state_st[i].buffer(len(readout_basis_array)) if p.tomography else state_st[i]
+                    stream.buffer(len(time_tick)).buffer(len(freqs)).average().save(f"state{i + 1}")
                 else:
-                    I_st[i].buffer(len(time_tick)).buffer(len(freqs)).average().save(f"I{i + 1}")
-                    Q_st[i].buffer(len(time_tick)).buffer(len(freqs)).average().save(f"Q{i + 1}")
+                    i_stream = I_st[i].buffer(len(readout_basis_array)) if p.tomography else I_st[i]
+                    q_stream = Q_st[i].buffer(len(readout_basis_array)) if p.tomography else Q_st[i]
+                    i_stream.buffer(len(time_tick)).buffer(len(freqs)).average().save(f"I{i + 1}")
+                    q_stream.buffer(len(time_tick)).buffer(len(freqs)).average().save(f"Q{i + 1}")
 
 
 # %% {Simulate}
@@ -201,52 +244,41 @@ def load_data(node: QualibrationNode[Parameters, Quam]):
 # %% {Analyse_data}
 @node.run_action(skip_if=node.parameters.simulate)
 def analyse_data(node: QualibrationNode[Parameters, Quam]):
-    # from scqat.parsers import repetition_data
-    # if node.parameters.use_state_discrimination:
-    #     ds = node.results["ds_raw"].rename({"state": "signal"})
-    # else:
-    #     ds = node.results["ds_raw"].rename({"I": "signal"}) 
+    """estimate: per-driving_frequency non-Markovian decoherence fit via scqat's
+    ParametricDriveDecoherenceEstimator.
 
-
-    # sep_data = repetition_data(ds, repetition_dim="qubit")
-    # node.results["fit_results"] = {}
-    # for sq_data in sep_data:
-    #     qubit_name = sq_data["qubit"].values.item()
-    #     print(qubit_name)
-    pass
-
-# %% {Plot_data}
-@node.run_action(skip_if=node.parameters.simulate or not node.parameters.plot)
-def plot_data(node: QualibrationNode[Parameters, Quam]):
+    The estimator auto-detects the layout: with tomography it rebuilds the density
+    matrix from the X/Y/Z basis readouts; without it, it takes the rho_11-only path.
+    Either way it fits rho_11(t) at each driving frequency and returns gamma / lambda /
+    Delta and the exceptional-point figure of merit 8*lambda^2/gamma^2. The estimator
+    owns the plotting, so no separate plot step is needed."""
     from scqat.parsers import repetition_data
-    if node.parameters.use_state_discrimination:
-        ds = node.results["ds_raw"].rename({"state": "signal"})
-    else:
-        ds = node.results["ds_raw"].rename({"I": "signal"}) 
-    sep_data = repetition_data(ds, repetition_dim="qubit")
+    from scqat.estimators import ParametricDriveDecoherenceEstimator
 
+    ds = node.results["ds_raw"]
+    if not node.parameters.use_state_discrimination:
+        ds = ds.rename({"I": "signal"})
+
+    sep_data = repetition_data(ds, repetition_dim="qubit")
     node.results["fit_results"] = {}
     node.results["figures"] = {}
-    
+    estimator = ParametricDriveDecoherenceEstimator()
     for sq_data in sep_data:
         qubit_name = sq_data["qubit"].values.item()
-        fig, ax = plt.subplots()
-        
-        # Plot 2D colormap
-        sq_data.signal.plot(ax=ax, x="driving_frequency", y="driving_time", add_colorbar=True, cmap="viridis")
-        ax.set_xlabel("Driving Frequency [Hz]")
-        ax.set_ylabel("Amplitude Ratio")
-        ax.set_title(f"{qubit_name} - Signal vs Driving Frequency and Amplitude Ratio")
-        
-        # Store the figure for this qubit
-        node.results["figures"][qubit_name] = fig
-    
-    # plt.show()
+        # rho11_offset / rho11_scale default to the estimator's readout-correction
+        # values; override here if your readout contrast differs.
+        results, figs = estimator.analyze(
+            sq_data, output_dir=None, skip_figures=not node.parameters.plot
+        )
+        node.results["fit_results"][qubit_name] = estimator.extract_metadata(results)
+        node.results["figures"][qubit_name] = figs
+
 
 # %% {Update_state}
 @node.run_action(skip_if=node.parameters.simulate)
 def update_state(node: QualibrationNode[Parameters, Quam]):
-    """Update the relevant parameters if the qubit data analysis was successful."""
+    """No-op: this is a characterization experiment, so nothing is written back
+    to the device state."""
     pass
 
 

@@ -23,7 +23,7 @@ repeat_times = len(driving_list)
 
 for i in range(repeat_times): 
     driving_freq_center_mhz = driving_list[i][1]/1e6
-    nodes[f"LCH_qubit_parametric_drive_time_tomo_{i}"] = library.nodes["LCH_qubit_parametric_drive_time_tomo"].copy(
+    nodes[f"LCH_qubit_parametric_drive_time_tomo_{i}"] = library.nodes["LCH_qubit_parametric_drive_freq_time"].copy(
             name=f"LCH_qubit_parametric_drive_time_tomo_{i}",
             max_driving_time_ns = 6000,
             min_driving_time_ns = 20,
@@ -36,6 +36,7 @@ for i in range(repeat_times):
             simulate = False,
             num_shots = 1000,
             multiplexed = True,
+            tomography = True,
             prepare_state = "-x90"
         )
 

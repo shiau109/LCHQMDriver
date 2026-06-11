@@ -1,8 +1,6 @@
 # %% {Imports}
-import matplotlib.pyplot as plt
 import numpy as np
 import xarray as xr
-from dataclasses import asdict
 
 from qm.qua import *
 
@@ -21,7 +19,15 @@ from qualibration_libs.data import XarrayDataFetcher
 
 # %% {Node initialisation}
 description = """
-        Ask LCH
+        Parametric-drive resonance map at fixed drive time.
+
+        Prepares the qubit (x180), applies a parametric (flux-line) drive of fixed
+        duration while sweeping the drive amplitude ratio and frequency, then reads
+        out the excited-state population. scqat's ParametricDriveResonanceEstimator
+        finds the resonance peak(s) on the 2-D amplitude x frequency map (a Lorentzian
+        fit per amplitude slice, like qubit-spectroscopy-vs-flux) and reports the
+        peak point-cloud (amplitude_ratio, frequency, fwhm). Characterization only —
+        no device-state writeback.
 """
 
 
@@ -200,53 +206,38 @@ def load_data(node: QualibrationNode[Parameters, Quam]):
 # %% {Analyse_data}
 @node.run_action(skip_if=node.parameters.simulate)
 def analyse_data(node: QualibrationNode[Parameters, Quam]):
-    # from scqat.parsers import repetition_data
-    # if node.parameters.use_state_discrimination:
-    #     ds = node.results["ds_raw"].rename({"state": "signal"})
-    # else:
-    #     ds = node.results["ds_raw"].rename({"I": "signal"}) 
+    """estimate: find the parametric-resonance peak(s) on the 2-D amplitude x
+    frequency map via scqat's ParametricDriveResonanceEstimator.
 
-
-    # sep_data = repetition_data(ds, repetition_dim="qubit")
-    # node.results["fit_results"] = {}
-    # for sq_data in sep_data:
-    #     qubit_name = sq_data["qubit"].values.item()
-    #     print(qubit_name)
-    pass
-
-# %% {Plot_data}
-@node.run_action(skip_if=node.parameters.simulate or not node.parameters.plot)
-def plot_data(node: QualibrationNode[Parameters, Quam]):
+    Each amplitude_ratio slice is fit with a Lorentzian (delegating to the
+    qubit-spectroscopy peak finder); the kept peaks form a point-cloud
+    (amplitude_ratio, frequency, fwhm) over the map. The estimator owns the
+    plotting, so no separate plot step is needed."""
     from scqat.parsers import repetition_data
-    if node.parameters.use_state_discrimination:
-        ds = node.results["ds_raw"].rename({"state": "signal"})
-    else:
-        ds = node.results["ds_raw"].rename({"I": "signal"}) 
-    sep_data = repetition_data(ds, repetition_dim="qubit")
+    from scqat.estimators import ParametricDriveResonanceEstimator
 
+    ds = node.results["ds_raw"]
+    if not node.parameters.use_state_discrimination:
+        ds = ds.rename({"I": "signal"})
+
+    sep_data = repetition_data(ds, repetition_dim="qubit")
     node.results["fit_results"] = {}
     node.results["figures"] = {}
-    
+    estimator = ParametricDriveResonanceEstimator()
     for sq_data in sep_data:
         qubit_name = sq_data["qubit"].values.item()
-        fig, ax = plt.subplots()
-        
-        # Plot 2D colormap
-        sq_data.signal.plot(ax=ax, x="driving_frequency", y="amplitude_ratio", add_colorbar=True, cmap="viridis")
-        ax.set_xlabel("Driving Frequency [Hz]")
-        ax.set_ylabel("Amplitude Ratio")
-        ax.set_title(f"{qubit_name} - Signal vs Driving Frequency and Amplitude Ratio")
-        
-        # Store the figure for this qubit
-        node.results["figures"][qubit_name] = fig
-    
-    plt.show()
+        results, figs = estimator.analyze(
+            sq_data, output_dir=None, skip_figures=not node.parameters.plot
+        )
+        node.results["fit_results"][qubit_name] = estimator.extract_metadata(results)
+        node.results["figures"][qubit_name] = figs
 
 
 # %% {Update_state}
 @node.run_action(skip_if=node.parameters.simulate)
 def update_state(node: QualibrationNode[Parameters, Quam]):
-    """Update the relevant parameters if the qubit data analysis was successful."""
+    """No-op: this is a characterization experiment, so nothing is written back
+    to the device state."""
     pass
 
 
