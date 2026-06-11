@@ -1,9 +1,7 @@
 # %% {Imports}
 import matplotlib.pyplot as plt
 import numpy as np
-from calibration_utils.iq_blobs.plotting import plot_historams
 import xarray as xr
-from dataclasses import asdict
 
 from qm.qua import *
 
@@ -69,9 +67,8 @@ def create_qua_program(node: QualibrationNode[Parameters, Quam]):
     # Register the sweep axes to be added to the dataset when fetching data
     node.namespace["sweep_axes"] = {
         "qubit": xr.DataArray(qubits.get_names()),
-        "shot_idx": xr.DataArray(np.linspace(1, n_runs, n_runs), attrs={"long_name": "number of shots"}),
+        "shot_idx": xr.DataArray(np.arange(1, n_runs + 1), attrs={"long_name": "number of shots"}),
         "prepared_state": xr.DataArray(prepared_states, attrs={"long_name": "prepared qubit state", "units": ""}),
-
     }
 
     with program() as node.namespace["qua_program"]:
@@ -102,9 +99,6 @@ def create_qua_program(node: QualibrationNode[Parameters, Quam]):
                                 pass
                             with case_(1):
                                 qubit.xy.play("x180")
-                            with case_(2):
-                                pass
-                                # qubit.xy.wait()
 
                         qubit.align()
                     # Qubit readout
@@ -115,18 +109,13 @@ def create_qua_program(node: QualibrationNode[Parameters, Quam]):
                         save(I[i], I_st[i])
                         save(Q[i], Q_st[i])
 
-
-
         with stream_processing():
             n_st.save("n")
             for i in range(num_qubits):
                 I_st[i].buffer(len(prepared_states)).buffer(n_runs).save(f"I{i + 1}")
                 Q_st[i].buffer(len(prepared_states)).buffer(n_runs).save(f"Q{i + 1}")
 
-    # from qm import generate_qua_script
-    # sourceFile = open('debug_LCH_readout_fidelity.py', 'w')
-    # print(generate_qua_script(node.namespace["qua_program"], node.machine.generate_config()), file=sourceFile) 
-    # sourceFile.close()
+
 # %% {Simulate}
 @node.run_action(skip_if=node.parameters.load_data_id is not None or not node.parameters.simulate)
 def simulate_qua_program(node: QualibrationNode[Parameters, Quam]):
@@ -184,41 +173,76 @@ def load_data(node: QualibrationNode[Parameters, Quam]):
 # %% {Analyse_data}
 @node.run_action(skip_if=node.parameters.simulate)
 def analyse_data(node: QualibrationNode[Parameters, Quam]):
-    """
-    Analyse the raw data and store the fitted data in another xarray dataset "ds_fit"
-    and the fitted results in the "fit_results" dictionary.
-    """
-    pass
+    """Characterise single-shot readout fidelity at the current settings. For each
+    qubit scqat's StateDiscriminationEstimator fits the IQ blobs; the readout fidelity
+    is the mean of the confusion-matrix diagonal (direct_counts[k, k]). Figures are
+    deferred to plot_data, so the fit is skipped only once.
 
+    ds_raw already carries the I/Q vars and shot_idx/prepared_state coords that scqat
+    expects (see sweep_axes above), so no renaming is needed."""
+    from scqat.parsers import repetition_data
+    from scqat.estimators.state_discrimination import StateDiscriminationEstimator
+
+    estimator = StateDiscriminationEstimator()
+    node.namespace["estimator"] = estimator
+    node.namespace["sep_results"] = {}
+    node.results["fit_results"] = {}
+
+    for sq in repetition_data(node.results["ds_raw"], repetition_dim="qubit"):
+        qubit_name = sq["qubit"].values.item()
+        results = estimator.analyze(sq, output_dir=None, skip_figures=True)[0]
+        dc = np.asarray(results["direct_counts"])
+        n = min(dc.shape[0], dc.shape[1])
+        fidelity = float(np.mean([dc[k, k] for k in range(n)]))
+        # SNR = |mean_1 - mean_0| / sigma: the IQ-plane separation of the two readout
+        # blobs in units of one blob's (GMM) standard deviation.
+        tp = results["trained_paras"]
+        centers = np.asarray(tp["mean"], dtype=float)
+        sigma = float(tp["std"])
+        snr = (
+            float(np.linalg.norm(centers[0] - centers[1]) / sigma)
+            if centers.shape[0] >= 2 and sigma > 0 else float("nan")
+        )
+        node.results["fit_results"][qubit_name] = {
+            "fidelity": fidelity,
+            "snr": snr,
+            "success": bool(np.isfinite(fidelity) and fidelity >= 0.5),
+        }
+        node.namespace["sep_results"][qubit_name] = (sq, results)
+
+    for q_name, fit in node.results["fit_results"].items():
+        node.log(
+            f"Results for qubit {q_name}: "
+            f"readout fidelity: {fit['fidelity']:.4f} | "
+            f"SNR: {fit['snr']:.2f} | "
+            f"{'SUCCESS!' if fit['success'] else 'FAIL!'}"
+        )
+    node.outcomes = {
+        qubit_name: ("successful" if fit["success"] else "failed")
+        for qubit_name, fit in node.results["fit_results"].items()
+    }
 
 
 # %% {Plot_data}
 @node.run_action(skip_if=node.parameters.simulate or not node.parameters.plot)
 def plot_data(node: QualibrationNode[Parameters, Quam]):
-    """
-    Plot the raw and fitted data in specific figures whose shape is given by
-    qubit.grid_location.
-    """
-    from scqat.parsers import repetition_data
-    from scqat.estimators.state_discrimination import StateDiscriminationEstimator
-
-    # ds_raw already carries the I/Q vars and shot_idx/prepared_state coords that
-    # scqat expects (see sweep_axes above), so no renaming is needed.
-    sep_data = repetition_data(node.results["ds_raw"], repetition_dim="qubit")
-    node.results["fit_results"] = {}
+    """Redraw the scqat state-discrimination figures for each qubit from the stored
+    (dataset, results) pairs."""
+    estimator = node.namespace["estimator"]
     node.results["figures"] = {}
-    estimator = StateDiscriminationEstimator()
-    for sq_data in sep_data:
-        qubit_name = sq_data["qubit"].values.item()
-        results, figs = estimator.analyze(sq_data, output_dir=None)
-        node.results["fit_results"][qubit_name] = results
-        node.results["figures"][qubit_name] = figs
+    for qubit_name, (sq, results) in node.namespace["sep_results"].items():
+        node.results["figures"][qubit_name] = estimator.generate_figures(sq, results)
+    plt.show()
 
 
 # %% {Update_state}
 @node.run_action(skip_if=node.parameters.simulate)
 def update_state(node: QualibrationNode[Parameters, Quam]):
-    """Update the relevant parameters if the qubit data analysis was successful."""
+    """No state write-back: this node only characterises single-shot readout fidelity
+    at the current settings, so there is no single scalar to commit. Deriving the
+    readout angle / threshold / confusion matrix from the GMM is a separate
+    calibration (cf. the readout-frequency and readout-power nodes, which do write
+    their optimum back)."""
     pass
 
 # %% {Save_results}

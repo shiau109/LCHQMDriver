@@ -2,7 +2,6 @@
 import matplotlib.pyplot as plt
 import numpy as np
 import xarray as xr
-from dataclasses import asdict
 
 from qm.qua import *
 
@@ -66,7 +65,7 @@ def create_qua_program(node: QualibrationNode[Parameters, Quam]):
     prepared_states = [0, 1]
     node.namespace["sweep_axes"] = {
         "qubit": xr.DataArray(qubits.get_names()),
-        "shot_idx": xr.DataArray(np.linspace(1, n_runs, n_runs), attrs={"long_name": "number of shots"}),
+        "shot_idx": xr.DataArray(np.arange(1, n_runs + 1), attrs={"long_name": "number of shots"}),
         "frequency": xr.DataArray(dfs, attrs={"long_name": "readout frequency", "units": "Hz"}),
         "prepared_state": xr.DataArray(prepared_states, attrs={"long_name": "prepared qubit state", "units": ""}),
     }
@@ -99,9 +98,6 @@ def create_qua_program(node: QualibrationNode[Parameters, Quam]):
                                     pass
                                 with case_(1):
                                     qubit.xy.play("x180")
-                                with case_(2):
-                                    pass
-                                    # qubit.xy.wait()
 
                             qubit.align()
                         # Qubit readout
@@ -177,35 +173,70 @@ def load_data(node: QualibrationNode[Parameters, Quam]):
 # %% {Analyse_data}
 @node.run_action(skip_if=node.parameters.simulate)
 def analyse_data(node: QualibrationNode[Parameters, Quam]):
-    """Analyse the raw data and store the fitted data in another xarray dataset "ds_fit" and the fitted results in the "fit_results" dictionary."""
-    pass
+    """Find the readout frequency that maximises single-shot fidelity. For each qubit
+    the swept-frequency state-discrimination data is handed to scqat's
+    ReadoutFreqFidelityEstimator, which returns the optimal detuning (relative to the
+    current readout IF the sweep was centred on) and the fidelity there. Figures are
+    deferred to plot_data, so the fit is skipped only once.
+
+    ds_raw already carries the I/Q vars and shot_idx/frequency/prepared_state coords
+    that scqat expects (see sweep_axes above), so no renaming is needed."""
+    from scqat.parsers import repetition_data
+    from scqat.estimators.readout_fidelity import ReadoutFreqFidelityEstimator
+
+    estimator = ReadoutFreqFidelityEstimator()
+    node.namespace["estimator"] = estimator
+    node.namespace["sep_results"] = {}
+    node.results["fit_results"] = {}
+
+    for sq in repetition_data(node.results["ds_raw"], repetition_dim="qubit"):
+        qubit_name = sq["qubit"].values.item()
+        results = estimator.analyze(sq, output_dir=None, skip_figures=True)[0]
+        best = results["best_sweep_value"]
+        node.results["fit_results"][qubit_name] = {
+            "best_detuning": float(best) if best is not None else float("nan"),
+            "best_fidelity": float(results["best_fidelity"]) if results["best_fidelity"] is not None else float("nan"),
+            "success": bool(results["success"]),
+        }
+        node.namespace["sep_results"][qubit_name] = (sq, results)
+
+    for q_name, fit in node.results["fit_results"].items():
+        node.log(
+            f"Results for qubit {q_name}: "
+            f"optimal detuning: {1e-6 * fit['best_detuning']:.3f} MHz | "
+            f"fidelity: {fit['best_fidelity']:.4f} | "
+            f"{'SUCCESS!' if fit['success'] else 'FAIL!'}"
+        )
+    node.outcomes = {
+        qubit_name: ("successful" if fit["success"] else "failed")
+        for qubit_name, fit in node.results["fit_results"].items()
+    }
+
 
 # %% {Plot_data}
 @node.run_action(skip_if=node.parameters.simulate or not node.parameters.plot)
 def plot_data(node: QualibrationNode[Parameters, Quam]):
-    """Plot the raw and fitted data in specific figures whose shape is given by qubit.grid_location."""
-    from scqat.parsers import repetition_data
-    from scqat.estimators.readout_fidelity import ReadoutFreqFidelityEstimator
-
-    # ds_raw already carries the I/Q vars and shot_idx/frequency/prepared_state
-    # coords that scqat expects (see sweep_axes above), so no renaming is needed.
-    ds = node.results["ds_raw"]
-    sep_data = repetition_data(ds, repetition_dim="qubit")
-    node.results["fit_results"] = {}
+    """Redraw the scqat readout-frequency fidelity figures for each qubit from the
+    stored (dataset, results) pairs."""
+    estimator = node.namespace["estimator"]
     node.results["figures"] = {}
-    estimator = ReadoutFreqFidelityEstimator()
-    for sq_data in sep_data:
-        qubit_name = sq_data["qubit"].values.item()
-        results, figs = estimator.analyze(sq_data, output_dir=None)
-        node.results["fit_results"][qubit_name] = results
-        node.results["figures"][qubit_name] = figs
+    for qubit_name, (sq, results) in node.namespace["sep_results"].items():
+        node.results["figures"][qubit_name] = estimator.generate_figures(sq, results)
+    plt.show()
 
 
 # %% {Update_state}
 @node.run_action(skip_if=node.parameters.simulate)
 def update_state(node: QualibrationNode[Parameters, Quam]):
-    """Update the relevant parameters if the qubit data analysis was successful."""
-    pass
+    """Shift each qubit's readout frequency by the optimal detuning found above
+    (the sweep spans a detuning around the current readout IF)."""
+    with node.record_state_updates():
+        for q in node.namespace["qubits"]:
+            if node.outcomes[q.name] == "failed":
+                continue
+
+            best_detuning = node.results["fit_results"][q.name]["best_detuning"]
+            q.resonator.RF_frequency = float(q.resonator.RF_frequency + best_detuning)
 
 # %% {Save_results}
 @node.run_action()

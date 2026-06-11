@@ -2,7 +2,6 @@
 import matplotlib.pyplot as plt
 import numpy as np
 import xarray as xr
-from dataclasses import asdict
 
 from qm.qua import *
 
@@ -16,7 +15,6 @@ from quam_config import Quam
 from customized.node.LCH_readout_power import (
     Parameters,
 )
-from calibration_utils.iq_blobs.plotting import plot_iq_blobs, plot_confusion_matrices
 from qualibration_libs.parameters import get_qubits
 from qualibration_libs.runtime import simulate_and_plot
 from qualibration_libs.data import XarrayDataFetcher
@@ -64,7 +62,7 @@ def create_qua_program(node: QualibrationNode[Parameters, Quam]):
     prepared_states = [0, 1]
     node.namespace["sweep_axes"] = {
         "qubit": xr.DataArray(qubits.get_names()),
-        "shot_idx": xr.DataArray(np.linspace(1, n_runs, n_runs), attrs={"long_name": "number of shots"}),
+        "shot_idx": xr.DataArray(np.arange(1, n_runs + 1), attrs={"long_name": "number of shots"}),
         "amp_prefactor": xr.DataArray(amps, attrs={"long_name": "readout amplitude", "units": ""}),
         "prepared_state": xr.DataArray(prepared_states, attrs={"long_name": "prepared qubit state", "units": ""}),
     }
@@ -97,9 +95,6 @@ def create_qua_program(node: QualibrationNode[Parameters, Quam]):
                                     pass
                                 with case_(1):
                                     qubit.xy.play("x180")
-                                with case_(2):
-                                    pass
-                                    # qubit.xy.wait()
 
                             qubit.align()
                         # Qubit readout
@@ -174,39 +169,77 @@ def load_data(node: QualibrationNode[Parameters, Quam]):
 # %% {Analyse_data}
 @node.run_action(skip_if=node.parameters.simulate)
 def analyse_data(node: QualibrationNode[Parameters, Quam]):
-    """Analyse the raw data and store the fitted data in another xarray dataset "ds_fit" and the fitted results in the "fit_results" dictionary."""
-    pass
+    """Find the readout amplitude that maximises single-shot fidelity. For each qubit
+    the swept-amplitude state-discrimination data is handed to scqat's
+    ReadoutPowerFidelityEstimator, which returns the optimal amp_prefactor (a
+    multiplier on the current readout amplitude) constrained by ``outliers_threshold``.
+    Figures are deferred to plot_data, so the fit is skipped only once.
+
+    ds_raw already carries the I/Q vars and shot_idx/amp_prefactor/prepared_state
+    coords that scqat expects (see sweep_axes above), so no renaming is needed.
+
+    Note: scqat's ReadoutPowerFidelityEstimator does NOT port qcat's power-specific
+    linear mean-drift refit (fit_means_vs_amp_prefactor); the core per-amplitude
+    state-discrimination sweep is preserved."""
+    from scqat.parsers import repetition_data
+    from scqat.estimators.readout_fidelity import ReadoutPowerFidelityEstimator
+
+    estimator = ReadoutPowerFidelityEstimator()
+    node.namespace["estimator"] = estimator
+    node.namespace["sep_results"] = {}
+    node.results["fit_results"] = {}
+
+    for sq in repetition_data(node.results["ds_raw"], repetition_dim="qubit"):
+        qubit_name = sq["qubit"].values.item()
+        results = estimator.analyze(
+            sq, output_dir=None, skip_figures=True,
+            outliers_threshold=node.parameters.outliers_threshold,
+        )[0]
+        best = results["best_sweep_value"]
+        node.results["fit_results"][qubit_name] = {
+            "best_amp_prefactor": float(best) if best is not None else float("nan"),
+            "best_fidelity": float(results["best_fidelity"]) if results["best_fidelity"] is not None else float("nan"),
+            "success": bool(results["success"]),
+        }
+        node.namespace["sep_results"][qubit_name] = (sq, results)
+
+    for q_name, fit in node.results["fit_results"].items():
+        node.log(
+            f"Results for qubit {q_name}: "
+            f"optimal amp prefactor: {fit['best_amp_prefactor']:.4f} | "
+            f"fidelity: {fit['best_fidelity']:.4f} | "
+            f"{'SUCCESS!' if fit['success'] else 'FAIL!'}"
+        )
+    node.outcomes = {
+        qubit_name: ("successful" if fit["success"] else "failed")
+        for qubit_name, fit in node.results["fit_results"].items()
+    }
+
 
 # %% {Plot_data}
 @node.run_action(skip_if=node.parameters.simulate or not node.parameters.plot)
 def plot_data(node: QualibrationNode[Parameters, Quam]):
-    """Analyse readout-power fidelity with scqat and store the figures.
-
-    Note: scqat's ReadoutPowerFidelityEstimator does NOT port qcat's
-    power-specific linear mean-drift refit (fit_means_vs_amp_prefactor); the
-    core per-amplitude state-discrimination sweep is preserved."""
-    from scqat.parsers import repetition_data
-    from scqat.estimators.readout_fidelity import ReadoutPowerFidelityEstimator
-
-    # ds_raw already carries the I/Q vars and shot_idx/amp_prefactor/prepared_state
-    # coords that scqat expects (see sweep_axes above), so no renaming is needed.
-    ds = node.results["ds_raw"]
-    sep_data = repetition_data(ds, repetition_dim="qubit")
-    node.results["fit_results"] = {}
+    """Redraw the scqat readout-power fidelity figures for each qubit from the stored
+    (dataset, results) pairs."""
+    estimator = node.namespace["estimator"]
     node.results["figures"] = {}
-    estimator = ReadoutPowerFidelityEstimator()
-    for sq_data in sep_data:
-        qubit_name = sq_data["qubit"].values.item()
-        results, figs = estimator.analyze(sq_data, output_dir=None)
-        node.results["fit_results"][qubit_name] = results
-        node.results["figures"][qubit_name] = figs
+    for qubit_name, (sq, results) in node.namespace["sep_results"].items():
+        node.results["figures"][qubit_name] = estimator.generate_figures(sq, results)
+    plt.show()
 
 
 # %% {Update_state}
 @node.run_action(skip_if=node.parameters.simulate)
 def update_state(node: QualibrationNode[Parameters, Quam]):
-    """Update the relevant parameters if the qubit data analysis was successful."""
-    pass
+    """Scale each qubit's readout amplitude by the optimal prefactor found above."""
+    with node.record_state_updates():
+        for q in node.namespace["qubits"]:
+            if node.outcomes[q.name] == "failed":
+                continue
+
+            op = q.resonator.operations["readout"]
+            prefactor = node.results["fit_results"][q.name]["best_amp_prefactor"]
+            op.amplitude = float(op.amplitude * prefactor)
 
 # %% {Save_results}
 @node.run_action()
