@@ -40,7 +40,9 @@ def custom_param(node: QualibrationNode[Parameters, Quam]):
     execution in the Python IDE.
     """
     # You can get type hinting in your IDE by typing node.parameters.
-    # node.parameters.qubits = ["q1", "q2"]
+    node.parameters.qubits = ["q4", "q5"]
+    node.parameters.multiplexed = True
+    node.parameters.num_shots = 4000
     pass
 
 
