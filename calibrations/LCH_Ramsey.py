@@ -1,11 +1,4 @@
 # %% {Imports}
-import xarray as xr
-
-from qm.qua import *
-
-from qualang_tools.loops import from_array
-from qualang_tools.multi_user import qm_session
-from qualang_tools.results import progress_counter
 from qualang_tools.units import unit
 
 from qualibrate import QualibrationNode
@@ -15,7 +8,9 @@ from calibration_utils.ramsey import (
 )
 from qualibration_libs.parameters import get_qubits, get_idle_times_in_clock_cycles
 from qualibration_libs.runtime import simulate_and_plot
-from qualibration_libs.data import XarrayDataFetcher
+
+from customized.probes.ramsey import probe
+from customized.node.LCH_Ramsey import analysis, update
 
 
 # %% {Description}
@@ -27,6 +22,10 @@ description = """
         relaxation decay (when the fringe frequency is ~0). The fitted frequency
         calibrates the qubit: it updates `q.f_01` and `q.xy.RF_frequency`, and for
         the beat case records `q.charge_dispersion` from the frequency split.
+
+        This node is a thin qualibrate shell: the acquisition probe lives in
+        `customized.probes.ramsey` (shared with scqo); the scqat analysis adapter
+        and update policy live in `customized.node.LCH_Ramsey`.
 """
 
 node = QualibrationNode[Parameters, Quam](name="LCH_Ramsey", description=description, parameters=Parameters())
@@ -39,11 +38,11 @@ def custom_param(node: QualibrationNode[Parameters, Quam]):
     # You can get type hinting in your IDE by typing node.parameters.
     node.parameters.qubits = ["q4","q5"]
     node.parameters.frequency_detuning_in_mhz = 2
-    node.parameters.num_shots = 200  
+    node.parameters.num_shots = 200
     node.parameters.log_or_linear_sweep = "linear"
     node.parameters.wait_time_num_points = 100
     node.parameters.max_wait_time_in_ns = 2000
-    # node.parameters.reset_type = "active"
+    node.parameters.multiplexed = True
     pass
 
 
@@ -54,78 +53,20 @@ node.machine = Quam.load()
 # %% {Create_QUA_program}
 @node.run_action(skip_if=node.parameters.load_data_id is not None)
 def create_qua_program(node: QualibrationNode[Parameters, Quam]):
-    """Create the sweep axes and generate the QUA program from the pulse sequence and the node parameters."""
-    # Class containing tools to help handle units and conversions.
+    """probe (build half): create the sweep axes and the QUA program via the core."""
     u = unit(coerce_to_integer=True)
-    # Get the active qubits from the node and organize them by batches
     node.namespace["qubits"] = qubits = get_qubits(node)
-    num_qubits = len(qubits)
-    
-    n_avg = node.parameters.num_shots
-
-    idle_times = get_idle_times_in_clock_cycles(node.parameters)
-    detuning = node.parameters.frequency_detuning_in_mhz * u.MHz
-
-    # flux_idle_case = node.parameters.flux_idle_case
-    # Register the sweep axes to be added to the dataset when fetching data
-    node.namespace["sweep_axes"] = {
-        "qubit": xr.DataArray(qubits.get_names()),
-        "idle_time": xr.DataArray(4 * idle_times, attrs={"long_name": "idle times", "units": "ns"}),
-    }
-    with program() as node.namespace["qua_program"]:
-        I, I_st, Q, Q_st, n, n_st = node.machine.declare_qua_variables()
-        idle_time = declare(int)
-        virtual_detuning_phases = [declare(fixed) for _ in range(num_qubits)]
-
-        if node.parameters.use_state_discrimination:
-            state = [declare(int) for _ in range(num_qubits)]
-            state_st = [declare_stream() for _ in range(num_qubits)]
-
-        for multiplexed_qubits in qubits.batch():
-            # Initialize the QPU in terms of flux points (flux tunable transmons and/or tunable couplers)
-            for qubit in multiplexed_qubits.values():
-                node.machine.initialize_qpu(target=qubit)
-            align()
-
-            with for_(n, 0, n < n_avg, n + 1):
-                save(n, n_st)
-
-                with for_each_(idle_time, idle_times):
-                    # Qubit initialization
-                    for i, qubit in multiplexed_qubits.items():
-                        qubit.reset(node.parameters.reset_type, node.parameters.simulate,log_callable=node.log)
-                    align()
-                    # Qubit manipulation
-                    for i, qubit in multiplexed_qubits.items():
-                        assign(
-                            virtual_detuning_phases[i],
-                            Cast.mul_fixed_by_int(detuning * 1e-9, 4 * idle_time),
-                        )
-
-                        qubit.xy.play("y90")
-                        qubit.xy.frame_rotation_2pi(virtual_detuning_phases[i])
-                        qubit.wait(idle_time)
-                        qubit.xy.play("x90")
-
-                    align()
-                    for i, qubit in multiplexed_qubits.items():
-                        if node.parameters.use_state_discrimination:
-                            qubit.readout_state(state[i])
-                            save(state[i], state_st[i])
-                        else:
-                            qubit.resonator.measure("readout", qua_vars=(I[i], Q[i]))
-                            save(I[i], I_st[i])
-                            save(Q[i], Q_st[i])
-                    align()
-
-        with stream_processing():
-            n_st.save("n")
-            for i in range(num_qubits):
-                if node.parameters.use_state_discrimination:
-                    state_st[i].buffer(len(idle_times)).average().save(f"state{i + 1}")
-                else:
-                    I_st[i].buffer(len(idle_times)).average().save(f"I{i + 1}")
-                    Q_st[i].buffer(len(idle_times)).average().save(f"Q{i + 1}")
+    node.namespace["qua_program"], node.namespace["sweep_axes"] = probe.build_program(
+        node.machine,
+        qubits,
+        idle_times_cycles=get_idle_times_in_clock_cycles(node.parameters),
+        detuning_hz=node.parameters.frequency_detuning_in_mhz * u.MHz,
+        num_shots=node.parameters.num_shots,
+        reset_type=node.parameters.reset_type,
+        use_state_discrimination=node.parameters.use_state_discrimination,
+        simulate=node.parameters.simulate,
+        log=node.log,
+    )
 
 
 # %% {Simulate}
@@ -145,27 +86,15 @@ def simulate_qua_program(node: QualibrationNode[Parameters, Quam]):
 # %% {Execute}
 @node.run_action(skip_if=node.parameters.load_data_id is not None or node.parameters.simulate)
 def execute_qua_program(node: QualibrationNode[Parameters, Quam]):
-    """Connect to the QOP, execute the QUA program and fetch the raw data and store it in a xarray dataset called "ds_raw"."""
-    # Connect to the QOP
-    qmm = node.machine.connect()
-    # Get the config from the machine
-    config = node.machine.generate_config()
-    # Execute the QUA program only if the quantum machine is available (this is to avoid interrupting running jobs).
-    with qm_session(qmm, config, timeout=node.parameters.timeout) as qm:
-        # The job is stored in the node namespace to be reused in the fetching_data run_action
-        node.namespace["job"] = job = qm.execute(node.namespace["qua_program"])
-        # Display the progress bar
-        data_fetcher = XarrayDataFetcher(job, node.namespace["sweep_axes"])
-        for dataset in data_fetcher:
-            progress_counter(
-                data_fetcher.get("n", 0),
-                node.parameters.num_shots,
-                start_time=data_fetcher.t_start,
-            )
-        # Display the execution report to expose possible runtime errors
-        node.log(job.execution_report())
-    # Register the raw dataset
-    node.results["ds_raw"] = dataset
+    """probe (run half): execute on the QOP and store the raw dataset as "ds_raw"."""
+    node.results["ds_raw"] = probe.acquire(
+        node.machine,
+        node.namespace["qua_program"],
+        node.namespace["sweep_axes"],
+        num_shots=node.parameters.num_shots,
+        timeout=node.parameters.timeout,
+        log=node.log,
+    )
 
 
 # %% {Load_historical_data}
@@ -183,59 +112,22 @@ def load_data(node: QualibrationNode[Parameters, Quam]):
 # %% {Analyse_data}
 @node.run_action(skip_if=node.parameters.simulate)
 def analyse_data(node: QualibrationNode[Parameters, Quam]):
-    """estimate: fit each qubit's probed Ramsey with scqat's RamseyEstimator.
-
-    The estimator selects the model (single damped sine / beat / relaxation) and
-    returns `model_type` plus `f_1` (and `f_2` for the beat case), which
-    `update_state` consumes. Figures are produced here too — the scqat estimator
-    owns the plotting — so no separate plot step is needed."""
-    from scqat.parsers import repetition_data
-    from scqat.estimators.ramsey import RamseyEstimator
-
-    if node.parameters.use_state_discrimination:
-        ds = node.results["ds_raw"].rename({"state": "signal"})
-    else:
-        ds = node.results["ds_raw"].rename({"I": "signal"})
-
-    sep_data = repetition_data(ds, repetition_dim="qubit")
-    node.results["fit_results"] = {}
-    node.results["figures"] = {}
-    estimator = RamseyEstimator()
-    for sq_data in sep_data:
-        qubit_name = sq_data["qubit"].values.item()
-        results, figs = estimator.analyze(sq_data, output_dir=None)
-        # Persist only the scalar fit params; dropping the estimator's diagnostic
-        # arrays (best_fit/fft_freq/fft_amp) keeps arrays.npz from being written.
-        node.results["fit_results"][qubit_name] = estimator.extract_metadata(results)
-        node.results["figures"][qubit_name] = figs
+    """estimate: fit each qubit's probed Ramsey with scqat's RamseyEstimator (via the core)."""
+    node.results["fit_results"], node.results["figures"] = analysis.fit(
+        node.results["ds_raw"],
+        use_state_discrimination=node.parameters.use_state_discrimination,
+    )
 
 
 # %% {Update_state}
 @node.run_action(skip_if=node.parameters.simulate)
 def update_state(node: QualibrationNode[Parameters, Quam]):
-    """update: correct the qubit frequency from the fitted Ramsey fringe.
-
-    Branches on the estimator's authoritative `model_type`:
-      * beat       -> mean of (f_1, f_2) calibrates the qubit; the half-split is
-                      recorded as charge dispersion;
-      * single     -> f_1 calibrates the qubit;
-      * relaxation -> f_1 is reported as 0 (fringe unresolvable), so the
-                      single-frequency path applies a -detuning correction.
-    """
-    detuning = int(node.parameters.frequency_detuning_in_mhz * 1e6)
+    """update: correct the qubit frequency from the fitted Ramsey fringe (via the core)."""
+    detuning_hz = int(node.parameters.frequency_detuning_in_mhz * 1e6)
     with node.record_state_updates():
         for q in node.namespace["qubits"]:
-            fit = node.results["fit_results"][q.name]
-            f_1 = float(fit["f_1"]) * 1e9
-            if fit.get("model_type") == "beat":
-                f_2 = float(fit["f_2"]) * 1e9
-                d_f_01 = int((f_1 + f_2) / 2) - detuning
-                q.charge_dispersion = int(abs(f_1 - f_2) / 2)
-            else:
-                d_f_01 = int(f_1) - detuning
-                q.charge_dispersion = 0
-            q.f_01 -= d_f_01
-            q.xy.RF_frequency -= d_f_01
+            q_update = update.compute_update(node.results["fit_results"][q.name], detuning_hz)
+            update.apply_update(q, q_update)
 
 # %% {Save_results}
 @node.run_action()

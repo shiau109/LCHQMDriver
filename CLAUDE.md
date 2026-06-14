@@ -25,8 +25,43 @@ This repo is intended to become the **QM reference backend** for **`scqo`**, a v
 
 **Custom LCH nodes** (this lab's own code):
 - `calibrations/LCH_<name>.py` → calibration script (GUI entry point)
-- `customized/node/LCH_<name>/` → only `parameters.py` is required (for qualibrate GUI). Add `analysis.py` / `plotting.py` only when the logic is complex enough to extract from the calibration script.
+- `customized/node/LCH_<name>/` → qualibrate-side code for the node: `parameters.py` (GUI schema; required unless the node reuses a vendored `Parameters`), plus the node's `analysis.py` (scqat adapter) and `update.py` (state-update policy) once extracted. See **Probes vs shells** below for what goes where.
+- `customized/probes/<name>/` → the instrument-acquisition half, shared with scqo. See **Probes vs shells**.
 - `customized/components/` → shared pulse shapes, macros, QUAM extensions
+
+## Probes vs shells (`customized/probes/` + `customized/node/`)
+LCH nodes are being refactored so qualibrate is a thin shell, not the architecture. The split is by
+**who calls the code**, which is also an **import rule**:
+
+| Folder | Side | May import |
+|---|---|---|
+| `customized/probes/<name>/probe.py` | acquisition: params in → `xr.Dataset` out. Called by BOTH the qualibrate shell today and the scqo `QMBackend` (planned). | qm.qua, quam, qualang_tools, `qualibration_libs.core`/`.data`. **NEVER** qualibrate, scqo, or scqat — probes acquire, they never fit. |
+| `customized/node/LCH_<name>/` | the qualibrate node: `parameters.py` (GUI schema), `analysis.py` (scqat estimate adapter), `update.py` (pure `compute_update` + `apply_update` state-update policy). | qualibrate, vendored official params, scqat (lazy, inside `fit`). |
+| `calibrations/LCH_<name>.py` | qualibrate shell: `@node.run_action` glue (~3–10 lines each) unpacking `node.parameters` into probe/analysis/update calls. | everything. |
+
+Shared probe helpers (`select_qubits` — the node-free `get_qubits`; `acquire` — the shared
+execute-and-fetch) live in `customized/probes/_lib.py`.
+
+**Why this split:** the scqo contract is that a driver contributes only `probe()`; estimate/update are
+inherited from `scqo.experiments` + scqat. So the probe is the one piece both orchestrators share and
+must stay framework-free, while analysis/update are qualibrate-path adapters. ("probes" matches scqo's
+canonical vocabulary and avoids colliding with scqo's `Experiment`.)
+
+**Two orchestration paths, one estimator implementation:**
+- **scqo-driven** (planned): scqo `Session` owns the probe→estimate→update lifecycle, data saving, and
+  run history; it calls `customized/probes/<name>` and runs the scqat estimator itself.
+- **QM-only** (today): qualibrate owns orchestration, saving, GUI approval; the LCH node calls its own
+  `customized/node/LCH_<name>/{analysis,update}`. Vendored **official** nodes keep QM's built-in
+  analysis and never run under scqo.
+- In **both** paths the estimator *implementation* lives once in scqat — only the calling shell differs.
+
+**Lab-tuned parameter defaults** go in the lab `Parameters` subclass (e.g. `LCHNodeSpecificParameters`
+in `customized/node/LCH_power_rabi/parameters.py`), **never** in vendored `calibration_utils/` (which
+`sync_official.py` reverts).
+
+**Status (2026-06-13):** ramsey, power_rabi, readout_frequency are extracted to this layout (probe +
+node analysis/update + thin shell); verified by QUA program-equivalence + unit tests. Remaining LCH
+nodes migrate opportunistically. Next: scqo `QMBackend` calling these probes.
 
 ## Key Entrypoints
 - `quam_config/my_quam.py` → defines the `Quam(FluxTunableQuam)` class imported by every calibration node and config script. The custom-type bindings (`qubit_type = ChargeTunableTransmon`, `qubit_pair_type = LCH_FluxTunableTransmonQCQPair`) are **toggled in/out per experiment** — they are intentionally commented out by default and uncommented only when a run needs the custom charge-tunable types. Do NOT treat either state as "wrong"; read the live class body to see what is active, and ask before flipping it.

@@ -1,20 +1,13 @@
 # %% {Imports}
 import numpy as np
-import xarray as xr
-
-from qm.qua import *
-
-from qualang_tools.loops import from_array
-from qualang_tools.multi_user import qm_session
-from qualang_tools.results import progress_counter
-from qualang_tools.units import unit
 
 from qualibrate import QualibrationNode
 from quam_config import Quam
-from customized.node.LCH_power_rabi import Parameters
+from customized.node.LCH_power_rabi import Parameters, analysis, update
 from qualibration_libs.parameters import get_qubits
 from qualibration_libs.runtime import simulate_and_plot
-from qualibration_libs.data import XarrayDataFetcher
+
+from customized.probes.power_rabi import probe
 
 
 # %% {Description}
@@ -37,6 +30,10 @@ State update:
     - The qubit pulse amplitude of the selected operation
     (qubit.xy.operations[operation].amplitude); x90 is set to half when operation is x180
     and update_x90 is enabled.
+
+This node is a thin qualibrate shell: the acquisition probe lives in
+`customized.probes.power_rabi` (shared with scqo); the scqat analysis adapter and
+update policy live in `customized.node.LCH_power_rabi`.
 """
 
 
@@ -54,6 +51,7 @@ node = QualibrationNode[Parameters, Quam](
 def custom_param(node: QualibrationNode[Parameters, Quam]):
     """Allow the user to locally set the node parameters for debugging purposes, or execution in the Python IDE."""
     node.parameters.qubits = ["q4", "q5"]
+    node.parameters.drive_qubit = None
     node.parameters.multiplexed = True
     # node.parameters.operation = "x180"
     # node.parameters.min_amp_factor = 0.0
@@ -69,75 +67,24 @@ node.machine = Quam.load()
 # %% {Create_QUA_program}
 @node.run_action(skip_if=node.parameters.load_data_id is not None)
 def create_qua_program(node: QualibrationNode[Parameters, Quam]):
-    """Create the sweep axes and generate the QUA program from the pulse sequence and the node parameters."""
-    # Class containing tools to help handle units and conversions.
-    u = unit(coerce_to_integer=True)
-    # Get the active qubits from the node and organize them by batches
+    """probe (build half): create the sweep axes and the QUA program via the core."""
     node.namespace["qubits"] = qubits = get_qubits(node)
-    num_qubits = len(qubits)
-
-    n_avg = node.parameters.num_shots  # The number of averages
-    operation = node.parameters.operation  # The qubit operation to play
-    # Pulse amplitude sweep (as a pre-factor of the qubit pulse amplitude) - must be within [-2; 2)
     amps = np.arange(
         node.parameters.min_amp_factor,
         node.parameters.max_amp_factor,
         node.parameters.amp_factor_step,
     )
-    # Register the sweep axes to be added to the dataset when fetching data
-    node.namespace["sweep_axes"] = {
-        "qubit": xr.DataArray(qubits.get_names()),
-        "amp_prefactor": xr.DataArray(amps, attrs={"long_name": "pulse amplitude prefactor"}),
-    }
-
-    with program() as node.namespace["qua_program"]:
-        I, I_st, Q, Q_st, n, n_st = node.machine.declare_qua_variables()
-        if node.parameters.use_state_discrimination:
-            state = [declare(int) for _ in range(num_qubits)]
-            state_st = [declare_stream() for _ in range(num_qubits)]
-        a = declare(fixed)  # QUA variable for the qubit drive amplitude pre-factor
-
-        for multiplexed_qubits in qubits.batch():
-            # Initialize the QPU in terms of flux points (flux tunable transmons and/or tunable couplers)
-            for qubit in multiplexed_qubits.values():
-                node.machine.initialize_qpu(target=qubit)
-            align()
-
-            with for_(n, 0, n < n_avg, n + 1):
-                save(n, n_st)
-                with for_(*from_array(a, amps)):
-                    # Qubit initialization
-                    for i, qubit in multiplexed_qubits.items():
-                        qubit.reset(node.parameters.reset_type, node.parameters.simulate)
-                    align()
-
-                    # Qubit manipulation: play the operation once (no error amplification).
-                    # Drive only the selected qubit, or all qubits when drive_qubit is None.
-                    for i, qubit in multiplexed_qubits.items():
-                        if node.parameters.drive_qubit is None or qubit.name == node.parameters.drive_qubit:
-                            qubit.xy.play(operation, amplitude_scale=a)
-                    align()
-
-                    # Qubit readout
-                    for i, qubit in multiplexed_qubits.items():
-                        if node.parameters.use_state_discrimination:
-                            qubit.readout_state(state[i])
-                            save(state[i], state_st[i])
-                        else:
-                            qubit.resonator.measure("readout", qua_vars=(I[i], Q[i]))
-                            save(I[i], I_st[i])
-                            save(Q[i], Q_st[i])
-                    align()
-
-        with stream_processing():
-            n_st.save("n")
-            for i in range(num_qubits):
-                # Uniform save: always buffer over amps and average, regardless of operation.
-                if node.parameters.use_state_discrimination:
-                    state_st[i].buffer(len(amps)).average().save(f"state{i + 1}")
-                else:
-                    I_st[i].buffer(len(amps)).average().save(f"I{i + 1}")
-                    Q_st[i].buffer(len(amps)).average().save(f"Q{i + 1}")
+    node.namespace["qua_program"], node.namespace["sweep_axes"] = probe.build_program(
+        node.machine,
+        qubits,
+        amps=amps,
+        operation=node.parameters.operation,
+        num_shots=node.parameters.num_shots,
+        reset_type=node.parameters.reset_type,
+        use_state_discrimination=node.parameters.use_state_discrimination,
+        drive_qubit=node.parameters.drive_qubit,
+        simulate=node.parameters.simulate,
+    )
 
 
 # %% {Simulate}
@@ -157,27 +104,15 @@ def simulate_qua_program(node: QualibrationNode[Parameters, Quam]):
 # %% {Execute}
 @node.run_action(skip_if=node.parameters.load_data_id is not None or node.parameters.simulate)
 def execute_qua_program(node: QualibrationNode[Parameters, Quam]):
-    """Connect to the QOP, execute the QUA program and fetch the raw data and store it in a xarray dataset called "ds_raw"."""
-    # Connect to the QOP
-    qmm = node.machine.connect()
-    # Get the config from the machine
-    config = node.machine.generate_config()
-    # Execute the QUA program only if the quantum machine is available (this is to avoid interrupting running jobs).
-    with qm_session(qmm, config, timeout=node.parameters.timeout) as qm:
-        # The job is stored in the node namespace to be reused in the fetching_data run_action
-        node.namespace["job"] = job = qm.execute(node.namespace["qua_program"])
-        # Display the progress bar
-        data_fetcher = XarrayDataFetcher(job, node.namespace["sweep_axes"])
-        for dataset in data_fetcher:
-            progress_counter(
-                data_fetcher.get("n", 0),
-                node.parameters.num_shots,
-                start_time=data_fetcher.t_start,
-            )
-        # Display the execution report to expose possible runtime errors
-        node.log(job.execution_report())
-    # Register the raw dataset
-    node.results["ds_raw"] = dataset
+    """probe (run half): execute on the QOP and store the raw dataset as "ds_raw"."""
+    node.results["ds_raw"] = probe.acquire(
+        node.machine,
+        node.namespace["qua_program"],
+        node.namespace["sweep_axes"],
+        num_shots=node.parameters.num_shots,
+        timeout=node.parameters.timeout,
+        log=node.log,
+    )
 
 
 # %% {Load_historical_data}
@@ -195,27 +130,11 @@ def load_data(node: QualibrationNode[Parameters, Quam]):
 # %% {Analyse_data}
 @node.run_action(skip_if=node.parameters.simulate)
 def analyse_data(node: QualibrationNode[Parameters, Quam]):
-    """Analyse the raw data with scqat: fit each qubit's power-Rabi cosine and store the
-    fit results and figures. The estimator returns opt_amp_prefactor (the multiplier on
-    the current pulse amplitude that yields a pi pulse) and a success flag."""
-    from scqat.parsers import repetition_data
-    from scqat.estimators.power_rabi import PowerRabiEstimator
-
-    if node.parameters.use_state_discrimination:
-        ds = node.results["ds_raw"].rename({"state": "signal"})
-    else:
-        ds = node.results["ds_raw"].rename({"I": "signal"})
-
-    sep_data = repetition_data(ds, repetition_dim="qubit")
-    node.results["fit_results"] = {}
-    node.results["figures"] = {}
-    estimator = PowerRabiEstimator()
-    for sq_data in sep_data:
-        qubit_name = sq_data["qubit"].values.item()
-        results, figs = estimator.analyze(sq_data, output_dir=None)
-        node.results["fit_results"][qubit_name] = results
-        node.results["figures"][qubit_name] = figs
-
+    """estimate: fit each qubit's power-Rabi cosine with scqat (via the core)."""
+    node.results["fit_results"], node.results["figures"] = analysis.fit(
+        node.results["ds_raw"],
+        use_state_discrimination=node.parameters.use_state_discrimination,
+    )
     node.outcomes = {
         qubit_name: ("successful" if fit_result["success"] else "failed")
         for qubit_name, fit_result in node.results["fit_results"].items()
@@ -232,7 +151,7 @@ def plot_data(node: QualibrationNode[Parameters, Quam]):
 # %% {Update_state}
 @node.run_action(skip_if=node.parameters.simulate)
 def update_state(node: QualibrationNode[Parameters, Quam]):
-    """Update the relevant parameters if the qubit data analysis was successful."""
+    """update: recalibrate the pi-pulse amplitude from the fitted prefactor (via the core)."""
     operation = node.parameters.operation
     drive_qubit = node.parameters.drive_qubit
     with node.record_state_updates():
@@ -244,11 +163,10 @@ def update_state(node: QualibrationNode[Parameters, Quam]):
             if node.outcomes[q.name] == "failed":
                 continue
 
-            prefactor = node.results["fit_results"][q.name]["opt_amp_prefactor"]
-            opt_amp = prefactor * q.xy.operations[operation].amplitude
-            q.xy.operations[operation].amplitude = opt_amp
-            if operation == "x180" and node.parameters.update_x90:
-                q.xy.operations["x90"].amplitude = opt_amp / 2
+            q_update = update.compute_update(
+                node.results["fit_results"][q.name], q.xy.operations[operation].amplitude
+            )
+            update.apply_update(q, operation, q_update, update_x90=node.parameters.update_x90)
 
 
 # %% {Save_results}
