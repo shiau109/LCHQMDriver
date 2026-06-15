@@ -1,0 +1,6 @@
+"""Resonator-spectroscopy probe (acquisition only). See package docstring of
+`customized.probes` for the import rules."""
+
+from customized.probes.resonator_spectroscopy.probe import acquire, build_program
+
+__all__ = ["build_program", "acquire"]

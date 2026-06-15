@@ -3,14 +3,11 @@ from qualang_tools.units import unit
 
 from qualibrate import QualibrationNode
 from quam_config import Quam
-from calibration_utils.ramsey import (
-    Parameters,
-)
 from qualibration_libs.parameters import get_qubits, get_idle_times_in_clock_cycles
 from qualibration_libs.runtime import simulate_and_plot
 
 from customized.probes.ramsey import probe
-from customized.node.LCH_Ramsey import analysis, update
+from customized.node.LCH_Ramsey import Parameters, analysis, update
 
 
 # %% {Description}
@@ -36,12 +33,12 @@ node = QualibrationNode[Parameters, Quam](name="LCH_Ramsey", description=descrip
 @node.run_action(skip_if=node.modes.external)
 def custom_param(node: QualibrationNode[Parameters, Quam]):
     # You can get type hinting in your IDE by typing node.parameters.
-    node.parameters.qubits = ["q4","q5"]
-    node.parameters.frequency_detuning_in_mhz = 2
-    node.parameters.num_shots = 200
+    # node.parameters.qubits = ["q4","q5"]
+    # node.parameters.frequency_detuning_in_mhz = 2
+    # node.parameters.num_shots = 200
     node.parameters.log_or_linear_sweep = "linear"
-    node.parameters.wait_time_num_points = 100
-    node.parameters.max_wait_time_in_ns = 2000
+    # node.parameters.wait_time_num_points = 100
+    # node.parameters.max_wait_time_in_ns = 2000
     node.parameters.multiplexed = True
     pass
 

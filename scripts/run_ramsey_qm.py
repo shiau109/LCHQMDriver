@@ -44,6 +44,11 @@ def main() -> None:
     print("power_rabi result:", json.dumps(rabi, indent=2))
     print("pi_amp after: ", {q: s["pi_amp"] for q, s in sess.device_state().items()})
 
+    print("\nreadout_freq before:", {q: s["readout_freq"] for q, s in sess.device_state().items()})
+    rspec = sess.run("resonator_spectroscopy", {"qubits": ["q4", "q5"], "num_averages": 200})
+    print("resonator_spectroscopy result:", json.dumps(rspec, indent=2))
+    print("readout_freq after: ", {q: s["readout_freq"] for q, s in sess.device_state().items()})
+
 
 if __name__ == "__main__":
     main()
