@@ -6,6 +6,7 @@ Virtual-detuning Ramsey: x90 -> idle -> y90 with the drive virtually detuned by
 
 from typing import Callable, Optional
 
+import numpy as np
 import xarray as xr
 from qm.qua import *
 
@@ -29,6 +30,14 @@ def build_program(
     `idle_times_cycles` is the idle-time sweep in clock cycles (4 ns);
     `qubits` is a BatchableList (see `_lib.select_qubits`).
     """
+    # The QM clock resolves idle times to 4 ns. A linear sweep finer than that
+    # collapses adjacent points onto the same clock cycle, leaving duplicate
+    # idle times (the log sweep already de-duplicates via np.unique). Collapse
+    # them here so the idle-time axis is strictly increasing and the QUA buffer
+    # length, the stream processing and the dataset coordinate stay consistent --
+    # a zero-width first step otherwise breaks the downstream FFT-based fit.
+    idle_times_cycles = np.unique(np.asarray(idle_times_cycles))
+
     num_qubits = len(qubits)
 
     sweep_axes = {
