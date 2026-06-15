@@ -40,6 +40,12 @@ def test_to_canonical_renames_power_rabi_axis():
     assert "amp_factor" in out.dims and "amp_prefactor" not in out.dims
 
 
+def test_to_canonical_renames_resonator_spec_axis():
+    raw = _raw("detuning")
+    out = QMBackend._to_canonical(raw, _FakeExp({"detuning_hz": np.arange(5)}))
+    assert "detuning_hz" in out.dims and "detuning" not in out.dims
+
+
 def test_to_canonical_noop_when_names_match():
     raw = _raw("idle_time_ns")
     out = QMBackend._to_canonical(raw, _FakeExp({"idle_time_ns": np.arange(5)}))
@@ -57,7 +63,7 @@ def test_catalog_registers_qm_experiments():
     from scqo import catalog
 
     names = {e["name"] for e in catalog()}
-    assert {"ramsey", "power_rabi"} <= names
+    assert {"ramsey", "power_rabi", "resonator_spectroscopy"} <= names
 
 
 # ------------------------------------------------------------------ requires QUAM
@@ -82,8 +88,10 @@ def test_probe_matches_direct_build(machine):
     from customized.probes._lib import select_qubits
     from customized.probes.ramsey import probe as ramsey_probe
     from customized.probes.power_rabi import probe as power_rabi_probe
+    from customized.probes.resonator_spectroscopy import probe as resonator_spec_probe
     from customized.scqo.experiments.ramsey import QMRamsey
     from customized.scqo.experiments.power_rabi import QMPowerRabi
+    from customized.scqo.experiments.resonator_spectroscopy import QMResonatorSpectroscopy
 
     backend = QMBackend(machine)
     config = machine.generate_config()
@@ -112,6 +120,17 @@ def test_probe_matches_direct_build(machine):
     )
     assert script(p_prog) == script(p_direct)
 
+    # Resonator spectroscopy
+    rs = QMResonatorSpectroscopy(
+        backend, QMResonatorSpectroscopy.Parameters(qubits=qubits_names, num_averages=200)
+    )
+    rs.sweep_axes = rs.define_sweep()
+    rs_prog, _ = rs.probe()
+    rs_direct, _ = resonator_spec_probe.build_program(
+        machine, qubits, dfs=rs.sweep_axes["detuning_hz"], num_shots=200,
+    )
+    assert script(rs_prog) == script(rs_direct)
+
 
 def test_device_view_roundtrip(machine):
     """Neutral get/set maps onto QUAM; drive_freq shifts both f_01 and xy.RF_frequency."""
@@ -121,9 +140,14 @@ def test_device_view_roundtrip(machine):
 
     r0, d0, p0 = view.readout_freq, view.drive_freq, view.pi_amp
     rf0 = float(q.xy.RF_frequency)
+    res_has_f01 = hasattr(q.resonator, "f_01")
+    res_f01_0 = q.resonator.f_01 if res_has_f01 else None  # may be None when uncalibrated
     try:
         view.readout_freq = r0 + 1e6
         assert view.readout_freq == pytest.approx(r0 + 1e6)
+        assert float(q.resonator.RF_frequency) == pytest.approx(r0 + 1e6)
+        if res_has_f01:  # readout_freq setter writes resonator.f_01 too (even if it was None)
+            assert float(q.resonator.f_01) == pytest.approx(r0 + 1e6)
 
         view.drive_freq = d0 + 2e6
         assert view.drive_freq == pytest.approx(d0 + 2e6)
@@ -138,6 +162,8 @@ def test_device_view_roundtrip(machine):
     finally:
         # Restore the in-memory state (never saved); keep the loaded machine pristine.
         view.readout_freq = r0
+        if res_has_f01:
+            q.resonator.f_01 = res_f01_0
         q.f_01 = d0
         q.xy.RF_frequency = rf0
         view.pi_amp = p0

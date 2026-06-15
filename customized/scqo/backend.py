@@ -40,7 +40,11 @@ class QMQubitView(QubitView):
 
     @readout_freq.setter
     def readout_freq(self, value: float) -> None:
+        # Write both the resonator RF and its f_01, matching the LCH resonator-spec
+        # node's dual writeback (the two are kept equal). f_01 is set when present.
         self._q.resonator.RF_frequency = float(value)
+        if hasattr(self._q.resonator, "f_01"):
+            self._q.resonator.f_01 = float(value)
 
     @property
     def drive_freq(self) -> float:

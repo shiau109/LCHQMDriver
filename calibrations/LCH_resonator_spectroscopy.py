@@ -1,21 +1,16 @@
 # %% {Imports}
 import matplotlib.pyplot as plt
 import numpy as np
-import xarray as xr
 
-from qm.qua import *
-
-from qualang_tools.loops import from_array
-from qualang_tools.multi_user import qm_session
-from qualang_tools.results import progress_counter
 from qualang_tools.units import unit
 
 from qualibrate import QualibrationNode
 from quam_config import Quam
-from customized.node.LCH_resonator_spectroscopy import Parameters
 from qualibration_libs.parameters import get_qubits
 from qualibration_libs.runtime import simulate_and_plot
-from qualibration_libs.data import XarrayDataFetcher
+
+from customized.probes.resonator_spectroscopy import probe
+from customized.node.LCH_resonator_spectroscopy import Parameters, analysis, update
 
 # %% {Node initialisation}
 description = """
@@ -26,14 +21,9 @@ The data is then post-processed by the scqat ResonatorSpectroscopyEstimator (sin
 |IQ| amplitude dip) to determine the resonator resonance frequency.
 This frequency is used to update the readout frequency in the state.
 
-Only the analysis path (analyse_data / plot_data) differs from the official 02a_resonator_spectroscopy node; the
-acquisition (QUA program), parameters, and state update are identical.
-
-Prerequisites:
-    - Having calibrated the IQ mixer/Octave connected to the readout line (node 01a_mixer_calibration.py).
-    - Having calibrated the time of flight, offsets, and gains (node 01a_time_of_flight.py).
-    - Having initialized the QUAM state parameters for the readout pulse amplitude and duration, and the resonators depletion time.
-    - Having specified the desired flux point if relevant (qubit.z.flux_point).
+This node is a thin qualibrate shell: the acquisition probe lives in
+`customized.probes.resonator_spectroscopy` (shared with scqo); the scqat analysis adapter
+and update policy live in `customized.node.LCH_resonator_spectroscopy`.
 
 State update:
     - The readout frequency: qubit.resonator.f_01 & qubit.resonator.RF_frequency
@@ -64,55 +54,18 @@ node.machine = Quam.load()
 # %% {Create_QUA_program}
 @node.run_action(skip_if=node.parameters.load_data_id is not None)
 def create_qua_program(node: QualibrationNode[Parameters, Quam]):
-    """Create the sweep axes and generate the QUA program from the pulse sequence and the node parameters."""
-    # Class containing tools to help handle units and conversions.
+    """probe (build half): create the sweep axes and the QUA program via the core."""
     u = unit(coerce_to_integer=True)
-    # Get the active qubits from the node and organize them by batches
     node.namespace["qubits"] = qubits = get_qubits(node)
-    num_qubits = len(qubits)
-    # Extract the sweep parameters and axes from the node parameters
-    n_avg = node.parameters.num_shots
-    # The frequency sweep around the resonator resonance frequency
     span = node.parameters.frequency_span_in_mhz * u.MHz
     step = node.parameters.frequency_step_in_mhz * u.MHz
     dfs = np.arange(-span / 2, +span / 2, step)
-    # Register the sweep axes to be added to the dataset when fetching data
-    node.namespace["sweep_axes"] = {
-        "qubit": xr.DataArray(qubits.get_names()),
-        "detuning": xr.DataArray(dfs, attrs={"long_name": "readout frequency", "units": "Hz"}),
-    }
-
-    # The QUA program stored in the node namespace to be transfer to the simulation and execution run_actions
-    with program() as node.namespace["qua_program"]:
-        I, I_st, Q, Q_st, n, n_st = node.machine.declare_qua_variables()
-        df = declare(int)  # QUA variable for the readout frequency
-
-        for multiplexed_qubits in qubits.batch():
-            # Initialize the QPU in terms of flux points (flux tunable transmons and/or tunable couplers)
-            for qubit in multiplexed_qubits.values():
-                node.machine.initialize_qpu(target=qubit)
-            align()
-            with for_(n, 0, n < n_avg, n + 1):
-                save(n, n_st)
-                with for_(*from_array(df, dfs)):
-                    for i, qubit in multiplexed_qubits.items():
-                        rr = qubit.resonator
-                        # Update the resonator frequencies for all resonators
-                        rr.update_frequency(df + rr.intermediate_frequency)
-                        # Measure the resonator
-                        rr.measure("readout", qua_vars=(I[i], Q[i]))
-                        # wait for the resonator to deplete
-                        rr.wait(rr.depletion_time * u.ns)
-                        # save data
-                        save(I[i], I_st[i])
-                        save(Q[i], Q_st[i])
-                    align()
-
-        with stream_processing():
-            n_st.save("n")
-            for i in range(num_qubits):
-                I_st[i].buffer(len(dfs)).average().save(f"I{i + 1}")
-                Q_st[i].buffer(len(dfs)).average().save(f"Q{i + 1}")
+    node.namespace["qua_program"], node.namespace["sweep_axes"] = probe.build_program(
+        node.machine,
+        qubits,
+        dfs=dfs,
+        num_shots=node.parameters.num_shots,
+    )
 
 
 # %% {Simulate}
@@ -132,27 +85,15 @@ def simulate_qua_program(node: QualibrationNode[Parameters, Quam]):
 # %% {Execute}
 @node.run_action(skip_if=node.parameters.load_data_id is not None or node.parameters.simulate)
 def execute_qua_program(node: QualibrationNode[Parameters, Quam]):
-    """Connect to the QOP, execute the QUA program and fetch the raw data and store it in a xarray dataset called "ds_raw"."""
-    # Connect to the QOP
-    qmm = node.machine.connect()
-    # Get the config from the machine
-    config = node.machine.generate_config()
-    # Execute the QUA program only if the quantum machine is available (this is to avoid interrupting running jobs).
-    with qm_session(qmm, config, timeout=node.parameters.timeout) as qm:
-        # The job is stored in the node namespace to be reused in the fetching_data run_action
-        node.namespace["job"] = job = qm.execute(node.namespace["qua_program"])
-        # Display the progress bar
-        data_fetcher = XarrayDataFetcher(job, node.namespace["sweep_axes"])
-        for dataset in data_fetcher:
-            progress_counter(
-                data_fetcher.get("n", 0),
-                node.parameters.num_shots,
-                start_time=data_fetcher.t_start,
-            )
-        # Display the execution report to expose possible runtime errors
-        node.log(job.execution_report())
-    # Register the raw dataset
-    node.results["ds_raw"] = dataset
+    """probe (run half): execute on the QOP and store the raw dataset as "ds_raw"."""
+    node.results["ds_raw"] = probe.acquire(
+        node.machine,
+        node.namespace["qua_program"],
+        node.namespace["sweep_axes"],
+        num_shots=node.parameters.num_shots,
+        timeout=node.parameters.timeout,
+        log=node.log,
+    )
 
 
 # %% {Load_historical_data}
@@ -170,40 +111,13 @@ def load_data(node: QualibrationNode[Parameters, Quam]):
 # %% {Analyse_data}
 @node.run_action(skip_if=node.parameters.simulate)
 def analyse_data(node: QualibrationNode[Parameters, Quam]):
-    """Analyse the raw data with scqat: fit each qubit's resonator dip with a single
-    inverted Lorentzian on the |IQ| amplitude and store the fit results. The per-qubit
-    (dataset, results) pairs are kept in the namespace so plot_data can redraw the
-    figures without refitting."""
-    from scqat.parsers import repetition_data
-    from scqat.estimators.resonator_spectroscopy import ResonatorSpectroscopyEstimator
-
-    ds = node.results["ds_raw"]  # carries I/Q and the qubit/detuning coords
-    estimator = ResonatorSpectroscopyEstimator()
+    """estimate: fit each qubit's resonator dip with scqat (via the core)."""
+    fit_results, sep_results, estimator = analysis.fit(node.results["ds_raw"], node.namespace["qubits"])
+    node.results["fit_results"] = fit_results
+    node.namespace["sep_results"] = sep_results
     node.namespace["estimator"] = estimator
-    node.namespace["sep_results"] = {}
-    node.results["fit_results"] = {}
 
-    for sq in repetition_data(ds, repetition_dim="qubit"):
-        qubit_name = sq["qubit"].values.item()
-        q = next(x for x in node.namespace["qubits"] if x.name == qubit_name)
-        # Add the absolute readout-frequency axis so the estimator can report f_01
-        sq = sq.assign_coords(
-            full_freq=("detuning", (sq.detuning + q.resonator.RF_frequency).values)
-        )
-        results = estimator.analyze(sq, output_dir=None, skip_figures=True)[0]
-        # scqat reports full_freq when the coord is present; fall back to detuning + RF
-        frequency = float(
-            results.get("full_freq", results["detuning"] + q.resonator.RF_frequency)
-        )
-        node.results["fit_results"][qubit_name] = {
-            "frequency": frequency,
-            "fwhm": float(results["fwhm"]),
-            "success": bool(results["success"]),
-        }
-        node.namespace["sep_results"][qubit_name] = (sq, results)
-
-    # Log the relevant information extracted from the data analysis
-    for q_name, fit in node.results["fit_results"].items():
+    for q_name, fit in fit_results.items():
         node.log(
             f"Results for qubit {q_name}: "
             f"Resonator frequency: {1e-9 * fit['frequency']:.3f} GHz | "
@@ -212,34 +126,29 @@ def analyse_data(node: QualibrationNode[Parameters, Quam]):
         )
     node.outcomes = {
         qubit_name: ("successful" if fit_result["success"] else "failed")
-        for qubit_name, fit_result in node.results["fit_results"].items()
+        for qubit_name, fit_result in fit_results.items()
     }
 
 
 # %% {Plot_data}
 @node.run_action(skip_if=node.parameters.simulate or not node.parameters.plot)
 def plot_data(node: QualibrationNode[Parameters, Quam]):
-    """Redraw the scqat resonator-spectroscopy figure for each qubit from the stored
-    (dataset, results) pairs and store them in node.results["figures"]."""
-    estimator = node.namespace["estimator"]
-    node.results["figures"] = {}
-    for qubit_name, (sq, results) in node.namespace["sep_results"].items():
-        figs = estimator.generate_figures(sq, results)
-        node.results["figures"][qubit_name] = figs
+    """Redraw the scqat resonator-spectroscopy figures from the stored fit results."""
+    node.results["figures"] = analysis.figures(node.namespace["estimator"], node.namespace["sep_results"])
     plt.show()
 
 
 # %% {Update_state}
 @node.run_action(skip_if=node.parameters.simulate)
 def update_state(node: QualibrationNode[Parameters, Quam]):
-    """Update the relevant parameters if the qubit data analysis was successful."""
+    """update: write the fitted resonance to the resonator frequency (via the core)."""
     with node.record_state_updates():
         for q in node.namespace["qubits"]:
             if node.outcomes[q.name] == "failed":
                 continue
 
-            q.resonator.f_01 = float(node.results["fit_results"][q.name]["frequency"])
-            q.resonator.RF_frequency = float(node.results["fit_results"][q.name]["frequency"])
+            q_update = update.compute_update(node.results["fit_results"][q.name])
+            update.apply_update(q, q_update)
 
 
 # %% {Save_results}
