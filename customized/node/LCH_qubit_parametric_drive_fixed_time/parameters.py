@@ -22,10 +22,6 @@ class NodeSpecificParameters(RunnableParameters):
     """Number of frequency points. Default is 51."""
     driving_time_in_ns: int = 2000
     """Driving time in nanoseconds. Default is 2000 ns."""
-    operation: str = "saturation"
-    """Type of operation to perform. Default is "saturation"."""
-    drive_qubit: Optional[str] = None
-    """Qubit to apply the drive pulse on. Default is None."""
 
 class Parameters(
     NodeParameters,

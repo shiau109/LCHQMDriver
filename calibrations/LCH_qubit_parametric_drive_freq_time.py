@@ -135,7 +135,7 @@ def create_qua_program(node: QualibrationNode[Parameters, Quam]):
             for i, qubit in multiplexed_qubits.items():
                 if i == 0:
                     qubit.z.reset_if_phase()
-                    qubit.z.play("param", amplitude_scale=p.driving_amp_ratio, duration=tt)
+                    qubit.z.play("parametric_reset", amplitude_scale=p.driving_amp_ratio, duration=tt)
             align()
 
             if rbi_var is not None:

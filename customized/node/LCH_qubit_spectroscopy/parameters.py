@@ -6,18 +6,18 @@ from customized.common_parameters import PlottingParameters
 
 
 class NodeSpecificParameters(RunnableParameters):
-    num_shots: int = 100
-    """Number of averages to perform. Default is 100."""
-    max_frequency_in_mhz: float = 100.0
-    """Maximum frequency in MHz. Default is 50 MHz."""
-    min_frequency_in_mhz: float = -100
-    """Minimum frequency in MHz. Default is -250 MHz."""
-    num_frequency_points: int = 101
-    """Number of frequency points. Default is 51."""
+    num_shots: int = 200
+    """Number of averages to perform. Default is 200."""
+    max_frequency_in_mhz: float = 100
+    """Maximum frequency in MHz. Default is 100 MHz."""
+    min_frequency_in_mhz: float = -200
+    """Minimum frequency in MHz. Default is -200 MHz."""
+    num_frequency_points: int = 151
+    """Number of frequency points. Default is 301."""
     operation: str = "saturation"
     """Type of operation to perform. Default is "saturation"."""
-    operation_amplitude_factor: float = 1.0
-    """Amplitude pre-factor for the operation. Default is 1.0."""
+    operation_amplitude_factor: float = 0.1
+    """Amplitude pre-factor for the operation. Default is 0.1."""
     operation_len_in_ns: Optional[int] = None
     """Length of the operation in nanoseconds. Default is the predefined pulse length."""
     target_peak_width: float = 3e6

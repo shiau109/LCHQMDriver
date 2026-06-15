@@ -25,9 +25,7 @@ from qualibration_libs.data import add_amplitude_and_phase, convert_IQ_to_V
 
 def process_raw_dataset(ds: xr.Dataset, node: QualibrationNode) -> xr.Dataset:
     """Convert the raw I/Q to volts and attach the coordinates the estimator and
-    plots need: the absolute drive frequency ``full_freq`` (from the xy line) and
-    the flux-line ``current`` / ``attenuated_current`` (kept for the deferred
-    downstream step)."""
+    plots need: the absolute drive frequency ``full_freq`` (from the xy line)."""
     # Convert the 'I' and 'Q' quadratures from demodulation units to V.
     ds = convert_IQ_to_V(ds, node.namespace["qubits"])
     # Add the amplitude and phase to the raw dataset.
@@ -36,14 +34,6 @@ def process_raw_dataset(ds: xr.Dataset, node: QualibrationNode) -> xr.Dataset:
     full_freq = np.array([ds.detuning + q.xy.RF_frequency for q in node.namespace["qubits"]])
     ds = ds.assign_coords(full_freq=(["qubit", "detuning"], full_freq))
     ds.full_freq.attrs = {"long_name": "RF frequency", "units": "Hz"}
-    # Add the current axis of the flux line for plotting / later analysis.
-    current = ds.flux_bias / node.parameters.input_line_impedance_in_ohm
-    ds = ds.assign_coords({"current": (["flux_bias"], current.data)})
-    ds.current.attrs = {"long_name": "Current", "units": "A"}
-    attenuation_factor = 10 ** (-node.parameters.line_attenuation_in_db / 20)
-    attenuated_current = ds.current * attenuation_factor
-    ds = ds.assign_coords({"attenuated_current": (["flux_bias"], attenuated_current.values)})
-    ds.attenuated_current.attrs = {"long_name": "Attenuated Current", "units": "A"}
     return ds
 
 
