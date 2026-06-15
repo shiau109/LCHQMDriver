@@ -33,6 +33,11 @@ def compute_update(fit: Dict, detuning_hz: int) -> RamseyUpdate:
 def apply_update(qubit, upd: RamseyUpdate) -> None:
     """Write the correction onto the QUAM qubit (call inside the shell's
     `record_state_updates()` when GUI approval is wanted)."""
+    # A not-yet-calibrated qubit has f_01 unset (None) while its drive RF is always
+    # known; on resonance the two coincide, so seed f_01 from the drive frequency
+    # before applying the shared correction (keeps f_01 and xy.RF_frequency in step).
+    if qubit.f_01 is None:
+        qubit.f_01 = float(qubit.xy.RF_frequency)
     qubit.f_01 -= upd.d_f01
     qubit.xy.RF_frequency -= upd.d_f01
     qubit.charge_dispersion = upd.charge_dispersion
