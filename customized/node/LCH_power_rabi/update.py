@@ -7,6 +7,8 @@ outcomes); this module decides *what* the new amplitude is and writes it.
 from dataclasses import dataclass
 from typing import Dict
 
+from customized import quam_fields
+
 
 @dataclass(frozen=True)
 class PowerRabiUpdate:
@@ -25,6 +27,4 @@ def apply_update(qubit, operation: str, upd: PowerRabiUpdate, *, update_x90: boo
     When the swept operation is x180 and `update_x90` is set, x90 is locked to
     half the pi-pulse amplitude.
     """
-    qubit.xy.operations[operation].amplitude = upd.opt_amp
-    if operation == "x180" and update_x90:
-        qubit.xy.operations["x90"].amplitude = upd.opt_amp / 2
+    quam_fields.set_pi_amp(qubit, upd.opt_amp, operation=operation, lock_x90=update_x90)
