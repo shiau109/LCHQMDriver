@@ -27,6 +27,15 @@ dependencies = [
     "qiskit<2.0",
 ]
 
+# The scqo integration (customized/scqo/) is optional: the qualibrate calibration
+# nodes never import scqo, so the core install stays QM-only. Install with the extra
+# (`pip install -e .[scqo]`) to use the QMBackend / scqo experiments.
+[project.optional-dependencies]
+scqo = ["scqo"]
+
+[tool.uv.sources]
+scqo = { path = "../SCQO", editable = true }
+
 [tool.black]
 line-length = 120
 
