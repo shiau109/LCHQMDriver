@@ -8,6 +8,8 @@ shell (it owns `node.outcomes`).
 from dataclasses import dataclass
 from typing import Dict
 
+from customized import quam_fields
+
 
 @dataclass(frozen=True)
 class ResonatorSpecUpdate:
@@ -22,5 +24,4 @@ def compute_update(fit: Dict) -> ResonatorSpecUpdate:
 def apply_update(qubit, upd: ResonatorSpecUpdate) -> None:
     """Write the resonance frequency onto the QUAM resonator (call inside the
     shell's `record_state_updates()` when GUI approval is wanted)."""
-    qubit.resonator.f_01 = upd.frequency
-    qubit.resonator.RF_frequency = upd.frequency
+    quam_fields.set_readout_freq(qubit, upd.frequency)

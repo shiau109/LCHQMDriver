@@ -8,6 +8,8 @@ shell (it owns `node.outcomes`).
 from dataclasses import dataclass
 from typing import Dict
 
+from customized import quam_fields
+
 
 @dataclass(frozen=True)
 class ReadoutFreqUpdate:
@@ -22,4 +24,4 @@ def compute_update(fit: Dict) -> ReadoutFreqUpdate:
 def apply_update(qubit, upd: ReadoutFreqUpdate) -> None:
     """Shift the readout frequency (call inside the shell's
     `record_state_updates()` when GUI approval is wanted)."""
-    qubit.resonator.RF_frequency = float(qubit.resonator.RF_frequency + upd.detuning)
+    quam_fields.shift_readout_freq(qubit, upd.detuning)

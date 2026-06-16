@@ -20,15 +20,18 @@ import xarray as xr
 from scqo.backend import Backend
 from scqo.device import DeviceModel, QubitView
 
+from customized import quam_fields
+
 if TYPE_CHECKING:
     from scqo.experiment import Experiment
 
-#: The operation whose amplitude is the calibrated pi pulse (the neutral pi_amp).
-PI_OPERATION = "x180"
-
 
 class QMQubitView(QubitView):
-    """A scqo QubitView backed by a QUAM qubit object."""
+    """A scqo QubitView backed by a QUAM qubit object.
+
+    The neutral field <-> QUAM mapping lives in :mod:`customized.quam_fields`, shared with
+    the qualibrate ``apply_update`` writebacks, so it is defined exactly once.
+    """
 
     def __init__(self, qubit: Any) -> None:
         self.name = qubit.name
@@ -36,36 +39,27 @@ class QMQubitView(QubitView):
 
     @property
     def readout_freq(self) -> float:
-        return float(self._q.resonator.RF_frequency)
+        return quam_fields.get_readout_freq(self._q)
 
     @readout_freq.setter
     def readout_freq(self, value: float) -> None:
-        # Write both the resonator RF and its f_01, matching the LCH resonator-spec
-        # node's dual writeback (the two are kept equal). f_01 is set when present.
-        self._q.resonator.RF_frequency = float(value)
-        if hasattr(self._q.resonator, "f_01"):
-            self._q.resonator.f_01 = float(value)
+        quam_fields.set_readout_freq(self._q, value)
 
     @property
     def drive_freq(self) -> float:
-        return float(self._q.f_01)
+        return quam_fields.get_drive_freq(self._q)
 
     @drive_freq.setter
     def drive_freq(self, value: float) -> None:
-        # Move f_01 to the requested absolute value and shift the xy drive RF by the
-        # same delta, preserving any fixed f_01 <-> RF offset (matches the LCHQM
-        # Ramsey writeback, which subtracts one detuning delta from both).
-        delta = float(value) - float(self._q.f_01)
-        self._q.f_01 = float(value)
-        self._q.xy.RF_frequency = float(self._q.xy.RF_frequency) + delta
+        quam_fields.set_drive_freq(self._q, value)
 
     @property
     def pi_amp(self) -> float:
-        return float(self._q.xy.operations[PI_OPERATION].amplitude)
+        return quam_fields.get_pi_amp(self._q)
 
     @pi_amp.setter
     def pi_amp(self, value: float) -> None:
-        self._q.xy.operations[PI_OPERATION].amplitude = float(value)
+        quam_fields.set_pi_amp(self._q, value)
 
 
 class QMDeviceModel(DeviceModel):
