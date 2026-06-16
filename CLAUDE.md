@@ -3,8 +3,8 @@
 ## Project Overview
 Superconducting qubit calibration system for Quantum Machines OPX1000 hardware (MW-FEM + LF-FEM), built on three layers: **qm-qua** → **quam** → **qualibrate** (see Workspace Packages for details).
 
-## Related — shared experiment API (planned)
-This repo is intended to become the **QM reference backend** for **`scqo`**, a vendor-neutral protocol/parameters API shared with the Qblox driver (`D:\github\SCQO`, `D:\github\LCHQBDriver`). The neutral layer lets the same experiment run on either instrument — manually or via an AI agent — through one `Session` (`catalog()` / `run()` / `device_state()`, all JSON in/out). **Not yet wired up here:** there is no `QMBackend` in this repo today; the QM nodes still run directly on qualibrate. See `SCQO\CLAUDE.md` for the full design before adding any scqo integration. Cross-repo terminology (Experiment = probe + estimator; "protocol" retired) lives in `SCQO\CLAUDE.md` → Terminology; this repo's analysis nodes consume scqat **estimators** (`scqat.estimators`).
+## Related — shared experiment API
+This repo is the **QM reference backend** for **`scqo`**, a vendor-neutral protocol/parameters API shared with the Qblox driver (`D:\github\SCQO`, `D:\github\LCHQBDriver`). The neutral layer lets the same experiment run on either instrument — manually or via an AI agent — through one `Session` (`catalog()` / `run()` / `device_state()`, all JSON in/out). **Wired up here:** the QM `scqo` backend lives in `customized/scqo/` (`backend.py` + `experiments/*` supplying only `probe()`), discovered via the `scqo.experiments` entry point; the qualibrate `calibrations/` path still runs the QM nodes directly (the two orchestration paths share one probe — see **Probes vs shells**). See `SCQO\CLAUDE.md` for the full design. Cross-repo terminology (Experiment = probe + estimator; "protocol" retired) lives in `SCQO\CLAUDE.md` → Terminology; this repo's analysis nodes consume scqat **estimators** (`scqat.estimators`).
 
 ## Folder Roles
 
