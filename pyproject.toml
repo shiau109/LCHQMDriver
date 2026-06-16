@@ -33,6 +33,12 @@ dependencies = [
 [project.optional-dependencies]
 scqo = ["scqo"]
 
+# Advertise the QM scqo experiments so Session.catalog() finds them without a manual
+# import. Loading needs the `scqo` extra installed; scqo's discovery skips this entry
+# gracefully when it (or the QM stack) is absent.
+[project.entry-points."scqo.experiments"]
+lchqm = "customized.scqo.experiments"
+
 [tool.uv.sources]
 scqo = { path = "../SCQO", editable = true }
 
