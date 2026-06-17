@@ -34,12 +34,12 @@ node = QualibrationNode[Parameters, Quam](name="LCH_Ramsey", description=descrip
 def custom_param(node: QualibrationNode[Parameters, Quam]):
     # You can get type hinting in your IDE by typing node.parameters.
     # node.parameters.qubits = ["q4","q5"]
-    # node.parameters.frequency_detuning_in_mhz = 2
-    # node.parameters.num_shots = 200
+    node.parameters.frequency_detuning_in_mhz = 1
+    node.parameters.num_shots = 200
     node.parameters.log_or_linear_sweep = "linear"
-    # node.parameters.wait_time_num_points = 100
-    # node.parameters.max_wait_time_in_ns = 2000
-    node.parameters.multiplexed = True
+    node.parameters.wait_time_num_points = 100
+    node.parameters.max_wait_time_in_ns = 4000
+    node.parameters.multiplexed = False
     pass
 
 
