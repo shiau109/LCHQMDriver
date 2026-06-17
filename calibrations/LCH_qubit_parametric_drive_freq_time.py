@@ -50,16 +50,16 @@ def custom_param(node: QualibrationNode[Parameters, Quam]):
     """Allow the user to locally set the node parameters for debugging purposes, or execution in the Python IDE."""
     # You can get type hinting in your IDE by typing node.parameters.
     node.parameters.qubits = ["q2"]
-    node.parameters.max_driving_time_ns = 820
+    node.parameters.max_driving_time_ns = 420
     node.parameters.min_driving_time_ns = 20
     node.parameters.driving_time_step = 8
-    node.parameters.max_frequency_mhz = 355
-    node.parameters.min_frequency_mhz = 340
-    node.parameters.frequency_points = 16
-    node.parameters.driving_amp_ratio = 1.0
+    node.parameters.max_frequency_mhz = 376
+    node.parameters.min_frequency_mhz = 374
+    node.parameters.frequency_points = 6
+    node.parameters.driving_amp_ratio = 1.4
     node.parameters.use_state_discrimination = True
     node.parameters.simulate = False
-    node.parameters.num_shots = 200
+    node.parameters.num_shots = 400
     node.parameters.multiplexed = True
     # Set tomography = True (and a superposition prepare_state) for full X/Y/Z tomography.
     # node.parameters.tomography = True
@@ -256,8 +256,13 @@ def analyse_data(node: QualibrationNode[Parameters, Quam]):
     from scqat.estimators import ParametricDriveDecoherenceEstimator
 
     ds = node.results["ds_raw"]
+    analyze_kwargs = {}
     if not node.parameters.use_state_discrimination:
         ds = ds.rename({"I": "signal"})
+        # Raw I quadrature is NOT a population — supply this qubit's readout-contrast
+        # correction so rho_11 lands in [0,1]. (The estimator default is identity,
+        # which is correct for the state-discriminated path below.)
+        analyze_kwargs = dict(rho11_offset=0.045, rho11_scale=0.78)
 
     sep_data = repetition_data(ds, repetition_dim="qubit")
     node.results["fit_results"] = {}
@@ -265,10 +270,10 @@ def analyse_data(node: QualibrationNode[Parameters, Quam]):
     estimator = ParametricDriveDecoherenceEstimator()
     for sq_data in sep_data:
         qubit_name = sq_data["qubit"].values.item()
-        # rho11_offset / rho11_scale default to the estimator's readout-correction
-        # values; override here if your readout contrast differs.
+        # With state discrimination, `state` is already P(|1>) in [0,1], so the
+        # estimator's identity default (rho11_offset=0, rho11_scale=1) is used as-is.
         results, figs = estimator.analyze(
-            sq_data, output_dir=None, skip_figures=not node.parameters.plot
+            sq_data, output_dir=None, skip_figures=not node.parameters.plot, **analyze_kwargs
         )
         node.results["fit_results"][qubit_name] = estimator.extract_metadata(results)
         node.results["figures"][qubit_name] = figs
