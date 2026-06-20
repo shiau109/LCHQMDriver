@@ -41,6 +41,7 @@ def custom_param(node: QualibrationNode[Parameters, Quam]):
     node.parameters.simulate = False
     node.parameters.ro_operation = "readout"
     node.parameters.test_operation = "readout"
+    node.parameters.xy_time_resolution_in_ns = 16
     pass
 
 

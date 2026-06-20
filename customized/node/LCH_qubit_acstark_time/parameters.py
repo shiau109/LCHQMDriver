@@ -12,11 +12,11 @@ class NodeSpecificParameters(RunnableParameters):
     """Operation to perform. Default is "x180"."""
     xy_operation_amplitude_factor: float = 1
     """Amplitude factor for the operation. Default is 1."""
-    xy_time_resolution_in_ns: int = 400
-    """Step of the probe-delay sweep, in ns. Should be a multiple of 4 ns. Default is 400 ns."""
-    xy_delay_start_in_ns: int = 0
+    xy_time_resolution_in_ns: int = 100
+    """Step of the probe-delay sweep, in ns. Should be a multiple of 4 ns. Default is 100 ns."""
+    xy_delay_start_in_ns: int = -100
     """Start of the probe delay relative to the resonator drive onset, in ns. May be NEGATIVE
-    (the qubit probe fires before the drive). Default is 0 ns."""
+    (the qubit probe fires before the drive). Default is -100 ns."""
     xy_delay_end_in_ns: int = 1000
     """End of the probe delay relative to the resonator drive onset, in ns. Default is 1000 ns."""
     max_frequency_in_mhz: float = 50
@@ -24,7 +24,7 @@ class NodeSpecificParameters(RunnableParameters):
     min_frequency_in_mhz: float = -100
     """Minimum frequency in MHz. Default is -100 MHz."""
     num_frequency_points: int = 31
-    """Number of frequency points. Default is 51."""
+    """Number of frequency points. Default is 31."""
     ro_operation: str = "readout"
     """Operation to perform. Default is "readout"."""
     test_operation: str = "readout"
