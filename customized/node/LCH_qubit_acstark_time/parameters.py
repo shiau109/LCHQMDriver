@@ -26,8 +26,8 @@ class NodeSpecificParameters(RunnableParameters):
     """Number of frequency points. Default is 51."""
     ro_operation: str = "readout"
     """Operation to perform. Default is "readout"."""
-    test_operation: str = "readout_test"
-    """Resonator test pulse that populates the resonator. Default is "readout_test"."""
+    test_operation: str = "readout"
+    """Resonator test pulse that populates the resonator. Default is "readout"."""
     rr_depletion_time: Optional[int] = None
     """Resonator depletion time in ns. Default is the predefined depletion time."""
 

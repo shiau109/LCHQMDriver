@@ -39,6 +39,8 @@ def custom_param(node: QualibrationNode[Parameters, Quam]):
     """Allow the user to locally set the node parameters for debugging purposes, or execution in the Python IDE."""
     node.parameters.qubits = ["q1"]
     node.parameters.simulate = True
+    node.parameters.ro_operation = "readout"
+    node.parameters.test_operation = "readout"
     pass
 
 
