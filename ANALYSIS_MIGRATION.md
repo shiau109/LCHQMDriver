@@ -41,7 +41,8 @@ coord; `I,Q`+`detuning`+`readout_amp_ratio`), so **no dataset renaming was neede
 
 **Tier 3 — commented-out qcat refs** repointed to scqat equivalents (kept commented):
 `LCH_charge_gate_readout_power`, `LCH_charge_gate_readout_power_with_ref`,
-`LCH_time_dep_rr_photon`.
+`LCH_time_dep_rr_photon` (since refactored to the probe structure and renamed
+`LCH_qubit_acstark_time`, with `ReadoutPulsePhotonEstimator` now wired in — no longer commented).
 
 ## Behavioral reductions accepted (flagged inline in the nodes)
 - **`LCH_readout_power`**: scqat's `ReadoutPowerFidelityAnalyzer` does **not** port
