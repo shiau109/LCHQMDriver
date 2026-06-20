@@ -36,14 +36,17 @@ def acquire(
     num_shots: int,
     timeout: float,
     log: Optional[Callable] = None,
+    config: Optional[dict] = None,
 ) -> xr.Dataset:
     """Connect to the QOP, execute the program and fetch the raw xr.Dataset.
 
     The execute-and-fetch half is identical for every swept experiment, so all
-    probes share this one implementation.
+    probes share this one implementation. `config` defaults to
+    `machine.generate_config()`; pass an explicit config when the program needs a
+    pre-built one (e.g. a baked config carrying baking ops the fresh config lacks).
     """
     qmm = machine.connect()
-    config = machine.generate_config()
+    config = config if config is not None else machine.generate_config()
     # Execute the QUA program only if the quantum machine is available (this is to avoid interrupting running jobs).
     with qm_session(qmm, config, timeout=timeout) as qm:
         job = qm.execute(prog)
