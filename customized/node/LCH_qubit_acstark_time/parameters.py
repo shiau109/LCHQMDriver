@@ -17,7 +17,7 @@ class NodeSpecificParameters(RunnableParameters):
     xy_time_resolution_in_ns: int = 40
     """Resolution of Delay time between XY and RO pulses in ns. Default is 40 ns."""
     xy_max_delay_in_ns: int = 4000
-    """Resolution of Delay time between XY and RO pulses in ns. Default is 40 ns."""
+    """Maximum delay time between XY and RO pulses in ns. Default is 4000 ns."""
     max_frequency_in_mhz: float = 100.0
     """Maximum frequency in MHz. Default is 50 MHz."""
     min_frequency_in_mhz: float = -100
@@ -27,7 +27,7 @@ class NodeSpecificParameters(RunnableParameters):
     ro_operation: str = "readout"
     """Operation to perform. Default is "readout"."""
     test_operation: str = "readout_test"
-    """Operation to perform. Default is "readout_test"."""
+    """Resonator test pulse that populates the resonator. Default is "readout_test"."""
     rr_depletion_time: Optional[int] = None
     """Resonator depletion time in ns. Default is the predefined depletion time."""
 
