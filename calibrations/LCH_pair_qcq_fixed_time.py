@@ -3,17 +3,17 @@ import numpy as np
 
 from qualibrate import QualibrationNode
 from quam_config import Quam
-from customized.node.LCH_qubit_pair_coupler_fixed_time import Parameters, analysis, plotting
+from customized.node.LCH_pair_qcq_fixed_time import Parameters, analysis, plotting
 from qualibration_libs.parameters import get_qubit_pairs
 from qualibration_libs.runtime import simulate_and_plot
 
-from customized.probes.qubit_pair_coupler_fixed_time import probe
+from customized.probes.pair_qcq_fixed_time import probe
 
 
 # %% {Description}
 description = """
         FIXED-TIME QUBIT-FLUX x COUPLER-FLUX 2D SWEEP (single excitation, customized)
-A fixed-time 2D variant of LCH_chevron_x180. Instead of sweeping a flux amplitude x
+A fixed-time 2D variant of LCH_pair_qq_chevron. Instead of sweeping a flux amplitude x
 duration, the pulse duration is FIXED and TWO flux amplitudes are swept, forming a 2D
 color map: the COUPLER flux amplitude (x axis, on qp.coupler) and a QUBIT flux amplitude
 (y axis, on the flux_role qubit's z line). Both flux pulses play simultaneously over the
@@ -29,14 +29,14 @@ Analysis is intentionally an empty estimator: no fit and no state writeback. The
 renders a 2D color map (joint populations P00/P01/P10/P11) per qubit pair.
 
 This node is a thin qualibrate shell: the acquisition probe lives in
-`customized.probes.qubit_pair_coupler_fixed_time`; the (no-op) estimate adapter and the
-plot live in `customized.node.LCH_qubit_pair_coupler_fixed_time`.
+`customized.probes.pair_qcq_fixed_time`; the (no-op) estimate adapter and the
+plot live in `customized.node.LCH_pair_qcq_fixed_time`.
 """
 
 
 # Be sure to include [Parameters, Quam] so the node has proper type hinting
 node = QualibrationNode[Parameters, Quam](
-    name="LCH_qubit_pair_coupler_fixed_time",
+    name="LCH_pair_qcq_fixed_time",
     description=description,
     parameters=Parameters(),
 )
