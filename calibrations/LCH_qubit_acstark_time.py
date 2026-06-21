@@ -38,9 +38,10 @@ node = QualibrationNode[Parameters, Quam](
 def custom_param(node: QualibrationNode[Parameters, Quam]):
     """Allow the user to locally set the node parameters for debugging purposes, or execution in the Python IDE."""
     node.parameters.qubits = ["q1"]
-    node.parameters.simulate = True
+    node.parameters.simulate = False
     node.parameters.ro_operation = "readout"
     node.parameters.test_operation = "readout"
+    node.parameters.xy_time_resolution_in_ns = 16
     pass
 
 
@@ -63,9 +64,9 @@ def create_qua_program(node: QualibrationNode[Parameters, Quam]):
 
     # Qubit detuning sweep with respect to their resonance frequencies
     dfs = np.linspace(p.min_frequency_in_mhz * u.MHz, p.max_frequency_in_mhz * u.MHz, p.num_frequency_points)
-    # XY-probe delay sweep (multiples of 4 ns)
-    xy_time_resolution_in_ns = p.xy_time_resolution_in_ns * u.ns
-    delay_time_array = (np.arange(0, p.xy_max_delay_in_ns + 1, xy_time_resolution_in_ns) // 4) * 4  # in ns
+    # XY-probe delay sweep relative to the resonator drive onset (multiples of 4 ns; may be negative)
+    res = p.xy_time_resolution_in_ns * u.ns
+    delay_time_array = (np.arange(p.xy_delay_start_in_ns, p.xy_delay_end_in_ns + 1, res) // 4) * 4  # in ns
 
     (
         node.namespace["qua_program"],
@@ -79,7 +80,6 @@ def create_qua_program(node: QualibrationNode[Parameters, Quam]):
         reset_type=p.reset_type,
         xy_operation=p.xy_operation,
         xy_operation_amplitude_factor=p.xy_operation_amplitude_factor,
-        xy_operation_len_in_ns=p.xy_operation_len_in_ns,
         ro_operation=p.ro_operation,
         test_operation=p.test_operation,
         rr_depletion_time=p.rr_depletion_time,

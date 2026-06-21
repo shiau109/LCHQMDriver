@@ -8,9 +8,20 @@ qubit line. Locating the AC-Stark-shifted qubit line per delay traces the
 resonator photon number filling up and ringing down in time.
 
 The sweep is `detuning` x `delay_time`; the delay is stepped in clock cycles
-(4 ns granularity). Both qubits are read out as raw I/Q (state discrimination saves
-the discriminated state instead). Downstream this is fit by scqat's
-`ReadoutPulsePhotonEstimator`, which expects the `detuning` and `delay_time` coords.
+(4 ns granularity). `delay_time` is the SIGNED probe delay relative to the
+cavity-drive ONSET: positive = the qubit probe fires after the drive starts
+(cavity filling / ring-down), negative = the probe fires *before* the drive. The
+resonator drive is anchored at a fixed reference and only the probe moves; a common
+non-negative `offset` lead is prepended to both elements so the most-negative delay
+still yields a legal (>=4-cycle) wait, and because both elements share that lead the
+probe lands *exactly* `delay_time` ns from the drive (the lead cancels between them).
+Both qubits are read out as raw I/Q (state discrimination saves the discriminated
+state instead). Downstream this is fit by scqat's `ReadoutPulsePhotonEstimator`,
+which expects the `detuning`/`delay_time` coords (negative delays are fine).
+
+Note: the qubit drive (`xy`) and its `resonator` must be on DIFFERENT QM cores/threads
+for the probe to overlap the drive; same-core elements are serialized (the drive plays
+to completion first).
 """
 
 from typing import Callable, Optional
@@ -35,7 +46,6 @@ def build_program(
     reset_type: str,
     xy_operation: str,
     xy_operation_amplitude_factor: float,
-    xy_operation_len_in_ns: Optional[int],
     ro_operation: str,
     test_operation: str,
     rr_depletion_time: Optional[int],
@@ -47,15 +57,19 @@ def build_program(
 
     Returns ``(program, sweep_axes)``.
 
-    `dfs` is the qubit detuning sweep in Hz; `delay_time_array` is the XY-probe
-    delay sweep in ns (multiples of 4 ns); `qubits` is a BatchableList (see
-    `_lib.select_qubits`). The delay is looped in clock cycles derived internally
-    as ``delay_time_array // 4``.
+    `dfs` is the qubit detuning sweep in Hz; `delay_time_array` is the SIGNED XY-probe
+    delay sweep in ns (multiples of 4 ns, relative to the resonator drive onset; may be
+    negative); `qubits` is a BatchableList (see `_lib.select_qubits`). The delay is
+    looped in clock cycles derived internally as ``delay_time_array // 4``.
     """
     u = unit(coerce_to_integer=True)
     num_qubits = len(qubits)
 
     delay_tick_array = (np.asarray(delay_time_array) // 4).astype(int)
+    # Common non-negative lead so the most-negative delay still gives a >=4-cycle wait.
+    # Both the drive and the probe share this lead, so it cancels and the probe lands
+    # exactly delay_time relative to the drive onset.
+    offset_tick = max(0, -int(delay_tick_array.min()))
 
     sweep_axes = {
         "qubit": xr.DataArray(qubits.get_names()),
@@ -88,31 +102,27 @@ def build_program(
                             qubit.xy.update_frequency(df + qubit.xy.intermediate_frequency)
                             # Wait for the qubits to decay to the ground state
                             qubit.reset(reset_type, simulate)
-                            # Flux sweeping for a qubit
-
-                            xy_duration = (
-                                xy_operation_len_in_ns * u.ns
-                                if xy_operation_len_in_ns is not None
-                                else qubit.xy.operations[xy_operation].length * u.ns
-                            )
 
                         align()
 
-                        # Qubit manipulation
-                        # Bring the qubit to the desired point during the saturation pulse
-
+                        # Qubit manipulation: anchor the cavity drive at a fixed reference and probe
+                        # the qubit at a SIGNED delay relative to the drive onset (QUA elements run in
+                        # parallel from the shared align() t=0). Both waits share the offset_tick lead,
+                        # so xy_start - resonator_start = delay_tick (negative => probe before drive).
                         for i, qubit in multiplexed_qubits.items():
-                            # Apply saturation pulse to all qubits
-
-                            wait((xy_duration * 5 + 16) // 4, qubit.resonator.name)
+                            # Cavity drive at a fixed reference: t = (offset_tick + 4) cycles.
+                            qubit.resonator.wait(offset_tick + 4)
                             qubit.resonator.play(test_operation)
-                            wait(delay_tick + 4, qubit.xy.name)
-                            qubit.xy.play(xy_operation, duration=xy_duration // 4, amplitude_scale=xy_operation_amplitude_factor)
+                            # Probe delay_tick cycles relative to the drive onset. The min xy wait is
+                            # min(delay_tick) + offset_tick + 4 = 4 cycles, satisfying the QUA floor.
+                            qubit.xy.wait(delay_tick + offset_tick + 4)
+                            qubit.xy.play(xy_operation, amplitude_scale=xy_operation_amplitude_factor)
 
+                            # Let the test-pulse photons decay before the discriminating readout.
                             if rr_depletion_time is not None:
-                                wait(rr_depletion_time * u.ns // 4, qubit.resonator.name)
+                                qubit.resonator.wait(rr_depletion_time * u.ns // 4)
                             else:
-                                wait(qubit.resonator.depletion_time * u.ns // 4, qubit.resonator.name)
+                                qubit.resonator.wait(qubit.resonator.depletion_time * u.ns // 4)
                         align()
 
                         # Measure the state of the resonators
