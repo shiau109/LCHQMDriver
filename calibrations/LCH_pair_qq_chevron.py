@@ -3,11 +3,11 @@ import numpy as np
 
 from qualibrate import QualibrationNode
 from quam_config import Quam
-from customized.node.LCH_chevron_x180 import Parameters, analysis, plotting
+from customized.node.LCH_pair_qq_chevron import Parameters, analysis, plotting
 from qualibration_libs.parameters import get_qubit_pairs
 from qualibration_libs.runtime import simulate_and_plot
 
-from customized.probes.chevron_x180 import probe
+from customized.probes.pair_qq_chevron import probe
 
 
 # %% {Description}
@@ -23,14 +23,14 @@ renders a 2D color map (control and target signals vs amplitude x duration) for 
 inspection.
 
 This node is a thin qualibrate shell: the acquisition probe lives in
-`customized.probes.chevron_x180`; the (no-op) estimate adapter and the plot live in
-`customized.node.LCH_chevron_x180`.
+`customized.probes.pair_qq_chevron`; the (no-op) estimate adapter and the plot live in
+`customized.node.LCH_pair_qq_chevron`.
 """
 
 
 # Be sure to include [Parameters, Quam] so the node has proper type hinting
 node = QualibrationNode[Parameters, Quam](
-    name="LCH_chevron_x180",
+    name="LCH_pair_qq_chevron",
     description=description,
     parameters=Parameters(),
 )
@@ -43,7 +43,7 @@ def custom_param(node: QualibrationNode[Parameters, Quam]):
     """Allow the user to locally set the node parameters for debugging purposes, or execution in the Python IDE."""
     # node.parameters.qubit_pairs = ["q1-q2"]
     node.parameters.qubit_pairs = ["q1_q2"]
-    node.parameters.simulate = True
+    node.parameters.simulate = False
     node.parameters.num_shots = 10
     node.parameters.op_time_start = 10
     node.parameters.op_time_end = 20

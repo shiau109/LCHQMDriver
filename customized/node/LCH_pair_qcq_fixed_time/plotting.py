@@ -1,6 +1,6 @@
 """Fixed-time qubit-flux x coupler-flux 2D visualization: one figure per qubit pair.
 
-Mirrors `LCH_chevron_x180.plotting.plot_chevron_2d`. With state discrimination the probe
+Mirrors `LCH_pair_qq_chevron.plotting.plot_chevron_2d`. With state discrimination the probe
 saves the joint two-qubit populations P00/P01/P10/P11 (vars
 `state_gg/state_ge/state_eg/state_ee`, first digit = control, second = target); each
 pair gets a figure with four color-map panels (00, 01, 10, 11) over the coupler flux
@@ -34,7 +34,7 @@ def plot_fixed_time_2d(ds_raw: xr.Dataset, qubit_pairs, *, use_state_discriminat
 
     if "state_gg" in ds_raw:
         panels = _JOINT_PANELS
-        title_for = lambda label: f"P{label}"
+        title_for = lambda label: f"Control={label[0]}, Target={label[1]}"
     else:
         panels = [("I_control", "control"), ("I_target", "target")]
         title_for = lambda label: label

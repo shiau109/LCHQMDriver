@@ -38,6 +38,6 @@ class Parameters(
     LCHNodeSpecificParameters,
     QubitPairExperimentNodeParameters,
 ):
-    """Parameter set for LCH_chevron_x180 (single-excitation flux chevron)."""
+    """Parameter set for LCH_pair_qq_chevron (single-excitation flux chevron)."""
 
     targets_name: ClassVar[str] = "qubit_pairs"

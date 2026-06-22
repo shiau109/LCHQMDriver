@@ -239,6 +239,51 @@ class ThreeStepReadoutPulse(ReadoutPulse, ThreeStepPulse):
         return [(1, self.length - self.down_width), (0, self.down_width)]
 
 
+@quam_dataclass
+class FlatTopCosinePulse(Pulse):
+    """Flat-top pulse with sine (raised-cosine) edges QUAM component.
+
+    The waveform is composed of three parts: a rising edge that follows a sine
+    from 0 to pi/2 (0 -> amplitude), a constant flat top at ``amplitude``, and a
+    falling edge that follows a sine from pi/2 to pi (amplitude -> 0).
+
+    Args:
+        length (int): The total length of the pulse in samples.
+        amplitude (float): The peak (flat-top) amplitude of the pulse in volts.
+        edge_width (int): The length of each sine edge in samples. The edge spans
+            a quarter of the sine period (pi/2 radians). The flat-top length is
+            calculated as (length - 2 * edge_width).
+        axis_angle (float, optional): IQ axis angle of the output pulse in radians.
+            If None (default), the pulse is meant for a single channel or the I port
+                of an IQ channel
+            If not None, the pulse is meant for an IQ channel (0 is X, pi/2 is Y).
+
+    """
+
+    amplitude: float = 0.1
+    edge_width: int = 5
+    axis_angle: float = None
+
+    def waveform_function(self):
+        flat_length = self.length - 2 * self.edge_width
+        if flat_length < 0:
+            raise ValueError(
+                f"edge_width ({self.edge_width}) * 2 cannot be greater than total "
+                f"pulse length ({self.length})"
+            )
+
+        rise = np.sin(np.linspace(0, np.pi / 2, self.edge_width, endpoint=False))
+        flat = np.ones(flat_length)
+        fall = np.sin(np.linspace(np.pi / 2, np.pi, self.edge_width, endpoint=True))
+
+        waveform = self.amplitude * np.concatenate([rise, flat, fall])
+
+        if self.axis_angle is not None:
+            waveform = waveform * np.exp(1j * self.axis_angle)
+
+        return waveform
+
+
 if __name__ == "__main__":
     # # Example usage
     # pulse = RampPulse(length=10, start_value=0, end_value=0.5)
@@ -259,3 +304,8 @@ if __name__ == "__main__":
     three_step_pulse = ThreeStepReadoutPulse(length=10, up_amp_ratio=3.0, amplitude=0.2, down_amp_ratio=-3.0, up_width=2, down_width=2)
     print(three_step_pulse.waveform_function())
     print(three_step_pulse.__class__.__name__)
+
+    # Example usage for FlatTopCosinePulse
+    flat_top_cosine_pulse = FlatTopCosinePulse(length=20, amplitude=0.2, edge_width=4)
+    print(flat_top_cosine_pulse.waveform_function())
+    print(flat_top_cosine_pulse.__class__.__name__)

@@ -33,7 +33,7 @@ def plot_chevron_2d(ds_raw: xr.Dataset, qubit_pairs, *, use_state_discrimination
 
     if "state_gg" in ds_raw:
         panels = _JOINT_PANELS
-        title_for = lambda label: f"P{label}"
+        title_for = lambda label: f"Control={label[0]}, Target={label[1]}"
     else:
         panels = [("I_control", "control"), ("I_target", "target")]
         title_for = lambda label: label

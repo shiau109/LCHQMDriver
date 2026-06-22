@@ -1,6 +1,6 @@
 """Fixed-time qubit-flux x coupler-flux estimate adapter.
 
-This is intentionally an **empty estimator** (mirrors `LCH_chevron_x180.analysis`): it
+This is intentionally an **empty estimator** (mirrors `LCH_pair_qq_chevron.analysis`): it
 performs no fitting and extracts no quantities for state writeback. Its only purpose is
 to satisfy the node's analyse/outcome flow while the visualization is produced by
 `plotting.plot_fixed_time_2d`. A real fit can be dropped in here later without touching

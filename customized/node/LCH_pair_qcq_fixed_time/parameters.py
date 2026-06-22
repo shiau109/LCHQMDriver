@@ -8,7 +8,7 @@ from qualibration_libs.parameters import CommonNodeParameters, QubitPairExperime
 class LCHNodeSpecificParameters(RunnableParameters):
     """Fixed-time qubit-flux x coupler-flux (single-excitation) 2D parameters.
 
-    Like the single-excitation flux chevron (LCH_chevron_x180), but the pulse duration
+    Like the single-excitation flux chevron (LCH_pair_qq_chevron), but the pulse duration
     is fixed and two flux amplitudes are swept -- the coupler flux (x axis) and a qubit
     flux (y axis, on the `flux_role` qubit's z line) -- forming a 2D color map. There is
     no fit and no state writeback, so calibration-specific knobs (e.g. update_all_pulses)
@@ -51,6 +51,6 @@ class Parameters(
     LCHNodeSpecificParameters,
     QubitPairExperimentNodeParameters,
 ):
-    """Parameter set for LCH_qubit_pair_coupler_fixed_time (fixed-time qubit-flux x coupler-flux 2D sweep)."""
+    """Parameter set for pair_qcq_fixed_time (fixed-time qubit-flux x coupler-flux 2D sweep)."""
 
     targets_name: ClassVar[str] = "qubit_pairs"

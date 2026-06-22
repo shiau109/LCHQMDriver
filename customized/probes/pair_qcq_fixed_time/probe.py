@@ -1,7 +1,7 @@
 """Fixed-time qubit-flux x coupler-flux acquisition probe: vendor code only (qm/quam) -
 no qualibrate, no scqo, no scqat.
 
-A fixed-time 2D variant of `customized.probes.chevron_x180`. Instead of sweeping a flux
+A fixed-time 2D variant of `customized.probes.pair_qq_chevron`. Instead of sweeping a flux
 amplitude x duration, here the **duration is fixed** and **two flux amplitudes are
 swept**, forming the x/y axes of a 2D color map:
 
