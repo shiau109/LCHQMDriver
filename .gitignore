@@ -1,5 +1,6 @@
 .idea
-.claude/
+# Claude Code: personal/local settings stay local; shared settings.json is committed
+.claude/settings.local.json
 __pycache__
 .pytest_cache/
 **.egg-info
