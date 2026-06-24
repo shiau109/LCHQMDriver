@@ -16,6 +16,9 @@ from qualibration_libs.parameters import get_qubits
 from qualibration_libs.runtime import simulate_and_plot
 from qualibration_libs.data import XarrayDataFetcher
 
+# Largest magnitude QUA accepts for a dynamic `amplitude_scale` (the fixed-point range is (-2, 2)).
+_MAX_AMP_SCALE = 2.0
+
 
 # %% {Node initialisation}
 description = """
@@ -26,7 +29,7 @@ description = """
         out the excited-state population. scqat's ParametricDriveResonanceEstimator
         finds the resonance peak(s) on the 2-D amplitude x frequency map (a Lorentzian
         fit per amplitude slice, like qubit-spectroscopy-vs-flux) and reports the
-        peak point-cloud (amplitude_ratio, frequency, fwhm). Characterization only —
+        peak point-cloud (drive_amp, frequency, fwhm). Characterization only —
         no device-state writeback.
 """
 
@@ -46,9 +49,10 @@ def custom_param(node: QualibrationNode[Parameters, Quam]):
     """Allow the user to locally set the node parameters for debugging purposes, or execution in the Python IDE."""
     # You can get type hinting in your IDE by typing node.parameters.
     node.parameters.qubits = ["q2"]
-    node.parameters.max_amp_ratio = 1.5
-    node.parameters.min_amp_ratio = 0.5
-    node.parameters.amp_ratio_points = 21
+    node.parameters.drive_amp_max = 0.1
+    node.parameters.drive_amp_min = 0.3
+    node.parameters.drive_amp_points = 21
+    node.parameters.amp_mode = "absolute"
     node.parameters.max_frequency_mhz = 300
     node.parameters.min_frequency_mhz = 400
     node.parameters.frequency_points = 101
@@ -56,7 +60,7 @@ def custom_param(node: QualibrationNode[Parameters, Quam]):
     node.parameters.simulate = False
     node.parameters.num_shots = 100
     node.parameters.multiplexed = True
-    node.parameters.driving_time_in_ns = 400
+    node.parameters.driving_time_in_ns = 200
     pass
 
 
@@ -76,15 +80,36 @@ def create_qua_program(node: QualibrationNode[Parameters, Quam]):
     p = node.parameters
     n_avg = node.parameters.num_shots  # The number of averages
 
-    # Qubit detuning sweep with respect to their resonance frequencies
-    r_amps = np.linspace( p.min_amp_ratio, p.max_amp_ratio, p.amp_ratio_points)
+    # Drive amplitude sweep (volts if amp_mode == "absolute", else a unitless prefactor).
+    r_amps = np.linspace( p.drive_amp_min, p.drive_amp_max, p.drive_amp_points)
+
+    # Validate the sweep stays within QUA's (-2, 2) amplitude_scale range. In "absolute" mode
+    # the emitted scale is a/ref, so the bound depends on each qubit's z 'const' op amplitude.
+    if p.amp_mode == "absolute":
+        for qubit in qubits:
+            ref = float(qubit.z.operations["const"].amplitude)
+            max_scale = float(np.max(np.abs(r_amps))) / abs(ref)
+            if max_scale >= _MAX_AMP_SCALE:
+                raise ValueError(
+                    f"Absolute amplitude sweep for {qubit.name} exceeds QUA's amplitude_scale range: "
+                    f"max |a/ref| = {max_scale:.3f} >= {_MAX_AMP_SCALE} (ref = {ref} V). "
+                    f"Reduce the amplitude range or use amp_mode='prefactor'."
+                )
+    else:  # prefactor
+        max_scale = float(np.max(np.abs(r_amps)))
+        if max_scale >= _MAX_AMP_SCALE:
+            raise ValueError(
+                f"Prefactor amplitude sweep exceeds QUA's amplitude_scale range: "
+                f"max |a| = {max_scale:.3f} >= {_MAX_AMP_SCALE}."
+            )
 
     freqs = np.linspace( p.min_frequency_mhz*u.MHz, p.max_frequency_mhz*u.MHz, p.frequency_points)
 
     # Register the sweep axes to be added to the dataset when fetching data
+    amp_units = "V" if p.amp_mode == "absolute" else "arb."
     node.namespace["sweep_axes"] = {
         "qubit": xr.DataArray(qubits.get_names()),
-        "amplitude_ratio": xr.DataArray(r_amps, attrs={"long_name": "amplitude ratio", "units": "arb."}),
+        "drive_amp": xr.DataArray(r_amps, attrs={"long_name": "drive amplitude", "units": amp_units}),
         "driving_frequency": xr.DataArray(freqs, attrs={"long_name": "driving frequency", "units": "Hz"}),
 
     }
@@ -126,9 +151,11 @@ def create_qua_program(node: QualibrationNode[Parameters, Quam]):
                         wait( 200//4 )
                         for i, qubit in multiplexed_qubits.items(): 
                             
-                            if i == 0:              
-                                qubit.z.reset_if_phase()    
-                                qubit.z.play("parametric_reset",amplitude_scale=ra, duration=p.driving_time_in_ns*u.ns//4)
+                            if i == 0:
+                                qubit.z.reset_if_phase()
+                                ref = float(qubit.z.operations["const"].amplitude)
+                                amp_scale = ra / ref if p.amp_mode == "absolute" else ra
+                                qubit.z.play("const",amplitude_scale=amp_scale, duration=p.driving_time_in_ns*u.ns//4)
                         align()
 
                         for i, qubit in multiplexed_qubits.items():
@@ -209,9 +236,9 @@ def analyse_data(node: QualibrationNode[Parameters, Quam]):
     """estimate: find the parametric-resonance peak(s) on the 2-D amplitude x
     frequency map via scqat's ParametricDriveResonanceEstimator.
 
-    Each amplitude_ratio slice is fit with a Lorentzian (delegating to the
+    Each drive_amp slice is fit with a Lorentzian (delegating to the
     qubit-spectroscopy peak finder); the kept peaks form a point-cloud
-    (amplitude_ratio, frequency, fwhm) over the map. The estimator owns the
+    (drive_amp, frequency, fwhm) over the map. The estimator owns the
     plotting, so no separate plot step is needed."""
     from scqat.parsers import repetition_data
     from scqat.estimators import ParametricDriveResonanceEstimator

@@ -30,7 +30,7 @@ for i in range(repeat_times):
             max_frequency_mhz = driving_freq_center_mhz + span/2,
             min_frequency_mhz = driving_freq_center_mhz - span/2,
             frequency_points = 21,
-            driving_amp_ratio = driving_list[i][0],
+            drive_amp = driving_list[i][0],
             use_state_discrimination = True,
             simulate = False,
             num_shots = 2000,

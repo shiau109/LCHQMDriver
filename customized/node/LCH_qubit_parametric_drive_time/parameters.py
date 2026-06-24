@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Literal, Optional
 from qualibrate import NodeParameters
 from qualibrate.core.parameters import RunnableParameters
 from qualibration_libs.parameters import QubitsExperimentNodeParameters, CommonNodeParameters
@@ -24,8 +24,12 @@ class NodeSpecificParameters(RunnableParameters):
     """Minimum frequency in MHz. Default is 10 MHz."""
     frequency_points: int = 51
     """Number of frequency points to sample. Default is 51."""
-    driving_amp_ratio: float = 1.0
-    """Amplitude ratio for the driving pulse. Default is 1.0."""
+    amp_mode: Literal["absolute", "prefactor"] = "prefactor"
+    """How drive_amp is read: "absolute" volts (emitted pulse = drive_amp V,
+    |a/ref| < 2 enforced, ref = the qubit z 'const' op amplitude) or unitless "prefactor"
+    (amplitude_scale, the current behavior). Default "prefactor"."""
+    drive_amp: float = 1.0
+    """Fixed drive amplitude (volts if amp_mode == "absolute", else prefactor). Default is 1.0."""
     tomography: bool = False
     """If True, read out in the X/Y/Z bases for full single-qubit state tomography
     (density-matrix reconstruction). If False, read out the excited-state population

@@ -16,6 +16,9 @@ from qualibration_libs.parameters import get_qubits
 from qualibration_libs.runtime import simulate_and_plot
 from qualibration_libs.data import XarrayDataFetcher
 
+# Largest magnitude QUA accepts for a dynamic `amplitude_scale` (the fixed-point range is (-2, 2)).
+_MAX_AMP_SCALE = 2.0
+
 
 # %% {Node initialisation}
 description = """
@@ -53,13 +56,14 @@ def custom_param(node: QualibrationNode[Parameters, Quam]):
     node.parameters.max_driving_time_ns = 420
     node.parameters.min_driving_time_ns = 20
     node.parameters.driving_time_step = 8
-    node.parameters.max_frequency_mhz = 376
-    node.parameters.min_frequency_mhz = 374
-    node.parameters.frequency_points = 6
-    node.parameters.driving_amp_ratio = 1.4
+    node.parameters.max_frequency_mhz = 354.7
+    node.parameters.min_frequency_mhz = 354.7
+    node.parameters.frequency_points = 1
+    node.parameters.drive_amp = 0.22
+    node.parameters.amp_mode = "absolute"
     node.parameters.use_state_discrimination = True
     node.parameters.simulate = False
-    node.parameters.num_shots = 400
+    node.parameters.num_shots = 200
     node.parameters.multiplexed = True
     # Set tomography = True (and a superposition prepare_state) for full X/Y/Z tomography.
     # node.parameters.tomography = True
@@ -83,6 +87,25 @@ def create_qua_program(node: QualibrationNode[Parameters, Quam]):
     num_qubits = len(qubits)
 
     n_avg = node.parameters.num_shots  # The number of averages
+
+    # Validate drive_amp stays within QUA's (-2, 2) amplitude_scale range. In "absolute"
+    # mode the emitted scale is drive_amp/ref (ref = the qubit z 'const' op amplitude).
+    if p.amp_mode == "absolute":
+        for qubit in qubits:
+            ref = float(qubit.z.operations["const"].amplitude)
+            scale = abs(p.drive_amp) / abs(ref)
+            if scale >= _MAX_AMP_SCALE:
+                raise ValueError(
+                    f"Absolute drive_amp for {qubit.name} exceeds QUA's amplitude_scale range: "
+                    f"|a/ref| = {scale:.3f} >= {_MAX_AMP_SCALE} (ref = {ref} V). "
+                    f"Reduce drive_amp or use amp_mode='prefactor'."
+                )
+    else:  # prefactor
+        if abs(p.drive_amp) >= _MAX_AMP_SCALE:
+            raise ValueError(
+                f"Prefactor drive_amp exceeds QUA's amplitude_scale range: "
+                f"|a| = {abs(p.drive_amp):.3f} >= {_MAX_AMP_SCALE}."
+            )
 
     # Qubit detuning sweep with respect to their resonance frequencies
     time_tick = np.arange(p.min_driving_time_ns//4, p.max_driving_time_ns//4, p.driving_time_step//4)
@@ -135,7 +158,9 @@ def create_qua_program(node: QualibrationNode[Parameters, Quam]):
             for i, qubit in multiplexed_qubits.items():
                 if i == 0:
                     qubit.z.reset_if_phase()
-                    qubit.z.play("parametric_reset", amplitude_scale=p.driving_amp_ratio, duration=tt)
+                    ref = float(qubit.z.operations["const"].amplitude)
+                    amp_scale = p.drive_amp / ref if p.amp_mode == "absolute" else p.drive_amp
+                    qubit.z.play("const", amplitude_scale=amp_scale, duration=tt)
             align()
 
             if rbi_var is not None:
