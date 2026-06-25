@@ -63,7 +63,7 @@ def custom_param(node: QualibrationNode[Parameters, Quam]):
     node.parameters.amp_mode = "absolute"
     node.parameters.use_state_discrimination = True
     node.parameters.simulate = False
-    node.parameters.num_shots = 200
+    node.parameters.num_shots = 400
     node.parameters.multiplexed = True
     # Set tomography = True (and a superposition prepare_state) for full X/Y/Z tomography.
     # node.parameters.tomography = True

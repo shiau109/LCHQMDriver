@@ -12,8 +12,8 @@ class NodeSpecificParameters(RunnableParameters):
     """Minimum flux bias offset in volts. Default is -0.5 V."""
     max_flux_offset_in_v: float = 0.5
     """Maximum flux bias offset in volts. Default is 0.5 V."""
-    num_flux_points: int = 21
-    """Number of flux points. Default is 21."""
+    num_flux_points: int = 41
+    """Number of flux points. Default is 41."""
     frequency_span_in_mhz: float = 15
     """Frequency span in MHz. Default is 15 MHz."""
     frequency_step_in_mhz: float = 0.1
@@ -27,10 +27,16 @@ class NodeSpecificParameters(RunnableParameters):
     outlier_n_sigma: float = 3.0
     """Robust-sigma threshold for rejecting flux points whose fitted dip width or
     amplitude are outliers before the frequency-vs-flux fit. Default is 3.0."""
-    z_source_qubit: Optional[str] = None
-    """Name of the single qubit whose z-line drives the flux sweep. When None,
-    every measured qubit applies the flux to its own z-line (same as the official
-    02c node). Default is None."""
+    z_source: Optional[str] = None
+    """Name of the single flux source that drives the sweep. May be:
+      * a qubit name -> that qubit's z-line drives the flux (and is the only one
+        whose state is updated);
+      * a qubit-pair name -> that pair's tunable-coupler z-line drives the flux
+        (the dispersive sweet-spot fit and state writeback are then skipped, since
+        that model describes a qubit's own flux response, not a coupler sweep);
+      * None -> every measured qubit applies the flux to its own z-line (same as
+        the official 02c node).
+    Default is None."""
 
 class Parameters(
     NodeParameters,

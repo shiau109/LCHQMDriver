@@ -9,13 +9,20 @@ Everything is drawn from the already-computed analyzer results (no refitting), s
 the scqat analyzers are not involved here.
 """
 
-from typing import Dict
+from typing import Dict, Optional
 
 import numpy as np
 import matplotlib.pyplot as plt
 
 
-def plot_combined(sep_results: Dict, dispersion_sep: Dict) -> Dict:
+def plot_combined(
+    sep_results: Dict,
+    dispersion_sep: Dict,
+    flux_offsets: Optional[Dict] = None,
+    flux_offset_label: str = "flux offset",
+    readout_freqs: Optional[Dict] = None,
+    readout_freq_label: str = "readout freq",
+) -> Dict:
     """Build one combined figure per qubit.
 
     Parameters
@@ -26,6 +33,18 @@ def plot_combined(sep_results: Dict, dispersion_sep: Dict) -> Dict:
     dispersion_sep : dict
         ``{qubit: (trace_ds, dispersion_results)}`` from ``fit_flux_dependence`` —
         carries the dispersive fit curve and the sweet spot.
+    flux_offsets : dict, optional
+        ``{qubit_name: offset_in_volts}`` — when given, a vertical line is drawn at
+        ``offset_in_volts`` on that qubit's map (the flux source's operating point).
+        Entries that are ``None`` / non-finite are skipped.
+    flux_offset_label : str
+        Legend label for the vertical offset line.
+    readout_freqs : dict, optional
+        ``{qubit_name: readout_freq_in_hz}`` — when given, a horizontal line is drawn
+        at the qubit's current resonator readout frequency. Entries that are ``None`` /
+        non-finite are skipped.
+    readout_freq_label : str
+        Legend label for the horizontal readout-frequency line.
 
     Returns
     -------
@@ -79,6 +98,21 @@ def plot_combined(sep_results: Dict, dispersion_sep: Dict) -> Dict:
             if np.isfinite(ss_flux) and np.isfinite(ss_freq):
                 ax.plot([ss_flux], [ss_freq / scale], "*", color="yellow", ms=15,
                         mec="black", mew=0.6, label="sweet spot")
+
+        # (4) Vertical line at the flux source's operating (idle) offset.
+        if flux_offsets is not None:
+            off = flux_offsets.get(qubit_name)
+            if off is not None and np.isfinite(off):
+                ax.axvline(float(off), color="magenta", ls="--", lw=1.5, label=flux_offset_label)
+
+        # (5) Horizontal line at the resonator's current readout frequency. On the
+        # absolute-frequency axis it sits at the readout frequency; on the detuning
+        # axis the detuning is centred on that frequency, so it sits at 0.
+        if readout_freqs is not None:
+            rf = readout_freqs.get(qubit_name)
+            if rf is not None and np.isfinite(rf):
+                y_rf = float(rf) / scale if has_full else 0.0
+                ax.axhline(y_rf, color="cyan", ls=":", lw=1.5, label=readout_freq_label)
 
         ax.set_xlim(float(flux.min()), float(flux.max()))
         ax.set_ylim(float(yvals.min()), float(yvals.max()))

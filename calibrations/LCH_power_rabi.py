@@ -50,13 +50,13 @@ node = QualibrationNode[Parameters, Quam](
 @node.run_action(skip_if=node.modes.external)
 def custom_param(node: QualibrationNode[Parameters, Quam]):
     """Allow the user to locally set the node parameters for debugging purposes, or execution in the Python IDE."""
-    node.parameters.qubits = ["q4", "q5"]
+    node.parameters.qubits = ["q1"]
     node.parameters.drive_qubit = None
     node.parameters.multiplexed = True
     # node.parameters.operation = "x180"
-    # node.parameters.min_amp_factor = 0.0
-    # node.parameters.max_amp_factor = 1.99
-    # node.parameters.amp_factor_step = 0.005
+    node.parameters.min_amp_factor = 0.0
+    node.parameters.max_amp_factor = 1.99
+    node.parameters.amp_factor_step = 0.005
     pass
 
 

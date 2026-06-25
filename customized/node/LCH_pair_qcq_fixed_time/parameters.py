@@ -17,8 +17,8 @@ class LCHNodeSpecificParameters(RunnableParameters):
 
     num_shots: int = 50
     """Number of averages to perform. Default is 50."""
-    coupler_operation: str = "swap_01_10_square"
-    """Coupler pulse operation to play. Default is "swap_01_10_square"."""
+    coupler_operation: str = "const"
+    """Coupler pulse operation to play. Default is "const"."""
     qubit_operation: str = "const"
     """Qubit z-line pulse operation to play. Default is "const"."""
     flux_time: Optional[int] = None

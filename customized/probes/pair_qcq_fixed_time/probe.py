@@ -56,7 +56,7 @@ def build_program(
     *,
     coupler_amplitudes,
     qubit_amplitudes,
-    coupler_operation: str = "swap_01_10_square",
+    coupler_operation: str = "const",
     qubit_operation: str = "const",
     flux_time: Optional[int] = None,
     flux_role: str = "control",

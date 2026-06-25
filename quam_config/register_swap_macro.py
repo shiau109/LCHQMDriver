@@ -11,14 +11,14 @@ State of the pulses at time of writing (from the loaded QUAM):
 >>> FILL IN the calibrated amplitude/length below before running. <<<
 The values here are PLACEHOLDERS. Run this once to persist into quam_state/state.json:
 
-    python quam_config/populate_swap_macro.py
+    python quam_config/register_swap_macro.py
 """
 
 from quam.components.pulses import SquarePulse
 from quam_config import Quam
 from customized.components.macros.iswap_macro import ISwapImplementation
 
-FLUX_PULSE = "swap_01_10_square"  # op name played on both control.z and coupler
+FLUX_PULSE = "flattop_cosine"  # op name played on both control.z and coupler
 
 machine = Quam.load()
 pair = machine.qubit_pairs["q1_q2"]

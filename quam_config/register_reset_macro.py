@@ -11,7 +11,7 @@ State of the pulses at time of writing (from the loaded QUAM):
 >>> FILL IN the calibrated amplitude/length and drive frequency below before running. <<<
 The values here are PLACEHOLDERS. Run this once to persist into quam_state/state.json:
 
-    python quam_config/populate_reset_macro.py
+    python quam_config/register_reset_macro.py
 """
 
 from quam.components.pulses import SquarePulse
