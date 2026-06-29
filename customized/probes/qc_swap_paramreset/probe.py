@@ -1,17 +1,21 @@
 """Swap-based-reset circuit acquisition probe: vendor code only (qm/quam/qualang_tools) -
 no qualibrate, no scqo, no scqat.
 
-Exercises a swap-based reset scheme. Each shot prepares an excitation on the swap
-pair's control qubit (`x180`), then applies the circuit body R times: a SWAP on the
+Exercises a swap-based reset scheme. Each shot prepares an excitation on a chosen
+`excite_qubit` (`x180`), then applies the circuit body R times: a SWAP on the
 qubit pair followed by a RESET on an ancilla qubit. The number of rounds R is the swept
 axis, so reading out a chosen set of qubits versus R shows how the population is removed
 round by round (R=0 is the no-round baseline: just the x180 prep). One curve per measured
 qubit.
 
+The excited qubit is chosen independently of the swap pair: `excite_qubit` need not be the
+swap pair's control qubit (it can be the target or any other qubit).
+
 Circuit per shot (for a swept round count R):
   1. Initialize every involved qubit with `q.reset(reset_type, simulate)`
-     (involved = measured qubits + the swap pair's control/target + the reset qubit).
-  2. State prep: `swap_pair.qubit_control.xy.play("x180")`.
+     (involved = measured qubits + `excite_qubit` + the swap pair's control/target + the
+     reset qubit).
+  2. State prep: `excite_qubit.xy.play("x180")`.
   3. Repeat R times: `swap_pair.macros[swap_operation].apply()` then
      `reset_qubit.macros[reset_operation].apply()`.
   4. Read out every measured qubit (state discrimination -> discriminated state, else raw I/Q).
@@ -37,15 +41,16 @@ from qualang_tools.loops import from_array
 from customized.probes._lib import acquire as _acquire
 
 
-def _dedup_involved(measure_qubits, swap_pair, reset_qubit) -> List:
+def _dedup_involved(measure_qubits, swap_pair, reset_qubit, excite_qubit) -> List:
     """Return the unique (by `.name`) set of qubit elements that must be initialized.
 
-    The measured qubits need not include the swap pair's control/target or the reset
-    qubit, but all of them must be flux-initialized and reset at the start of each shot.
+    The measured qubits need not include `excite_qubit`, the swap pair's control/target, or
+    the reset qubit, but all of them must be flux-initialized and reset at the start of each
+    shot.
     """
     involved = []
     seen = set()
-    for q in list(measure_qubits) + [swap_pair.qubit_control, swap_pair.qubit_target, reset_qubit]:
+    for q in list(measure_qubits) + [excite_qubit, swap_pair.qubit_control, swap_pair.qubit_target, reset_qubit]:
         if q.name not in seen:
             seen.add(q.name)
             involved.append(q)
@@ -58,6 +63,7 @@ def build_program(
     swap_pair,
     reset_qubit,
     *,
+    excite_qubit,
     swap_operation: str,
     reset_operation: str,
     rounds_array,
@@ -72,6 +78,8 @@ def build_program(
     Returns ``(program, sweep_axes)``.
 
     `measure_qubits` is a plain list of qubit objects read out at the end of the circuit;
+    `excite_qubit` is the qubit object excited with `x180` for state prep (chosen
+    independently of the swap pair);
     `swap_pair` is a qubit-pair object whose `macros[swap_operation]` is applied each round;
     `reset_qubit` is a qubit object whose `macros[reset_operation]` is applied each round.
     `rounds_array` is the integer sweep over the number of swap+reset rounds (R=0 allowed,
@@ -90,7 +98,7 @@ def build_program(
         raise ValueError(f"settle_ns must be a non-negative multiple of 4 ns, got {settle_ns}.")
     settle_cycles = settle_ns // 4
 
-    involved = _dedup_involved(measure_qubits, swap_pair, reset_qubit)
+    involved = _dedup_involved(measure_qubits, swap_pair, reset_qubit, excite_qubit)
 
     sweep_axes = {
         "qubit": xr.DataArray([q.name for q in measure_qubits]),
@@ -121,8 +129,8 @@ def build_program(
                     q.reset(reset_type, simulate)
                 align()
 
-                # State prep: excite the swap pair's control qubit to |1>.
-                swap_pair.qubit_control.xy.play("x180")
+                # State prep: excite the chosen qubit to |1>.
+                excite_qubit.xy.play("x180")
                 align()
 
                 # Circuit body: R rounds of (swap on the pair, reset on the ancilla).

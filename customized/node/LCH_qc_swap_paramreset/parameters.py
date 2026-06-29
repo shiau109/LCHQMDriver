@@ -1,3 +1,5 @@
+from typing import Optional
+
 from customized.common_parameters import PlottingParameters
 from qualibrate import NodeParameters
 from qualibrate.core.parameters import RunnableParameters
@@ -20,9 +22,12 @@ class NodeSpecificParameters(RunnableParameters):
     """End (inclusive) of the round sweep. Default is 10."""
     rounds_step: int = 1
     """Step of the round sweep. Default is 1."""
+    excite_qubit: Optional[str] = None
+    """Name of the qubit excited with x180 for state prep at the start of each shot.
+    Required — must be set explicitly (no default); e.g. "q3". (None is only a sentinel so
+    `Parameters()` instantiates for the GUI; the shell rejects an unset value at run time.)"""
     swap_pair: str = "q1_q2"
-    """Name of the qubit pair the SWAP is applied to each round. Its control qubit is
-    excited with x180 for state prep. Default is "q1_q2"."""
+    """Name of the qubit pair the SWAP is applied to each round. Default is "q1_q2"."""
     swap_operation: str = "iswap"
     """Macro key on the swap pair (`pair.macros[swap_operation].apply()`). Must be
     invokable with no extra args. Default is "iswap"."""
