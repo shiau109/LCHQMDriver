@@ -31,7 +31,8 @@ OP = "flattop_cosine"  # operation name played via node.parameters.coupler_opera
 
 # --- PLACEHOLDER shape params: calibrate these -------------------------------------------
 LENGTH = 64      # ns, multiple of 4 and >= 16
-AMPLITUDE = 0.5   # V (per-channel reference amplitude; the node sweeps amplitude_scale = a/ref)
+AMPLITUDE = 0.25  # V. Keep < 0.5 (OPX1000 LF-FEM "direct" output rail): a stored peak >= 0.5 V
+                  # is clipped/corrupted on hardware (the simulator hides it). 0.25 leaves margin.
 EDGE_WIDTH = 8   # samples per sine edge; flat top length = LENGTH - 2 * EDGE_WIDTH
 # ----------------------------------------------------------------------------------------
 

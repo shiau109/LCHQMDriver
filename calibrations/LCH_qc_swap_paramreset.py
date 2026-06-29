@@ -50,7 +50,7 @@ def custom_param(node: QualibrationNode[Parameters, Quam]):
     node.parameters.reset_qubit = "q2"
     node.parameters.reset_operation = "reset"
     node.parameters.min_rounds = 0
-    node.parameters.max_rounds = 2
+    node.parameters.max_rounds = 10
     node.parameters.rounds_step = 1
     node.parameters.simulate = False
     node.parameters.num_shots = 1000
@@ -58,7 +58,7 @@ def custom_param(node: QualibrationNode[Parameters, Quam]):
     #   apply_reset = False -> pure swap rounds; q1 should oscillate/decay if the swap fires.
     #   settle_ns   = 100   -> idle the pair's flux lines so q2's parametric-reset flux
     #                          settles before each (narrow) swap resonance fires.
-    node.parameters.apply_reset = False
+    node.parameters.apply_reset = True
     node.parameters.settle_ns = 32
     pass
 

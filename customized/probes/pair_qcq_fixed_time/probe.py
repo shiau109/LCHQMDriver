@@ -44,6 +44,10 @@ from customized.probes._lib import acquire as _acquire
 # Largest magnitude QUA accepts for a dynamic `amplitude_scale` (the fixed-point range is (-2, 2)).
 _MAX_AMP_SCALE = 2.0
 
+# OPX1000 LF-FEM "direct" output rail: a stored waveform peak at >= 0.5 V is clipped/corrupted at
+# runtime (the simulator does NOT show this). Flux op amplitudes must stay below it.
+_DAC_RAIL = 0.5
+
 
 def _flux_qubit(qp, flux_role: str):
     """Return the qubit of the pair whose z line carries the qubit flux pulse."""
@@ -65,6 +69,8 @@ def build_program(
     reset_type: str,
     use_state_discrimination: bool,
     drive_role: str = "control",
+    swap_via_macro: bool = False,
+    swap_operation: str = "iswap",
     simulate: bool = False,
 ):
     """Build the fixed-time qubit-flux x coupler-flux QUA program.
@@ -79,6 +85,14 @@ def build_program(
     (default "const"). `flux_role` selects which qubit's z carries the qubit flux pulse;
     `drive_role` selects which qubit receives the x180. `flux_time` is the shared fixed
     pulse duration in ns (multiple of 4, >= 16); None uses each op's native length.
+
+    Debug isolation: with `swap_via_macro=True` the swap is played through the QUAM
+    `qp.macros[swap_operation]` `.apply()` path (exactly what `qc_swap_reset`/`qc_N_swap`
+    call) instead of the direct flux play -- to test whether the macro itself reproduces
+    the 2D-map swap. In this mode the qubit-z amplitude follows the y-sweep (the macro's
+    `ctrl_amp=q_a`, absolute volts) while the coupler plays bare at its baked amplitude
+    (0 for q1_q2, i.e. coupler flux = 0), so the coupler (x) sweep and `flux_time` are
+    ignored and `amp_mode` must be "absolute".
     """
     num_qubit_pairs = len(qubit_pairs)
 
@@ -109,6 +123,20 @@ def build_program(
         coupler_refs[qp.name] = float(qp.coupler.operations[coupler_operation].amplitude)
         qubit_refs[qp.name] = float(fq.z.operations[qubit_operation].amplitude)
 
+    # DAC-rail guard (direct mode): a flux op stored at >= 0.5 V is clipped/corrupted on hardware.
+    if not swap_via_macro:
+        for qp in qubit_pairs:
+            for what, op, ref in (
+                ("coupler", coupler_operation, coupler_refs[qp.name]),
+                (f"{flux_role}-qubit z", qubit_operation, qubit_refs[qp.name]),
+            ):
+                if abs(ref) >= _DAC_RAIL:
+                    raise ValueError(
+                        f"{what} op {op!r} on {qp.name} has amplitude {ref} V >= {_DAC_RAIL} V "
+                        f"(OPX1000 'direct'-mode DAC rail): the stored waveform peak is clipped/corrupted "
+                        f"on hardware and the simulator hides it. Lower the op amplitude (<0.5 V; default 0.25)."
+                    )
+
     coupler_amplitudes = np.asarray(coupler_amplitudes, dtype=float)
     qubit_amplitudes = np.asarray(qubit_amplitudes, dtype=float)
 
@@ -133,6 +161,39 @@ def build_program(
                 raise ValueError(
                     f"Prefactor {what} flux sweep exceeds QUA's amplitude_scale range: "
                     f"max |a| = {max_scale:.3f} >= {_MAX_AMP_SCALE}."
+                )
+
+    # Optional debug: play the swap through the QUAM macro instead of the direct flux play.
+    if swap_via_macro:
+        if amp_mode != "absolute":
+            raise ValueError("swap_via_macro requires amp_mode='absolute' (the macro's ctrl_amp is absolute volts).")
+        for qp in qubit_pairs:
+            if swap_operation not in qp.macros:
+                raise ValueError(f"Pair {qp.name} has no macro {swap_operation!r}; available: {list(qp.macros)}.")
+            flux_pulse_name = getattr(qp.macros[swap_operation], "flux_pulse", None)
+            ops = qp.qubit_control.z.operations
+            if not isinstance(flux_pulse_name, str) or flux_pulse_name not in ops:
+                raise ValueError(
+                    f"Macro {swap_operation!r} on {qp.name} has no z flux_pulse playable in macro mode "
+                    f"(flux_pulse={flux_pulse_name!r})."
+                )
+            ref = abs(float(ops[flux_pulse_name].amplitude))
+            if ref == 0.0:
+                raise ValueError(
+                    f"Macro {swap_operation!r} on {qp.name} has a zero-amplitude z flux_pulse "
+                    f"({flux_pulse_name!r}); cannot scale it by ctrl_amp in macro mode."
+                )
+            if ref >= _DAC_RAIL:
+                raise ValueError(
+                    f"Macro {swap_operation!r} z pulse {flux_pulse_name!r} on {qp.name} has amplitude "
+                    f"{ref} V >= {_DAC_RAIL} V (OPX1000 'direct'-mode DAC rail): the waveform is clipped/"
+                    f"corrupted on hardware and the simulator hides it. Lower the pulse amplitude (<0.5 V)."
+                )
+            max_scale = float(np.max(np.abs(qubit_amplitudes))) / ref
+            if max_scale >= _MAX_AMP_SCALE:
+                raise ValueError(
+                    f"swap_via_macro qubit sweep for {qp.name} exceeds QUA amplitude_scale range: "
+                    f"max |a/ref| = {max_scale:.3f} >= {_MAX_AMP_SCALE} (macro z ref = {ref} V)."
                 )
 
     # Shared fixed pulse duration in clock cycles (4 ns), or None to use each op's native length.
@@ -202,14 +263,23 @@ def build_program(
 
                             # Two simultaneous flux pulses at the fixed duration, swept amplitudes.
                             fq = _flux_qubit(qp, flux_role)
-                            c_scale = c_a / coupler_refs[qp.name] if amp_mode == "absolute" else c_a
-                            q_scale = q_a / qubit_refs[qp.name] if amp_mode == "absolute" else q_a
-                            if duration_cycles is None:
-                                fq.z.play(qubit_operation, amplitude_scale=q_scale)
-                                qp.coupler.play(coupler_operation, amplitude_scale=c_scale)
+                            if swap_via_macro:
+                                # Debug: exercise the QUAM swap macro's .apply() path (as
+                                # qc_swap_reset does) instead of the direct flux play. The qubit-z
+                                # amplitude follows the y-sweep (ctrl_amp=q_a, absolute volts); the
+                                # coupler is played bare at the macro pulse's baked amplitude (0 for
+                                # q1_q2 -> coupler flux = 0), so the coupler (x) sweep and flux_time
+                                # are ignored in this mode.
+                                qp.macros[swap_operation].apply(ctrl_amp=q_a, cplr_amp=None)
                             else:
-                                fq.z.play(qubit_operation, amplitude_scale=q_scale, duration=duration_cycles)
-                                qp.coupler.play(coupler_operation, amplitude_scale=c_scale, duration=duration_cycles)
+                                c_scale = c_a / coupler_refs[qp.name] if amp_mode == "absolute" else c_a
+                                q_scale = q_a / qubit_refs[qp.name] if amp_mode == "absolute" else q_a
+                                if duration_cycles is None:
+                                    fq.z.play(qubit_operation, amplitude_scale=q_scale)
+                                    qp.coupler.play(coupler_operation, amplitude_scale=c_scale)
+                                else:
+                                    fq.z.play(qubit_operation, amplitude_scale=q_scale, duration=duration_cycles)
+                                    qp.coupler.play(coupler_operation, amplitude_scale=c_scale, duration=duration_cycles)
                             align()
 
                             if use_state_discrimination:

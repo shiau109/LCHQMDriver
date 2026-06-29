@@ -43,6 +43,14 @@ class LCHNodeSpecificParameters(RunnableParameters):
     """Whether to read out qubit state (True) or raw I/Q (False). Default is True."""
     drive_role: Literal["control", "target"] = "control"
     """Which qubit of each pair receives the x180. Default is "control"."""
+    swap_via_macro: bool = False
+    """Debug: play the swap via the QUAM macro `macros[swap_operation].apply()` (the
+    qc_swap_reset path) instead of the direct flux play, to isolate macro-vs-direct-play.
+    Requires amp_mode="absolute"; the qubit (y) sweep scales the macro's ctrl flux while
+    the coupler plays bare (its baked amp), so the coupler (x) sweep and flux_time are
+    ignored. Default is False."""
+    swap_operation: str = "iswap"
+    """Macro key on the pair used when swap_via_macro=True. Default is "iswap"."""
 
 
 class Parameters(

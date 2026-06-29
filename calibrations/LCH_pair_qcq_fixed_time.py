@@ -49,22 +49,28 @@ def custom_param(node: QualibrationNode[Parameters, Quam]):
     """Allow the user to locally set the node parameters for debugging purposes, or execution in the Python IDE."""
     node.parameters.qubit_pairs = ["q1_q2"]
     node.parameters.simulate = False
-    node.parameters.num_shots = 400
+    node.parameters.num_shots = 200
     # FlatTopCosinePulse flux op (register first: python quam_config/register_flattop_cosine.py).
     # Leave flux_time = None so each op plays its native length (duration override is meant for
     # the constant/square waveform, not a shaped pulse).
-    node.parameters.coupler_operation = "flattop_cosine"
-    node.parameters.qubit_operation = "flattop_cosine"
+    node.parameters.coupler_operation = "partial_swap_flattop_cosine"
+    node.parameters.qubit_operation = "partial_swap_flattop_cosine"
     # node.parameters.flux_time = 100
     # node.parameters.flux_role = "control"
     # node.parameters.drive_role = "control"
-    node.parameters.coupler_amp_start = -0.01
-    node.parameters.coupler_amp_end = 0.01
-    node.parameters.coupler_amp_step = 0.01
-    node.parameters.qubit_amp_start = 0.140
-    node.parameters.qubit_amp_end = 0.138
-    node.parameters.qubit_amp_step = -0.001
+    node.parameters.coupler_amp_start = -0.07
+    node.parameters.coupler_amp_end = -0.02
+    node.parameters.coupler_amp_step = 0.005
+    node.parameters.qubit_amp_start = 0.1575
+    node.parameters.qubit_amp_end = 0.15
+    node.parameters.qubit_amp_step = -0.0005
     node.parameters.amp_mode = "absolute"
+    # Debug isolation: play the swap through the iswap macro's .apply() (the qc_swap_reset
+    # path) instead of the direct flux play, to test whether the macro reproduces the swap.
+    # In macro mode the qubit (y) sweep scales the macro's ctrl flux and the coupler plays
+    # bare at 0 (so the coupler x-sweep is ignored); look at the qubit_flux=0.139 row.
+    # node.parameters.swap_via_macro = True
+    node.parameters.swap_via_macro = False
     pass
 
 
@@ -100,6 +106,8 @@ def create_qua_program(node: QualibrationNode[Parameters, Quam]):
         reset_type=node.parameters.reset_type,
         use_state_discrimination=node.parameters.use_state_discrimination,
         drive_role=node.parameters.drive_role,
+        swap_via_macro=node.parameters.swap_via_macro,
+        swap_operation=node.parameters.swap_operation,
         simulate=node.parameters.simulate,
     )
 
@@ -150,6 +158,12 @@ def analyse_data(node: QualibrationNode[Parameters, Quam]):
         node.results["ds_raw"],
         node.namespace["qubit_pairs"],
         use_state_discrimination=node.parameters.use_state_discrimination,
+        swap_via_macro=node.parameters.swap_via_macro,
+        amp_mode=node.parameters.amp_mode,
+        qubit_operation=node.parameters.qubit_operation,
+        coupler_operation=node.parameters.coupler_operation,
+        flux_role=node.parameters.flux_role,
+        swap_operation=node.parameters.swap_operation,
     )
     node.outcomes = {
         qp.name: ("successful" if node.results["fit_results"][qp.name]["success"] else "failed")

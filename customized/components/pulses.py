@@ -260,7 +260,7 @@ class FlatTopCosinePulse(Pulse):
 
     """
 
-    amplitude: float = 0.1
+    amplitude: float = 0.25  # keep < 0.5 (OPX1000 LF-FEM "direct" DAC rail; >=0.5 is clipped on HW)
     edge_width: int = 5
     axis_angle: float = None
 
