@@ -64,7 +64,6 @@ def build_program(
     num_shots: int,
     reset_type: str,
     use_state_discrimination: bool,
-    apply_reset: bool = True,
     settle_ns: int = 0,
     simulate: bool = False,
 ):
@@ -79,11 +78,9 @@ def build_program(
     giving just the x180 prep). All measured qubits are read out within the same shot
     (joint / multiplexed readout), since they share one circuit.
 
-    Two diagnostic knobs (defaults preserve the standard swap+reset circuit):
-      - `apply_reset=False` drops every reset macro, leaving pure swap rounds (a
-        vacuum-Rabi-vs-rounds curve) to verify the swap actually transfers in-context.
-      - `settle_ns` (multiple of 4) idles the swap pair's flux lines before each swap, so
-        a preceding reset's flux pulse can settle before the (narrow) swap resonance fires.
+    `settle_ns` (multiple of 4, default 0) idles the swap pair's flux lines before each
+    swap, so a preceding reset's flux pulse can settle before the swap fires.
+    (For pure swap rounds with no reset, use the `qc_N_swap` node instead.)
     """
     measure_qubits = list(measure_qubits)
     num_qubits = len(measure_qubits)
@@ -130,21 +127,18 @@ def build_program(
 
                 # Circuit body: R rounds of (swap on the pair, reset on the ancilla).
                 # Dynamic loop bound on r -> R=0 skips the body entirely (baseline).
-                # `apply_reset=False` drops every reset (pure swap rounds); `settle_cycles`
-                # idles the pair's flux lines before each swap so a preceding reset's flux
-                # pulse can settle before the narrow swap resonance fires.
-                if apply_reset:
-                    reset_qubit.macros[reset_operation].apply()
-                    align()
+                # `settle_cycles` idles the pair's flux lines before each swap so a
+                # preceding reset's flux pulse can settle before the swap fires.
+                reset_qubit.macros[reset_operation].apply()
+                align()
                 with for_(rr, 0, rr < r, rr + 1):
                     if settle_cycles > 0:
                         swap_pair.wait(settle_cycles)
                         align()
                     swap_pair.macros[swap_operation].apply()
                     align()
-                    if apply_reset:
-                        reset_qubit.macros[reset_operation].apply()
-                        align()
+                    reset_qubit.macros[reset_operation].apply()
+                    align()
 
                 # Joint (multiplexed) readout of all measured qubits.
                 for i, qubit in enumerate(measure_qubits):

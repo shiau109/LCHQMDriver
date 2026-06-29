@@ -54,11 +54,8 @@ def custom_param(node: QualibrationNode[Parameters, Quam]):
     node.parameters.rounds_step = 1
     node.parameters.simulate = False
     node.parameters.num_shots = 1000
-    # Diagnostics for "the swap doesn't transfer in qc_swap_reset" (q1 stays flat):
-    #   apply_reset = False -> pure swap rounds; q1 should oscillate/decay if the swap fires.
-    #   settle_ns   = 100   -> idle the pair's flux lines so q2's parametric-reset flux
-    #                          settles before each (narrow) swap resonance fires.
-    node.parameters.apply_reset = True
+    # settle_ns idles the pair's flux lines before each swap so q2's parametric-reset
+    # flux can settle before the swap fires (0 = no settle).
     node.parameters.settle_ns = 32
     pass
 
@@ -94,7 +91,6 @@ def create_qua_program(node: QualibrationNode[Parameters, Quam]):
         num_shots=p.num_shots,
         reset_type=p.reset_type,
         use_state_discrimination=p.use_state_discrimination,
-        apply_reset=p.apply_reset,
         settle_ns=p.settle_ns,
         simulate=p.simulate,
     )

@@ -31,9 +31,6 @@ class NodeSpecificParameters(RunnableParameters):
     reset_operation: str = "reset"
     """Macro key on the reset qubit (`reset_qubit.macros[reset_operation].apply()`). Must
     be invokable with no extra args. Default is "reset"."""
-    apply_reset: bool = True
-    """Whether to apply the reset macro each round. False drops all resets, leaving pure
-    swap rounds (vacuum-Rabi vs rounds) to verify the swap transfers in-context. Default True."""
     settle_ns: int = 0
     """Idle time (ns, multiple of 4) inserted on the swap pair's flux lines before each swap,
     so a preceding reset's flux pulse can settle before the narrow swap resonance. Default 0."""
