@@ -1,8 +1,10 @@
-"""Unidirectional-coupling visualization: one 1D curve per measured qubit.
+"""Unidirectional-coupling visualization: a single combined population-vs-round figure.
 
-With state discrimination the probe saves the discriminated state (var `state`, the
-excited-state population once averaged over shots); each measured qubit gets a line plot
-of population vs round. Without state discrimination the raw I quadrature is shown instead.
+With state discrimination and `multiplexed` on, the joint multi-qubit populations
+(000, 001, ... 111) are plotted on one figure; with `multiplexed` off, each measured
+qubit's independent P(excited) is plotted on one figure. Without state discrimination the
+raw I quadrature of each qubit is shown instead. The population math + plot live in the
+shared `customized.node._qc_populations` helper.
 """
 
 from typing import Dict
@@ -10,30 +12,26 @@ from typing import Dict
 import matplotlib.pyplot as plt
 import xarray as xr
 
+from customized.node._qc_populations import plot_populations
 
-def plot_rounds_1d(ds_raw: xr.Dataset, measure_qubits, *, use_state_discrimination: bool) -> Dict[str, plt.Figure]:
-    """Build one population-vs-round figure per measured qubit; return {qubit_name: Figure}.
 
-    The plotted variable is resolved from the dataset (so it works for both live and
-    loaded data): `state` (excited-state population) when present, otherwise the raw `I`
-    quadrature. `measure_qubits` is accepted for interface symmetry; the qubit names are
-    taken from the dataset.
+def plot_rounds_1d(
+    ds_raw: xr.Dataset,
+    measure_qubits,
+    *,
+    use_state_discrimination: bool,
+    multiplexed: bool = False,
+) -> Dict[str, plt.Figure]:
+    """Build the combined population-vs-round figure; return ``{key: Figure}``.
+
+    `measure_qubits` is accepted for interface symmetry; the qubit names are taken from the
+    dataset. `multiplexed` selects the joint (True) vs per-qubit (False) view when state
+    discrimination is on.
     """
-    qubit_names = [str(q) for q in ds_raw.qubit.values]
-
-    if "state" in ds_raw:
-        var, ylabel = "state", "P(excited)"
-    else:
-        var, ylabel = "I", "I [V]"
-
-    figures: Dict[str, plt.Figure] = {}
-    for qubit in qubit_names:
-        fig, ax = plt.subplots(figsize=(6, 4))
-        ds_raw[var].sel(qubit=qubit).plot(x="round", ax=ax, marker="o")
-        ax.set_xlabel("Number of swap-chain + reset rounds")
-        ax.set_ylabel(ylabel)
-        ax.set_title(f"Unidirectional coupling - {qubit}")
-        fig.tight_layout()
-        figures[qubit] = fig
-
-    return figures
+    return plot_populations(
+        ds_raw,
+        multiplexed=multiplexed,
+        use_state_discrimination=use_state_discrimination,
+        title="Unidirectional coupling",
+        xlabel="Number of swap-chain + reset rounds",
+    )

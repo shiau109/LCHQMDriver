@@ -32,7 +32,10 @@ which needs `ctrl_amp`/`cplr_amp`) needs a default-carrying variant before it ca
 here as `swap_operation`/`reset_operation`. Every pair in `swap_pairs` must carry a
 bare-callable `swap_operation` macro.
 
-There is no fit/state-writeback downstream; the node renders a 1D population-vs-round curve.
+There is no fit/state-writeback downstream. With state discrimination the probe saves the
+**per-shot** discriminated states (var `state`, dims `(qubit, shot, round)`) so the node can
+render either the joint multi-qubit populations (000, 001, ... when `multiplexed`) or the
+per-qubit marginals; without it the shot-averaged raw I/Q is saved instead.
 """
 
 from typing import Callable, List, Optional
@@ -114,12 +117,24 @@ def build_program(
 
     involved = _dedup_involved(measure_qubits, swap_pairs, reset_qubit, excite_qubit)
 
-    sweep_axes = {
-        "qubit": xr.DataArray([q.name for q in measure_qubits]),
-        "round": xr.DataArray(
-            rounds_array, attrs={"long_name": "number of (swap-chain)+reset rounds"}
-        ),
-    }
+    # With state discrimination we save the per-shot discriminated states (so the joint
+    # multi-qubit populations can be reconstructed downstream), hence the extra `shot` axis.
+    # Without it we keep the shot-averaged raw I/Q schema (no `shot` axis).
+    if use_state_discrimination:
+        sweep_axes = {
+            "qubit": xr.DataArray([q.name for q in measure_qubits]),
+            "shot": xr.DataArray(np.arange(num_shots)),
+            "round": xr.DataArray(
+                rounds_array, attrs={"long_name": "number of (swap-chain)+reset rounds"}
+            ),
+        }
+    else:
+        sweep_axes = {
+            "qubit": xr.DataArray([q.name for q in measure_qubits]),
+            "round": xr.DataArray(
+                rounds_array, attrs={"long_name": "number of (swap-chain)+reset rounds"}
+            ),
+        }
 
     with program() as prog:
         # Macro to declare I, Q, n and their respective streams for the measured qubits.
@@ -152,7 +167,8 @@ def build_program(
                 # `settle_cycles` idles each pair's flux lines before its swap so a
                 # preceding flux pulse can settle before the narrow swap resonance.
                 reset_qubit.macros[reset_operation].apply()
-                wait(settle_cycles)
+                if settle_cycles > 0:
+                    wait(settle_cycles)
                 align()
                 with for_(rr, 0, rr < r, rr + 1):
                     for pair in swap_pairs:
@@ -178,7 +194,9 @@ def build_program(
             n_st.save("n")
             for i in range(num_qubits):
                 if use_state_discrimination:
-                    state_st[i].buffer(len(rounds_array)).average().save(f"state{i + 1}")
+                    # Keep every shot (no average) so the joint populations stay reconstructable:
+                    # inner `round` buffer first, then group `num_shots` of them -> (shot, round).
+                    state_st[i].buffer(len(rounds_array)).buffer(num_shots).save(f"state{i + 1}")
                 else:
                     I_st[i].buffer(len(rounds_array)).average().save(f"I{i + 1}")
                     Q_st[i].buffer(len(rounds_array)).average().save(f"Q{i + 1}")

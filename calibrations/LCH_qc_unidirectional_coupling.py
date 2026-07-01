@@ -61,10 +61,12 @@ def custom_param(node: QualibrationNode[Parameters, Quam]):
     node.parameters.max_rounds = 10
     node.parameters.rounds_step = 1
     node.parameters.simulate = False
-    node.parameters.num_shots = 1000
+    node.parameters.num_shots = 2048
+    # multiplexed=True -> joint state populations (000, 001, ...); False -> per-qubit marginals.
+    node.parameters.multiplexed = True
     # settle_ns idles each pair's flux lines before its swap so a preceding parametric-reset
     # flux can settle before the swap fires (0 = no settle).
-    node.parameters.settle_ns = 32
+    node.parameters.settle_ns = 16
     pass
 
 
@@ -155,6 +157,7 @@ def analyse_data(node: QualibrationNode[Parameters, Quam]):
         node.results["ds_raw"],
         node.namespace["qubits"],
         use_state_discrimination=node.parameters.use_state_discrimination,
+        multiplexed=node.parameters.multiplexed,
     )
     node.outcomes = {
         q.name: ("successful" if node.results["fit_results"][q.name]["success"] else "failed")
