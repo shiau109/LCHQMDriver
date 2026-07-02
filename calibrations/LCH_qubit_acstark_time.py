@@ -9,7 +9,7 @@ from customized.node.LCH_qubit_acstark_time import Parameters, analysis
 from qualibration_libs.parameters import get_qubits
 from qualibration_libs.runtime import simulate_and_plot
 
-from customized.probes.qubit_acstark_time import probe
+from customized.probes import qubit_acstark_time as probe
 
 # %% {Description}
 description = """

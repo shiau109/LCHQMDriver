@@ -7,7 +7,7 @@ from customized.node.LCH_qc_N_swap import Parameters, analysis, plotting
 from qualibration_libs.parameters import get_qubits
 from qualibration_libs.runtime import simulate_and_plot
 
-from customized.probes.qc_N_swap import probe
+from customized.probes import qc_N_swap as probe
 
 
 # %% {Description}

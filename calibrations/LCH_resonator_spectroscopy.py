@@ -9,7 +9,7 @@ from quam_config import Quam
 from qualibration_libs.parameters import get_qubits
 from qualibration_libs.runtime import simulate_and_plot
 
-from customized.probes.resonator_spectroscopy import probe
+from customized.probes import resonator_spectroscopy as probe
 from customized.node.LCH_resonator_spectroscopy import Parameters, analysis, update
 
 # %% {Node initialisation}

@@ -26,7 +26,7 @@ This repo is the **QM reference backend** for **`scqo`**, a vendor-neutral proto
 **Custom LCH nodes** (this lab's own code):
 - `calibrations/LCH_<name>.py` → calibration script (GUI entry point)
 - `customized/node/LCH_<name>/` → qualibrate-side code for the node: `parameters.py` (GUI schema; required unless the node reuses a vendored `Parameters`), plus the node's `analysis.py` (scqat adapter) and `update.py` (state-update policy) once extracted. See **Probes vs shells** below for what goes where.
-- `customized/probes/<name>/` → the instrument-acquisition half, shared with scqo. See **Probes vs shells**.
+- `customized/probes/<name>.py` → the instrument-acquisition half, shared with scqo. See **Probes vs shells**.
 - `customized/components/` → shared pulse shapes, macros, QUAM extensions
 
 ## Probes vs shells (`customized/probes/` + `customized/node/`)
@@ -35,7 +35,7 @@ LCH nodes are being refactored so qualibrate is a thin shell, not the architectu
 
 | Folder | Side | May import |
 |---|---|---|
-| `customized/probes/<name>/probe.py` | acquisition: params in → `xr.Dataset` out. Called by BOTH the qualibrate shell today and the scqo `QMBackend` (planned). | qm.qua, quam, qualang_tools, `qualibration_libs.core`/`.data`. **NEVER** qualibrate, scqo, or scqat — probes acquire, they never fit. |
+| `customized/probes/<name>.py` | acquisition: params in → `xr.Dataset` out. Called by BOTH the qualibrate shell today and the scqo `QMBackend` (planned). | qm.qua, quam, qualang_tools, `qualibration_libs.core`/`.data`. **NEVER** qualibrate, scqo, or scqat — probes acquire, they never fit. |
 | `customized/node/LCH_<name>/` | the qualibrate node: `parameters.py` (GUI schema), `analysis.py` (scqat estimate adapter), `update.py` (pure `compute_update` + `apply_update` state-update policy). | qualibrate, vendored official params, scqat (lazy, inside `fit`). |
 | `calibrations/LCH_<name>.py` | qualibrate shell: `@node.run_action` glue (~3–10 lines each) unpacking `node.parameters` into probe/analysis/update calls. | everything. |
 
@@ -49,7 +49,7 @@ canonical vocabulary and avoids colliding with scqo's `Experiment`.)
 
 **Two orchestration paths, one estimator implementation:**
 - **scqo-driven** (planned): scqo `Session` owns the probe→estimate→update lifecycle, data saving, and
-  run history; it calls `customized/probes/<name>` and runs the scqat estimator itself.
+  run history; it calls `customized/probes/<name>.py` and runs the scqat estimator itself.
 - **QM-only** (today): qualibrate owns orchestration, saving, GUI approval; the LCH node calls its own
   `customized/node/LCH_<name>/{analysis,update}`. Vendored **official** nodes keep QM's built-in
   analysis and never run under scqo.

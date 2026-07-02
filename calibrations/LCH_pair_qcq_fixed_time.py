@@ -7,7 +7,7 @@ from customized.node.LCH_pair_qcq_fixed_time import Parameters, analysis, plotti
 from qualibration_libs.parameters import get_qubit_pairs
 from qualibration_libs.runtime import simulate_and_plot
 
-from customized.probes.pair_qcq_fixed_time import probe
+from customized.probes import pair_qcq_fixed_time as probe
 
 
 # %% {Description}
@@ -47,23 +47,23 @@ node = QualibrationNode[Parameters, Quam](
 @node.run_action(skip_if=node.modes.external)
 def custom_param(node: QualibrationNode[Parameters, Quam]):
     """Allow the user to locally set the node parameters for debugging purposes, or execution in the Python IDE."""
-    node.parameters.qubit_pairs = ["q1_q2"]
+    node.parameters.qubit_pairs = ["q2_q3"]
     node.parameters.simulate = False
-    node.parameters.num_shots = 200
+    node.parameters.num_shots = 100
     # FlatTopCosinePulse flux op (register first: python quam_config/register_flattop_cosine.py).
     # Leave flux_time = None so each op plays its native length (duration override is meant for
     # the constant/square waveform, not a shaped pulse).
-    node.parameters.coupler_operation = "partial_swap_flattop_cosine"
-    node.parameters.qubit_operation = "partial_swap_flattop_cosine"
+    node.parameters.coupler_operation = "flattop_cosine"
+    node.parameters.qubit_operation = "flattop_cosine"
     # node.parameters.flux_time = 100
     # node.parameters.flux_role = "control"
     # node.parameters.drive_role = "control"
-    node.parameters.coupler_amp_start = -0.07
-    node.parameters.coupler_amp_end = -0.02
-    node.parameters.coupler_amp_step = 0.005
-    node.parameters.qubit_amp_start = 0.1575
-    node.parameters.qubit_amp_end = 0.15
-    node.parameters.qubit_amp_step = -0.0005
+    node.parameters.coupler_amp_start = -0.05
+    node.parameters.coupler_amp_end = 0.05
+    node.parameters.coupler_amp_step = 0.01
+    node.parameters.qubit_amp_start = 0.145
+    node.parameters.qubit_amp_end = 0.155
+    node.parameters.qubit_amp_step = 0.0005
     node.parameters.amp_mode = "absolute"
     # Debug isolation: play the swap through the iswap macro's .apply() (the qc_swap_reset
     # path) instead of the direct flux play, to test whether the macro reproduces the swap.

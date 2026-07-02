@@ -7,7 +7,7 @@ from customized.node.LCH_pair_qq_chevron import Parameters, analysis, plotting
 from qualibration_libs.parameters import get_qubit_pairs
 from qualibration_libs.runtime import simulate_and_plot
 
-from customized.probes.pair_qq_chevron import probe
+from customized.probes import pair_qq_chevron as probe
 
 
 # %% {Description}

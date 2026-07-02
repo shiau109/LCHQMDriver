@@ -6,7 +6,7 @@ from quam_config import Quam
 from qualibration_libs.parameters import get_qubits, get_idle_times_in_clock_cycles
 from qualibration_libs.runtime import simulate_and_plot
 
-from customized.probes.ramsey import probe
+from customized.probes import ramsey as probe
 from customized.node.LCH_Ramsey import Parameters, analysis, update
 
 

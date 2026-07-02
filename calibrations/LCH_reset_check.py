@@ -7,7 +7,7 @@ from customized.node.LCH_reset_check import Parameters, analysis, plotting
 from qualibration_libs.parameters import get_qubits
 from qualibration_libs.runtime import simulate_and_plot
 
-from customized.probes.reset_check import probe
+from customized.probes import reset_check as probe
 
 
 # %% {Description}

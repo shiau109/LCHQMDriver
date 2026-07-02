@@ -7,7 +7,7 @@ from customized.node.LCH_power_rabi import Parameters, analysis, update
 from qualibration_libs.parameters import get_qubits
 from qualibration_libs.runtime import simulate_and_plot
 
-from customized.probes.power_rabi import probe
+from customized.probes import power_rabi as probe
 
 
 # %% {Description}

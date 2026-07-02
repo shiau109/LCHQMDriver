@@ -7,7 +7,7 @@ from customized.node.LCH_qc_unidirectional_coupling import Parameters, analysis,
 from qualibration_libs.parameters import get_qubits
 from qualibration_libs.runtime import simulate_and_plot
 
-from customized.probes.qc_unidirectional_coupling import probe
+from customized.probes import qc_unidirectional_coupling as probe
 
 
 # %% {Description}

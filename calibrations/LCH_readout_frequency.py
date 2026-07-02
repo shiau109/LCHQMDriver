@@ -10,7 +10,7 @@ from customized.node.LCH_readout_frequency import Parameters, analysis, update
 from qualibration_libs.parameters import get_qubits
 from qualibration_libs.runtime import simulate_and_plot
 
-from customized.probes.readout_frequency import probe
+from customized.probes import readout_frequency as probe
 
 
 # %% {Description}
