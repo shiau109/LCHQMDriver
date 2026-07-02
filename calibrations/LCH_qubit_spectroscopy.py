@@ -1,24 +1,19 @@
 # %% {Imports}
 import matplotlib.pyplot as plt
 import numpy as np
-import xarray as xr
 
-from qm.qua import *
-
-from qualang_tools.loops import from_array
-from qualang_tools.multi_user import qm_session
-from qualang_tools.results import progress_counter
 from qualang_tools.units import unit
 
 from qualibrate import QualibrationNode
 from quam_config import Quam
+from qualibration_libs.parameters import get_qubits
+from qualibration_libs.runtime import simulate_and_plot
+
+from customized.probes import qubit_spectroscopy as probe
 from customized.node.LCH_qubit_spectroscopy import (
     Parameters,
     log_fitted_results,
 )
-from qualibration_libs.parameters import get_qubits
-from qualibration_libs.runtime import simulate_and_plot
-from qualibration_libs.data import XarrayDataFetcher
 
 
 # %% {Node initialisation}
@@ -58,88 +53,30 @@ node.machine = Quam.load()
 # %% {Create_QUA_program}
 @node.run_action(skip_if=node.parameters.load_data_id is not None)
 def create_qua_program(node: QualibrationNode[Parameters, Quam]):
-    """Create the sweep axes and generate the QUA program from the pulse sequence and the node parameters."""
+    """probe (build half): create the sweep axes and the QUA program via the probe."""
     # Class containing tools to help handle units and conversions.
     u = unit(coerce_to_integer=True)
     # Get the active qubits from the node and organize them by batches
     node.namespace["qubits"] = qubits = get_qubits(node)
-    num_qubits = len(qubits)
-
-    operation = node.parameters.operation  # The qubit operation to play
-    n_avg = node.parameters.num_shots  # The number of averages
-    # Adjust the pulse duration and amplitude to drive the qubit into a mixed state - can be None
-    operation_len = node.parameters.operation_len_in_ns
-    # pre-factor to the value defined in the config - restricted to [-2; 2)
-    operation_amp = node.parameters.operation_amplitude_factor
     # Qubit detuning sweep with respect to their resonance frequencies
-    point_freq = node.parameters.num_frequency_points
-    dfs = np.linspace(node.parameters.min_frequency_in_mhz* u.MHz, node.parameters.max_frequency_in_mhz* u.MHz, point_freq)
-    # Register the sweep axes to be added to the dataset when fetching data
-    node.namespace["sweep_axes"] = {
-        "qubit": xr.DataArray(qubits.get_names()),
-        "detuning": xr.DataArray(dfs, attrs={"long_name": "readout frequency", "units": "Hz"}),
-    }
-
-    with program() as node.namespace["qua_program"]:
-        # Macro to declare I, Q, n and their respective streams for a given number of qubit
-        I, I_st, Q, Q_st, n, n_st = node.machine.declare_qua_variables()
-        df = declare(int)  # QUA variable for the qubit frequency
-
-        for multiplexed_qubits in qubits.batch():
-            # Initialize the QPU in terms of flux points (flux tunable transmons and/or tunable couplers)
-            for qubit in multiplexed_qubits.values():
-                node.machine.initialize_qpu(target=qubit)
-            align()
-
-            with for_(n, 0, n < n_avg, n + 1):
-                save(n, n_st)
-                with for_(*from_array(df, dfs)):                        
-                    for i, qubit in multiplexed_qubits.items():
-                        qubit.reset(
-                            node.parameters.reset_type,
-                            node.parameters.simulate,
-                            log_callable=node.log,
-                        )
-
-                        # Update the qubit frequency
-                    
-                    for i, qubit in multiplexed_qubits.items():
-                        
-                        if node.parameters.drive_qubit is None:
-                            # Get the duration of the operation from the node parameters or the state
-                            duration = operation_len if operation_len is not None else qubit.xy.operations[operation].length
-                            qubit.xy.update_frequency(df + qubit.xy.intermediate_frequency)
-                            # Play the saturation pulse
-                            qubit.xy.play(
-                                operation,
-                                amplitude_scale=operation_amp,
-                                duration=duration // 4,
-                            )
-                        elif qubit.name == node.parameters.drive_qubit:
-                            # Get the duration of the operation from the node parameters or the state
-                            duration = operation_len if operation_len is not None else qubit.xy.operations[operation].length
-                            qubit.xy.update_frequency(df + qubit.xy.intermediate_frequency)
-                            # Play the saturation pulse
-                            qubit.xy.play(
-                                operation,
-                                amplitude_scale=operation_amp,
-                                duration=duration // 4,
-                            )
-                    align()
-
-                    for i, qubit in multiplexed_qubits.items():
-                        # readout the resonator
-                        qubit.resonator.measure("readout", qua_vars=(I[i], Q[i]))
-                        # save data
-                        save(I[i], I_st[i])
-                        save(Q[i], Q_st[i])
-                    align()
-
-        with stream_processing():
-            n_st.save("n")
-            for i in range(num_qubits):
-                I_st[i].buffer(len(dfs)).average().save(f"I{i + 1}")
-                Q_st[i].buffer(len(dfs)).average().save(f"Q{i + 1}")
+    dfs = np.linspace(
+        node.parameters.min_frequency_in_mhz * u.MHz,
+        node.parameters.max_frequency_in_mhz * u.MHz,
+        node.parameters.num_frequency_points,
+    )
+    node.namespace["qua_program"], node.namespace["sweep_axes"] = probe.build_program(
+        node.machine,
+        qubits,
+        dfs=dfs,
+        operation=node.parameters.operation,
+        operation_len=node.parameters.operation_len_in_ns,
+        operation_amp=node.parameters.operation_amplitude_factor,
+        num_shots=node.parameters.num_shots,
+        reset_type=node.parameters.reset_type,
+        drive_qubit=node.parameters.drive_qubit,
+        simulate=node.parameters.simulate,
+        log=node.log,
+    )
 
 
 # %% {Simulate}
@@ -159,27 +96,15 @@ def simulate_qua_program(node: QualibrationNode[Parameters, Quam]):
 # %% {Execute}
 @node.run_action(skip_if=node.parameters.load_data_id is not None or node.parameters.simulate)
 def execute_qua_program(node: QualibrationNode[Parameters, Quam]):
-    """Connect to the QOP, execute the QUA program and fetch the raw data and store it in a xarray dataset called "ds_raw"."""
-    # Connect to the QOP
-    qmm = node.machine.connect()
-    # Get the config from the machine
-    config = node.machine.generate_config()
-    # Execute the QUA program only if the quantum machine is available (this is to avoid interrupting running jobs).
-    with qm_session(qmm, config, timeout=node.parameters.timeout) as qm:
-        # The job is stored in the node namespace to be reused in the fetching_data run_action
-        node.namespace["job"] = job = qm.execute(node.namespace["qua_program"])
-        # Display the progress bar
-        data_fetcher = XarrayDataFetcher(job, node.namespace["sweep_axes"])
-        for dataset in data_fetcher:
-            progress_counter(
-                data_fetcher.get("n", 0),
-                node.parameters.num_shots,
-                start_time=data_fetcher.t_start,
-            )
-        # Display the execution report to expose possible runtime errors
-        node.log(job.execution_report())
-    # Register the raw dataset
-    node.results["ds_raw"] = dataset
+    """probe (run half): execute on the QOP and store the raw dataset as "ds_raw"."""
+    node.results["ds_raw"] = probe.acquire(
+        node.machine,
+        node.namespace["qua_program"],
+        node.namespace["sweep_axes"],
+        num_shots=node.parameters.num_shots,
+        timeout=node.parameters.timeout,
+        log=node.log,
+    )
 
 
 # %% {Load_historical_data}

@@ -1,23 +1,15 @@
 # %% {Imports}
 import numpy as np
-import xarray as xr
 
-from qm.qua import *
-
-from qualang_tools.loops import from_array
-from qualang_tools.multi_user import qm_session
-from qualang_tools.results import progress_counter
 from qualang_tools.units import unit
 
 from qualibrate import QualibrationNode
 from quam_config import Quam
-from customized.node.LCH_qubit_parametric_drive_time import Parameters
 from qualibration_libs.parameters import get_qubits
 from qualibration_libs.runtime import simulate_and_plot
-from qualibration_libs.data import XarrayDataFetcher
 
-# Largest magnitude QUA accepts for a dynamic `amplitude_scale` (the fixed-point range is (-2, 2)).
-_MAX_AMP_SCALE = 2.0
+from customized.probes import qubit_parametric_drive_freq_time as probe
+from customized.node.LCH_qubit_parametric_drive_time import Parameters
 
 
 # %% {Node initialisation}
@@ -78,140 +70,31 @@ node.machine = Quam.load()
 # %% {Create_QUA_program}
 @node.run_action(skip_if=node.parameters.load_data_id is not None)
 def create_qua_program(node: QualibrationNode[Parameters, Quam]):
-    """Create the sweep axes and generate the QUA program from the pulse sequence and the node parameters."""
+    """probe (build half): create the sweep axes and the QUA program via the probe."""
     # Class containing tools to help handle units and conversions.
     u = unit(coerce_to_integer=True)
+    p = node.parameters
     # Get the active qubits from the node and organize them by batches
     node.namespace["qubits"] = qubits = get_qubits(node)
-    p = node.parameters
-    num_qubits = len(qubits)
 
-    n_avg = node.parameters.num_shots  # The number of averages
-
-    # Validate drive_amp stays within QUA's (-2, 2) amplitude_scale range. In "absolute"
-    # mode the emitted scale is drive_amp/ref (ref = the qubit z 'const' op amplitude).
-    if p.amp_mode == "absolute":
-        for qubit in qubits:
-            ref = float(qubit.z.operations["const"].amplitude)
-            scale = abs(p.drive_amp) / abs(ref)
-            if scale >= _MAX_AMP_SCALE:
-                raise ValueError(
-                    f"Absolute drive_amp for {qubit.name} exceeds QUA's amplitude_scale range: "
-                    f"|a/ref| = {scale:.3f} >= {_MAX_AMP_SCALE} (ref = {ref} V). "
-                    f"Reduce drive_amp or use amp_mode='prefactor'."
-                )
-    else:  # prefactor
-        if abs(p.drive_amp) >= _MAX_AMP_SCALE:
-            raise ValueError(
-                f"Prefactor drive_amp exceeds QUA's amplitude_scale range: "
-                f"|a| = {abs(p.drive_amp):.3f} >= {_MAX_AMP_SCALE}."
-            )
-
-    # Qubit detuning sweep with respect to their resonance frequencies
-    time_tick = np.arange(p.min_driving_time_ns//4, p.max_driving_time_ns//4, p.driving_time_step//4)
-    time_ns =  time_tick*4  # in ns
-
-    freqs = np.linspace( p.min_frequency_mhz*u.MHz, p.max_frequency_mhz*u.MHz, p.frequency_points)
-
-    # X/Y/Z readout-basis axis — only swept when tomography is enabled.
-    readout_basis_array = [0, 1, 2]
-
-    # Register the sweep axes to be added to the dataset when fetching data
-    node.namespace["sweep_axes"] = {
-        "qubit": xr.DataArray(qubits.get_names()),
-        "driving_frequency": xr.DataArray(freqs, attrs={"long_name": "driving frequency", "units": "Hz"}),
-        "driving_time": xr.DataArray(time_ns, attrs={"long_name": "driving time", "units": "ns"}),
-    }
-    if p.tomography:
-        node.namespace["sweep_axes"]["basis"] = xr.DataArray(
-            readout_basis_array, attrs={"long_name": "basis for state tomography"}
-        )
-
-    with program() as node.namespace["qua_program"]:
-        # Macro to declare I, Q, n and their respective streams for a given number of qubit
-        I, I_st, Q, Q_st, n, n_st = node.machine.declare_qua_variables()
-        tt = declare(int)  # QUA variable for the driving time
-        f_drive = declare(int)  # QUA variable for the driving frequency
-        rbi = declare(int)  # readout-basis index (used only when tomography is on)
-
-        if node.parameters.use_state_discrimination:
-            state = [declare(int) for _ in range(num_qubits)]
-            state_st = [declare_stream() for _ in range(num_qubits)]
-
-        def measure_shot(multiplexed_qubits, rbi_var):
-            """One prepare -> parametric-drive -> (optional basis rotation) -> readout
-            shot. When ``rbi_var`` is given, the readout basis is selected by it
-            (X: -y90, Y: x90, Z: identity) for state tomography."""
-            for i, qubit in multiplexed_qubits.items():
-                qubit.reset(
-                    node.parameters.reset_type,
-                    node.parameters.simulate,
-                    log_callable=node.log,
-                )
-                # Update the qubit frequency
-                qubit.z.update_frequency(f_drive)
-
-            for i, qubit in multiplexed_qubits.items():
-                qubit.xy.play(node.parameters.prepare_state)
-            align()
-            wait(200 // 4)
-            for i, qubit in multiplexed_qubits.items():
-                if i == 0:
-                    qubit.z.reset_if_phase()
-                    ref = float(qubit.z.operations["const"].amplitude)
-                    amp_scale = p.drive_amp / ref if p.amp_mode == "absolute" else p.drive_amp
-                    qubit.z.play("const", amplitude_scale=amp_scale, duration=tt)
-            align()
-
-            if rbi_var is not None:
-                # Rotate into the measured basis before readout.
-                for i, qubit in multiplexed_qubits.items():
-                    with switch_(rbi_var):
-                        with case_(0):
-                            qubit.xy.play("-y90")
-                        with case_(1):
-                            qubit.xy.play("x90")
-                        with case_(2):
-                            qubit.xy.play("y90", amplitude_scale=0)
-                align()
-
-            for i, qubit in multiplexed_qubits.items():
-                if node.parameters.use_state_discrimination:
-                    qubit.readout_state(state[i])
-                    save(state[i], state_st[i])
-                else:
-                    qubit.resonator.measure("readout", qua_vars=(I[i], Q[i]))
-                    save(I[i], I_st[i])
-                    save(Q[i], Q_st[i])
-            align()
-
-        for multiplexed_qubits in qubits.batch():
-            # Initialize the QPU in terms of flux points (flux tunable transmons and/or tunable couplers)
-            for qubit in multiplexed_qubits.values():
-                node.machine.initialize_qpu(target=qubit)
-            align()
-
-            with for_(n, 0, n < n_avg, n + 1):
-                save(n, n_st)
-                with for_(*from_array(f_drive, freqs)):
-                    with for_(*from_array(tt, time_tick)):
-                        if p.tomography:
-                            with for_each_(rbi, readout_basis_array):
-                                measure_shot(multiplexed_qubits, rbi)
-                        else:
-                            measure_shot(multiplexed_qubits, None)
-
-        with stream_processing():
-            n_st.save("n")
-            for i in range(num_qubits):
-                if node.parameters.use_state_discrimination:
-                    stream = state_st[i].buffer(len(readout_basis_array)) if p.tomography else state_st[i]
-                    stream.buffer(len(time_tick)).buffer(len(freqs)).average().save(f"state{i + 1}")
-                else:
-                    i_stream = I_st[i].buffer(len(readout_basis_array)) if p.tomography else I_st[i]
-                    q_stream = Q_st[i].buffer(len(readout_basis_array)) if p.tomography else Q_st[i]
-                    i_stream.buffer(len(time_tick)).buffer(len(freqs)).average().save(f"I{i + 1}")
-                    q_stream.buffer(len(time_tick)).buffer(len(freqs)).average().save(f"Q{i + 1}")
+    # Driving-time sweep (in clock cycles) and driving-frequency sweep (Hz).
+    time_tick = np.arange(p.min_driving_time_ns // 4, p.max_driving_time_ns // 4, p.driving_time_step // 4)
+    freqs = np.linspace(p.min_frequency_mhz * u.MHz, p.max_frequency_mhz * u.MHz, p.frequency_points)
+    node.namespace["qua_program"], node.namespace["sweep_axes"] = probe.build_program(
+        node.machine,
+        qubits,
+        freqs=freqs,
+        time_tick=time_tick,
+        drive_amp=p.drive_amp,
+        amp_mode=p.amp_mode,
+        prepare_state=p.prepare_state,
+        tomography=p.tomography,
+        num_shots=p.num_shots,
+        reset_type=p.reset_type,
+        use_state_discrimination=p.use_state_discrimination,
+        simulate=p.simulate,
+        log=node.log,
+    )
 
 
 # %% {Simulate}
@@ -231,27 +114,15 @@ def simulate_qua_program(node: QualibrationNode[Parameters, Quam]):
 # %% {Execute}
 @node.run_action(skip_if=node.parameters.load_data_id is not None or node.parameters.simulate)
 def execute_qua_program(node: QualibrationNode[Parameters, Quam]):
-    """Connect to the QOP, execute the QUA program and fetch the raw data and store it in a xarray dataset called "ds_raw"."""
-    # Connect to the QOP
-    qmm = node.machine.connect()
-    # Get the config from the machine
-    config = node.machine.generate_config()
-    # Execute the QUA program only if the quantum machine is available (this is to avoid interrupting running jobs).
-    with qm_session(qmm, config, timeout=node.parameters.timeout) as qm:
-        # The job is stored in the node namespace to be reused in the fetching_data run_action
-        node.namespace["job"] = job = qm.execute(node.namespace["qua_program"])
-        # Display the progress bar
-        data_fetcher = XarrayDataFetcher(job, node.namespace["sweep_axes"])
-        for dataset in data_fetcher:
-            progress_counter(
-                data_fetcher.get("n", 0),
-                node.parameters.num_shots,
-                start_time=data_fetcher.t_start,
-            )
-        # Display the execution report to expose possible runtime errors
-        node.log(job.execution_report())
-    # Register the raw dataset
-    node.results["ds_raw"] = dataset
+    """probe (run half): execute on the QOP and store the raw dataset as "ds_raw"."""
+    node.results["ds_raw"] = probe.acquire(
+        node.machine,
+        node.namespace["qua_program"],
+        node.namespace["sweep_axes"],
+        num_shots=node.parameters.num_shots,
+        timeout=node.parameters.timeout,
+        log=node.log,
+    )
 
 
 # %% {Load_historical_data}

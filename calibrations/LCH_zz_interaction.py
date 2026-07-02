@@ -1,16 +1,13 @@
 # %% {Imports}
 import matplotlib.pyplot as plt
-import xarray as xr
 from dataclasses import asdict
-
-from qm.qua import *
-
-from qualang_tools.multi_user import qm_session
-from qualang_tools.results import progress_counter
-from qualang_tools.units import unit
 
 from qualibrate import QualibrationNode
 from quam_config import Quam
+from qualibration_libs.parameters import get_qubits, get_idle_times_in_clock_cycles
+from qualibration_libs.runtime import simulate_and_plot
+
+from customized.probes import zz_interaction as probe
 from customized.node.LCH_zz_interaction import (
     Parameters,
     process_raw_dataset,
@@ -18,9 +15,6 @@ from customized.node.LCH_zz_interaction import (
     log_fitted_results,
     plot_raw_data_with_fit,
 )
-from qualibration_libs.parameters import get_qubits, get_idle_times_in_clock_cycles
-from qualibration_libs.runtime import simulate_and_plot
-from qualibration_libs.data import XarrayDataFetcher
 
 
 # %% {Description}
@@ -48,88 +42,20 @@ node.machine = Quam.load()
 # %% {Create_QUA_program}
 @node.run_action(skip_if=node.parameters.load_data_id is not None)
 def create_qua_program(node: QualibrationNode[Parameters, Quam]):
-    """Create the sweep axes and generate the QUA program from the pulse sequence and the node parameters."""
-    # Class containing tools to help handle units and conversions.
-    u = unit(coerce_to_integer=True)
+    """probe (build half): create the sweep axes and the QUA program via the probe."""
     # Get the active qubits from the node and organize them by batches
     node.namespace["qubits"] = qubits = get_qubits(node)
-
-    qubit_source = node.machine.qubits[node.parameters.source_qubit]
-    qubit_detector = node.machine.qubits[node.parameters.detector_qubit]
-    num_qubits = len(qubits)
-
-    n_avg = node.parameters.num_shots  # The number of averages
-    # Dephasing time sweep (in clock cycles = 4ns) - minimum is 4 clock cycles
-    idle_times = get_idle_times_in_clock_cycles(node.parameters)
-    # Register the sweep axes to be added to the dataset when fetching data
-    node.namespace["sweep_axes"] = {
-        "qubit": xr.DataArray(qubits.get_names()),
-        "idle_time": xr.DataArray(8 * idle_times, attrs={"long_name": "idle time", "units": "ns"}),
-    }
-
-    with program() as node.namespace["qua_program"]:
-        I, I_st, Q, Q_st, n, n_st = node.machine.declare_qua_variables()
-        if node.parameters.use_state_discrimination:
-            state = [declare(int) for _ in range(num_qubits)]
-            state_st = [declare_stream() for _ in range(num_qubits)]
-
-        shot = declare(int)
-        t = declare(int)
-
-        for multiplexed_qubits in qubits.batch():
-            print(multiplexed_qubits)
-            # Initialize the QPU in terms of flux points (flux tunable transmons and/or tunable couplers)
-            for qubit in multiplexed_qubits.values():
-                node.machine.initialize_qpu(target=qubit)
-            align()
-
-            for i, qubit in multiplexed_qubits.items():
-                with for_(shot, 0, shot < n_avg, shot + 1):
-                    save(shot, n_st)
-
-                    with for_each_(t, idle_times):
-                        # Qubit initialization
-                        for i, qubit in multiplexed_qubits.items():
-                            reset_frame(qubit.xy.name)
-                            qubit.reset(node.parameters.reset_type, node.parameters.simulate)
-                        align()
-
-                        # Qubit manipulation
-                        qubit_detector.xy.play("x90")
-                        # qubit_source.xy.play("x90", amplitude_scale=0)
-                        align()
-                        qubit_detector.xy.wait(t)
-                        qubit_source.xy.wait(t)
-                        # align()
-                        qubit_detector.xy.play("x180")
-                        qubit_source.xy.play("x180")
-                        # align()
-                        qubit_detector.xy.wait(t)
-                        qubit_source.xy.wait(t)
-
-                        qubit_detector.xy.play("-x90")
-                        align()
-
-                        # Qubit readout
-                        for i, qubit in multiplexed_qubits.items():
-                            # Measure the state of the resonators
-                            if node.parameters.use_state_discrimination:
-                                qubit.readout_state(state[i])
-                                save(state[i], state_st[i])
-                            else:
-                                qubit.resonator.measure("readout", qua_vars=(I[i], Q[i]))
-                                # save data
-                                save(I[i], I_st[i])
-                                save(Q[i], Q_st[i])
-
-        with stream_processing():
-            n_st.save("n")
-            for i in range(num_qubits):
-                if node.parameters.use_state_discrimination:
-                    state_st[i].buffer(len(idle_times)).average().save(f"state{i + 1}")
-                else:
-                    I_st[i].buffer(len(idle_times)).average().save(f"I{i + 1}")
-                    Q_st[i].buffer(len(idle_times)).average().save(f"Q{i + 1}")
+    node.namespace["qua_program"], node.namespace["sweep_axes"] = probe.build_program(
+        node.machine,
+        qubits,
+        idle_times_cycles=get_idle_times_in_clock_cycles(node.parameters),
+        source_qubit=node.parameters.source_qubit,
+        detector_qubit=node.parameters.detector_qubit,
+        num_shots=node.parameters.num_shots,
+        reset_type=node.parameters.reset_type,
+        use_state_discrimination=node.parameters.use_state_discrimination,
+        simulate=node.parameters.simulate,
+    )
 
 
 # %% {Simulate}
@@ -149,27 +75,15 @@ def simulate_qua_program(node: QualibrationNode[Parameters, Quam]):
 # %% {Execute}
 @node.run_action(skip_if=node.parameters.load_data_id is not None or node.parameters.simulate)
 def execute_qua_program(node: QualibrationNode[Parameters, Quam]):
-    """Connect to the QOP, execute the QUA program and fetch the raw data and store it in a xarray dataset called "ds_raw"."""
-    # Connect to the QOP
-    qmm = node.machine.connect()
-    # Get the config from the machine
-    config = node.machine.generate_config()
-    # Execute the QUA program only if the quantum machine is available (this is to avoid interrupting running jobs).
-    with qm_session(qmm, config, timeout=node.parameters.timeout) as qm:
-        # The job is stored in the node namespace to be reused in the fetching_data run_action
-        node.namespace["job"] = job = qm.execute(node.namespace["qua_program"])
-        # Display the progress bar
-        data_fetcher = XarrayDataFetcher(job, node.namespace["sweep_axes"])
-        for dataset in data_fetcher:
-            progress_counter(
-                data_fetcher.get("n", 0),
-                node.parameters.num_shots,
-                start_time=data_fetcher.t_start,
-            )
-        # Display the execution report to expose possible runtime errors
-        node.log(job.execution_report())
-    # Register the raw dataset
-    node.results["ds_raw"] = dataset
+    """probe (run half): execute on the QOP and store the raw dataset as "ds_raw"."""
+    node.results["ds_raw"] = probe.acquire(
+        node.machine,
+        node.namespace["qua_program"],
+        node.namespace["sweep_axes"],
+        num_shots=node.parameters.num_shots,
+        timeout=node.parameters.timeout,
+        log=node.log,
+    )
 
 
 # %% {Load_historical_data}

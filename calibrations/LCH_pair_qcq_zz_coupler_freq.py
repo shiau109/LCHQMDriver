@@ -2,18 +2,13 @@
 from dataclasses import asdict
 
 import numpy as np
-import xarray as xr
-from qm.qua import *
-from qualang_tools.loops import from_array
-from qualang_tools.multi_user import qm_session
-from qualang_tools.results import progress_counter
 from qualang_tools.units import unit
 from qualibrate import QualibrationNode
-from qualibration_libs.data import XarrayDataFetcher
 from qualibration_libs.parameters import get_qubit_pairs
 from qualibration_libs.runtime import simulate_and_plot
 from quam_config import Quam
 
+from customized.probes import pair_qcq_zz_coupler_freq as probe
 from customized.node.LCH_pair_qcq_zz_coupler_freq import (
     Parameters,
     fit_raw_data,
@@ -95,14 +90,12 @@ node.machine = Quam.load()
 
 # %% {Create_QUA_program}
 @node.run_action(skip_if=node.parameters.load_data_id is not None)
-def create_qua_program(node: QualibrationNode[Parameters, Quam]):  # pylint: disable=too-many-statements
-    """Create the sweep axes and generate the QUA program from the pulse sequence and the node parameters."""
-
+def create_qua_program(node: QualibrationNode[Parameters, Quam]):
+    """probe (build half): create the sweep axes and the QUA program via the probe."""
     # Class containing tools to help handle units and conversions.
     u = unit(coerce_to_integer=True)
     # Get the active qubit pairs from the node and organize them by batches
     node.namespace["qubit_pairs"] = qubit_pairs = get_qubit_pairs(node)
-    num_qubit_pairs = len(qubit_pairs)
     measured_qubits = []
     for qp in qubit_pairs:
         if node.parameters.measure_qubit == "control":
@@ -111,141 +104,23 @@ def create_qua_program(node: QualibrationNode[Parameters, Quam]):  # pylint: dis
             measured_qubits.append(qp.qubit_target)
     node.namespace["measured_qubits"] = measured_qubits
 
-    # Extract the sweep parameters and axes from the node parameters
-    n_avg = node.parameters.num_shots
     # Coupler bias amplitudes (volts) — tune the coupler frequency via the gated `const` flux pulse
     amplitudes = np.arange(node.parameters.amp_min, node.parameters.amp_max, node.parameters.amp_step)
     durations = (
         np.arange(node.parameters.time_min_in_ns, node.parameters.time_max_in_ns, node.parameters.time_step_in_ns) // 4
     )
-    detuning = node.parameters.virtual_detuning_in_mhz * u.MHz
-
-    # Register the sweep axes to be added to the dataset when fetching data
-    node.namespace["sweep_axes"] = {
-        "qubit_pair": xr.DataArray(qubit_pairs.get_names()),
-        "amp": xr.DataArray(
-            amplitudes, attrs={"long_name": "coupler bias amplitude (tunes coupler frequency)", "units": "V"}
-        ),
-        "time": xr.DataArray(durations * 4, attrs={"long_name": "interaction time", "units": "ns"}),
-    }
-
-    # The QUA program stored in the node namespace to be transfer to the simulation and execution run_actions
-    with program() as node.namespace["qua_program"]:
-        # Both qubits of each pair are read out (control + target), so declare two IQ sets.
-        I_c, I_c_st, Q_c, Q_c_st, n, n_st = node.machine.declare_qua_variables(num_IQ_pairs=num_qubit_pairs)
-        I_t, I_t_st, Q_t, Q_t_st, _, _ = node.machine.declare_qua_variables(num_IQ_pairs=num_qubit_pairs)
-        virtual_detuning_phase = declare(fixed)
-        amp = declare(fixed)
-        t = declare(int)
-        if node.parameters.use_state_discrimination:
-            # Read out BOTH qubits 2-level and form the joint two-qubit populations P00/P01/P10/P11
-            # (first digit = control, second = target).
-            state_c = [declare(int) for _ in range(num_qubit_pairs)]
-            state_t = [declare(int) for _ in range(num_qubit_pairs)]
-            ind_gg = declare(int)  # 00
-            ind_ge = declare(int)  # 01
-            ind_eg = declare(int)  # 10
-            ind_ee = declare(int)  # 11
-            state_gg_st = [declare_stream() for _ in range(num_qubit_pairs)]
-            state_ge_st = [declare_stream() for _ in range(num_qubit_pairs)]
-            state_eg_st = [declare_stream() for _ in range(num_qubit_pairs)]
-            state_ee_st = [declare_stream() for _ in range(num_qubit_pairs)]
-
-        for multiplexed_qubit_pairs in qubit_pairs.batch():
-            # Initialize the QPU
-            for qp in multiplexed_qubit_pairs.values():
-                node.machine.initialize_qpu(target=qp.qubit_control)
-                node.machine.initialize_qpu(target=qp.qubit_target)
-            align()
-
-            measured_qubits_map = {
-                ii: qp.qubit_control if node.parameters.measure_qubit == "control" else qp.qubit_target
-                for ii, qp in multiplexed_qubit_pairs.items()
-            }
-            partner_qubits_map = {
-                ii: qp.qubit_target if node.parameters.measure_qubit == "control" else qp.qubit_control
-                for ii, qp in multiplexed_qubit_pairs.items()
-            }
-
-            with for_(n, 0, n < n_avg, n + 1):
-                save(n, n_st)
-                with for_(*from_array(amp, amplitudes)):
-                    with for_(*from_array(t, durations)):
-                        assign(virtual_detuning_phase, Cast.mul_fixed_by_int(detuning * 1e-9, 4 * t))
-
-                        # Reset
-                        for ii, qp in multiplexed_qubit_pairs.items():
-                            qp.qubit_control.reset(node.parameters.reset_type, node.parameters.simulate)
-                            qp.qubit_target.reset(node.parameters.reset_type, node.parameters.simulate)
-                            reset_frame(qp.qubit_target.xy.name)
-                            reset_frame(qp.qubit_control.xy.name)
-                        align()
-
-                        # Qubit manipulation (Hahn echo with virtual detuning + coupler pulses)
-                        for ii, qp in multiplexed_qubit_pairs.items():
-                            measured_qubit = measured_qubits_map[ii]
-                            partner_qubit = partner_qubits_map[ii]
-                            measured_qubit.xy.play("x90")
-                            qp.coupler.wait(measured_qubit.xy.operations["x90"].length // 4)
-                            partner_qubit.wait(measured_qubit.xy.operations["x90"].length // 4)
-                            qp.coupler.play(
-                                "const",
-                                amplitude_scale=amp / qp.coupler.operations["const"].amplitude,
-                                duration=t,
-                            )
-                            measured_qubit.xy.wait(t)
-                            partner_qubit.xy.wait(t)
-                            measured_qubit.xy.play("x180")
-                            partner_qubit.xy.play("x180")
-                            qp.coupler.wait(measured_qubit.xy.operations["x180"].length // 4)
-                            measured_qubit.xy.frame_rotation_2pi(virtual_detuning_phase)
-                            qp.coupler.play(
-                                "const",
-                                amplitude_scale=amp / qp.coupler.operations["const"].amplitude,
-                                duration=t,
-                            )
-                            measured_qubit.xy.wait(t)
-                            partner_qubit.xy.wait(t)
-                            measured_qubit.xy.play("x90")
-                        align()
-
-                        # Qubit readout — measure BOTH qubits of the pair
-                        for ii, qp in multiplexed_qubit_pairs.items():
-                            if node.parameters.use_state_discrimination:
-                                qp.qubit_control.readout_state(state_c[ii])
-                                qp.qubit_target.readout_state(state_t[ii])
-                                # Joint-state indicators from the two binary outcomes:
-                                #   ee(11)=c*t, eg(10)=c-ee, ge(01)=t-ee, gg(00)=1-c-t+ee
-                                assign(ind_ee, state_c[ii] * state_t[ii])
-                                assign(ind_eg, state_c[ii] - ind_ee)
-                                assign(ind_ge, state_t[ii] - ind_ee)
-                                assign(ind_gg, 1 - state_c[ii] - state_t[ii] + ind_ee)
-                                save(ind_gg, state_gg_st[ii])
-                                save(ind_ge, state_ge_st[ii])
-                                save(ind_eg, state_eg_st[ii])
-                                save(ind_ee, state_ee_st[ii])
-                            else:
-                                qp.qubit_control.resonator.measure("readout", qua_vars=(I_c[ii], Q_c[ii]))
-                                qp.qubit_target.resonator.measure("readout", qua_vars=(I_t[ii], Q_t[ii]))
-                                save(I_c[ii], I_c_st[ii])
-                                save(Q_c[ii], Q_c_st[ii])
-                                save(I_t[ii], I_t_st[ii])
-                                save(Q_t[ii], Q_t_st[ii])
-                        align()
-
-        with stream_processing():
-            n_st.save("n")
-            for i in range(num_qubit_pairs):
-                if node.parameters.use_state_discrimination:
-                    state_gg_st[i].buffer(len(durations)).buffer(len(amplitudes)).average().save(f"state_gg{i + 1}")
-                    state_ge_st[i].buffer(len(durations)).buffer(len(amplitudes)).average().save(f"state_ge{i + 1}")
-                    state_eg_st[i].buffer(len(durations)).buffer(len(amplitudes)).average().save(f"state_eg{i + 1}")
-                    state_ee_st[i].buffer(len(durations)).buffer(len(amplitudes)).average().save(f"state_ee{i + 1}")
-                else:
-                    I_c_st[i].buffer(len(durations)).buffer(len(amplitudes)).average().save(f"I_control{i + 1}")
-                    Q_c_st[i].buffer(len(durations)).buffer(len(amplitudes)).average().save(f"Q_control{i + 1}")
-                    I_t_st[i].buffer(len(durations)).buffer(len(amplitudes)).average().save(f"I_target{i + 1}")
-                    Q_t_st[i].buffer(len(durations)).buffer(len(amplitudes)).average().save(f"Q_target{i + 1}")
+    node.namespace["qua_program"], node.namespace["sweep_axes"] = probe.build_program(
+        node.machine,
+        qubit_pairs,
+        amplitudes=amplitudes,
+        durations=durations,
+        detuning_hz=node.parameters.virtual_detuning_in_mhz * u.MHz,
+        num_shots=node.parameters.num_shots,
+        reset_type=node.parameters.reset_type,
+        use_state_discrimination=node.parameters.use_state_discrimination,
+        measure_qubit=node.parameters.measure_qubit,
+        simulate=node.parameters.simulate,
+    )
 
 
 # %% {Simulate}
@@ -265,25 +140,15 @@ def simulate_qua_program(node: QualibrationNode[Parameters, Quam]):
 # %% {Execute}
 @node.run_action(skip_if=node.parameters.load_data_id is not None or node.parameters.simulate)
 def execute_qua_program(node: QualibrationNode[Parameters, Quam]):
-    """Connect to the QOP, execute the QUA program and fetch the raw data and store it in a xarray dataset."""
-    # Connect to the QOP
-    qmm = node.machine.connect()
-    # Get the config from the machine
-    config = node.machine.generate_config()
-    # Execute the QUA program only if the quantum machine is available (this is to avoid interrupting running jobs).
-    with qm_session(qmm, config, timeout=node.parameters.timeout) as qm:
-        # The job is stored in the node namespace to be reused in the fetching_data run_action
-        node.namespace["job"] = job = qm.execute(node.namespace["qua_program"])
-        # Display the progress bar
-        data_fetcher = XarrayDataFetcher(job, node.namespace["sweep_axes"])
-        for dataset in data_fetcher:
-            progress_counter(
-                data_fetcher.get("n", 0),
-                node.parameters.num_shots,
-                start_time=data_fetcher.t_start,
-            )
-        # Display the execution report to expose possible runtime errors
-        node.log(job.execution_report())
+    """probe (run half): execute on the QOP and store the raw dataset as "ds_raw"."""
+    dataset = probe.acquire(
+        node.machine,
+        node.namespace["qua_program"],
+        node.namespace["sweep_axes"],
+        num_shots=node.parameters.num_shots,
+        timeout=node.parameters.timeout,
+        log=node.log,
+    )
     measured_qubit_names = [q.name for q in node.namespace["measured_qubits"]]
     dataset = dataset.assign_coords(measured_qubit_name=("qubit_pair", measured_qubit_names))
     # Register the raw dataset

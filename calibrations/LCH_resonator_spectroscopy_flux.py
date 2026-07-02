@@ -1,18 +1,16 @@
 # %% {Imports}
 import matplotlib.pyplot as plt
 import numpy as np
-import xarray as xr
 import warnings
 
-from qm.qua import *
-
-from qualang_tools.loops import from_array
-from qualang_tools.multi_user import qm_session
-from qualang_tools.results import progress_counter
 from qualang_tools.units import unit
 
 from qualibrate import QualibrationNode
 from quam_config import Quam
+from qualibration_libs.parameters import get_qubits
+from qualibration_libs.runtime import simulate_and_plot
+
+from customized.probes import resonator_spectroscopy_flux as probe
 from customized.node.LCH_resonator_spectroscopy_flux import (
     Parameters,
     process_raw_dataset,
@@ -22,9 +20,6 @@ from customized.node.LCH_resonator_spectroscopy_flux import (
     log_dispersion_results,
     plot_combined,
 )
-from qualibration_libs.parameters import get_qubits
-from qualibration_libs.runtime import simulate_and_plot
-from qualibration_libs.data import XarrayDataFetcher
 
 
 # %% {Node initialisation}
@@ -81,17 +76,14 @@ node.machine = Quam.load()
 # %% {Create_QUA_program}
 @node.run_action(skip_if=node.parameters.load_data_id is not None)
 def create_qua_program(node: QualibrationNode[Parameters, Quam]):
-    """Create the sweep axes and generate the QUA program from the pulse sequence and the node parameters."""
+    """probe (build half): create the sweep axes and the QUA program via the probe."""
     # Class containing tools to help handle units and conversions.
     u = unit(coerce_to_integer=True)
     # Get the active qubits from the node and organize them by batches
     node.namespace["qubits"] = qubits = get_qubits(node)
-    num_qubits = len(qubits)
     # Check if the qubits have a z-line attached
     if any([q.z is None for q in qubits]):
         warnings.warn("Found qubits without a flux line. Skipping")
-    # Extract the sweep parameters and axes from the node parameters
-    n_avg = node.parameters.num_shots
     # Flux bias sweep in V
     dcs = np.linspace(
         node.parameters.min_flux_offset_in_v,
@@ -102,80 +94,14 @@ def create_qua_program(node: QualibrationNode[Parameters, Quam]):
     span = node.parameters.frequency_span_in_mhz * u.MHz
     step = node.parameters.frequency_step_in_mhz * u.MHz
     dfs = np.arange(-span / 2, +span / 2, step)
-
-    # Resolve the single flux source (if any). It may be a qubit (its z-line) or
-    # a qubit pair (its tunable coupler). Both FluxLine and TunableCoupler expose
-    # set_dc_offset(dc) + settle(), so the sweep code below is identical for either.
-    # When None, each measured qubit drives its own z-line (identical to 02c).
-    z_source_name = node.parameters.z_source
-    if z_source_name is None:
-        flux_driver = None
-    elif z_source_name in node.machine.qubits:
-        flux_driver = node.machine.qubits[z_source_name].z
-    elif z_source_name in node.machine.qubit_pairs:
-        flux_driver = node.machine.qubit_pairs[z_source_name].coupler
-    else:
-        raise ValueError(f"z_source={z_source_name!r} is neither a qubit nor a qubit-pair name")
-
-    # Register the sweep axes to be added to the dataset when fetching data
-    node.namespace["sweep_axes"] = {
-        "qubit": xr.DataArray(qubits.get_names()),
-        "flux_bias": xr.DataArray(dcs, attrs={"long_name": "flux bias", "units": "V"}),
-        "detuning": xr.DataArray(dfs, attrs={"long_name": "readout frequency", "units": "Hz"}),
-    }
-
-    # The QUA program stored in the node namespace to be transfer to the simulation and execution run_actions
-    with program() as node.namespace["qua_program"]:
-        I, I_st, Q, Q_st, n, n_st = node.machine.declare_qua_variables()
-        dc = declare(fixed)  # QUA variable for the flux bias
-        df = declare(int)  # QUA variable for the readout frequency detuning
-        idx = declare(int)  # progress index over the outer flux loop
-
-        for multiplexed_qubits in qubits.batch():
-            # Initialize the QPU in terms of flux points (flux tunable transmons and/or tunable couplers)
-            for qubit in multiplexed_qubits.values():
-                node.machine.initialize_qpu(target=qubit)
-            align()
-
-            assign(idx, 0)
-            with for_(*from_array(dc, dcs)):
-                # Save the flux-point counter for the progress bar
-                save(idx, n_st)
-                assign(idx, idx + 1)
-                # Apply the flux: either from the single source (qubit z-line or
-                # coupler), or per-qubit (== 02c).
-                if flux_driver is None:
-                    for i, qubit in multiplexed_qubits.items():
-                        qubit.z.set_dc_offset(dc)
-                        qubit.z.settle()
-                else:
-                    flux_driver.set_dc_offset(dc)
-                    flux_driver.settle()
-                align()
-
-                # Read out every measured qubit's resonator at this flux bias.
-                for i, qubit in multiplexed_qubits.items():
-                    rr = qubit.resonator
-                    with for_(*from_array(df, dfs)):
-                        # Update the resonator frequencies for resonator
-                        rr.update_frequency(df + rr.intermediate_frequency)
-                        # Average innermost: repeat the measurement n_avg times per point
-                        with for_(n, 0, n < n_avg, n + 1):
-                            # readout the resonator
-                            rr.measure("readout", qua_vars=(I[i], Q[i]))
-                            # wait for the resonator to deplete
-                            rr.wait(rr.depletion_time * u.ns)
-                            # save data
-                            save(I[i], I_st[i])
-                            save(Q[i], Q_st[i])
-                align()
-
-        with stream_processing():
-            n_st.save("n")
-            for i in range(num_qubits):
-                # Average the innermost n_avg shots, then buffer detuning then flux
-                I_st[i].buffer(n_avg).map(FUNCTIONS.average()).buffer(len(dfs)).buffer(len(dcs)).save(f"I{i + 1}")
-                Q_st[i].buffer(n_avg).map(FUNCTIONS.average()).buffer(len(dfs)).buffer(len(dcs)).save(f"Q{i + 1}")
+    node.namespace["qua_program"], node.namespace["sweep_axes"] = probe.build_program(
+        node.machine,
+        qubits,
+        dcs=dcs,
+        dfs=dfs,
+        num_shots=node.parameters.num_shots,
+        z_source=node.parameters.z_source,
+    )
 
 
 # %% {Simulate}
@@ -195,27 +121,17 @@ def simulate_qua_program(node: QualibrationNode[Parameters, Quam]):
 # %% {Execute}
 @node.run_action(skip_if=node.parameters.load_data_id is not None or node.parameters.simulate)
 def execute_qua_program(node: QualibrationNode[Parameters, Quam]):
-    """Connect to the QOP, execute the QUA program and fetch the raw data and store it in a xarray dataset called "ds_raw"."""
-    # Connect to the QOP
-    qmm = node.machine.connect()
-    # Get the config from the machine
-    config = node.machine.generate_config()
-    # Execute the QUA program only if the quantum machine is available (this is to avoid interrupting running jobs).
-    with qm_session(qmm, config, timeout=node.parameters.timeout) as qm:
-        # The job is stored in the node namespace to be reused in the fetching_data run_action
-        node.namespace["job"] = job = qm.execute(node.namespace["qua_program"])
-        # Display the progress bar
-        data_fetcher = XarrayDataFetcher(job, node.namespace["sweep_axes"])
-        for dataset in data_fetcher:
-            progress_counter(
-                data_fetcher.get("n", 0),
-                node.parameters.num_flux_points,
-                start_time=data_fetcher.t_start,
-            )
-        # Display the execution report to expose possible runtime errors
-        node.log(job.execution_report())
-    # Register the raw dataset
-    node.results["ds_raw"] = dataset
+    """probe (run half): execute on the QOP and store the raw dataset as "ds_raw"."""
+    # The program's progress "n" stream counts the outer flux loop, so the progress-bar
+    # total is the number of flux points, not the shot count.
+    node.results["ds_raw"] = probe.acquire(
+        node.machine,
+        node.namespace["qua_program"],
+        node.namespace["sweep_axes"],
+        num_shots=node.parameters.num_flux_points,
+        timeout=node.parameters.timeout,
+        log=node.log,
+    )
 
 
 # %% {Load_historical_data}
