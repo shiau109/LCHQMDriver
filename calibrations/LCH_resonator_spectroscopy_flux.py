@@ -61,9 +61,9 @@ node = QualibrationNode[Parameters, Quam](
 def custom_param(node: QualibrationNode[Parameters, Quam]):
     """Allow the user to locally set the node parameters for debugging purposes, or execution in the Python IDE."""
     # You can get type hinting in your IDE by typing node.parameters.
-    node.parameters.qubits = ["q1", "q2"]
+    node.parameters.qubits = ["q1", "q2", "q3"]
     # node.parameters.z_source = "q5"  # a qubit name -> sweep only its flux while reading the listed resonators
-    node.parameters.z_source = "q1_q2"  # a pair name -> sweep its coupler instead
+    node.parameters.z_source = "q2_q3"  # a pair name -> sweep its coupler instead
     node.parameters.simulate = False
     # node.parameters.num_shots = 1
     pass
@@ -275,33 +275,34 @@ def update_state(node: QualibrationNode[Parameters, Quam]):
     if z_src is not None and z_src in node.machine.qubit_pairs:
         node.log(f"Skipping state update: z_source={z_src} is a coupler (writeback deferred)")
         return
-    with node.record_state_updates():
-        for q in node.namespace["qubits"]:
-            if q.z is None or node.outcomes[q.name] == "failed":
-                continue
-            # Skip crosstalk qubits: only the flux-source qubit's fit is a valid
-            # self-flux calibration (when z_source is None, every qubit fluxes
-            # itself, so none are skipped).
-            if z_src is not None and q.name != z_src:
-                node.log(f"Skipping state update for {q.name}: crosstalk under z_source={z_src}")
-                continue
+    pass
+    # with node.record_state_updates():
+    #     for q in node.namespace["qubits"]:
+    #         if q.z is None or node.outcomes[q.name] == "failed":
+    #             continue
+    #         # Skip crosstalk qubits: only the flux-source qubit's fit is a valid
+    #         # self-flux calibration (when z_source is None, every qubit fluxes
+    #         # itself, so none are skipped).
+    #         if z_src is not None and q.name != z_src:
+    #             node.log(f"Skipping state update for {q.name}: crosstalk under z_source={z_src}")
+    #             continue
 
-            disp = node.results["dispersion_results"][q.name]
+    #         disp = node.results["dispersion_results"][q.name]
 
-            # Idle (sweet-spot) flux offset — the flux of maximum resonator frequency.
-            if q.z.flux_point == "independent":
-                q.z.independent_offset = disp["sweet_spot_flux"]
-            else:
-                q.z.joint_offset = disp["sweet_spot_flux"]
-            # Minimum-frequency flux point (half a period from the sweet spot).
-            if node.parameters.update_flux_min:
-                q.z.min_offset = disp["min_offset"]
-            # Resonator readout frequency at the sweet spot (absolute).
-            q.resonator.f_01 = disp["sweet_spot_freq"]
-            q.resonator.RF_frequency = disp["sweet_spot_freq"]
-            # Flux quantum in voltage / current.
-            q.phi0_voltage = disp["dv_phi0"]
-            q.phi0_current = disp["phi0_current"]
+    #         # Idle (sweet-spot) flux offset — the flux of maximum resonator frequency.
+    #         if q.z.flux_point == "independent":
+    #             q.z.independent_offset = disp["sweet_spot_flux"]
+    #         else:
+    #             q.z.joint_offset = disp["sweet_spot_flux"]
+    #         # Minimum-frequency flux point (half a period from the sweet spot).
+    #         if node.parameters.update_flux_min:
+    #             q.z.min_offset = disp["min_offset"]
+    #         # Resonator readout frequency at the sweet spot (absolute).
+    #         q.resonator.f_01 = disp["sweet_spot_freq"]
+    #         q.resonator.RF_frequency = disp["sweet_spot_freq"]
+    #         # Flux quantum in voltage / current.
+    #         q.phi0_voltage = disp["dv_phi0"]
+    #         q.phi0_current = disp["phi0_current"]
 
 
 # %% {Save_results}
