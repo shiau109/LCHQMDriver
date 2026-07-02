@@ -8,7 +8,8 @@ class NodeSpecificParameters(RunnableParameters):
     """N-swap (swap-chain) circuit parameters.
 
     Sweeps the number of swaps and reads out the selected `qubits` (the measured set) at
-    the end. There is no fit and no state writeback.
+    the end. Each qubit's population-vs-N curve is fit with a cosine (scqat
+    SwapOscillationEstimator); there is no state writeback.
     """
 
     num_shots: int = 100

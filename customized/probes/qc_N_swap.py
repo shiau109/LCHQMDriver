@@ -21,7 +21,9 @@ must be callable that way - its amplitudes/pulses baked into the QUAM macro defi
 needs `ctrl_amp`/`cplr_amp`) needs a default-carrying variant before it can be used here
 as `swap_operation`.
 
-There is no fit/state-writeback downstream; the node renders a 1D population-vs-N curve.
+Downstream, the node fits each population-vs-N curve with a cosine (scqat
+SwapOscillationEstimator) to extract the swap-oscillation frequency; there is no state
+writeback.
 """
 
 from typing import Callable, List, Optional

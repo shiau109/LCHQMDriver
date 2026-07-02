@@ -3,7 +3,7 @@ import numpy as np
 
 from qualibrate import QualibrationNode
 from quam_config import Quam
-from customized.node.LCH_qc_N_swap import Parameters, analysis, plotting
+from customized.node.LCH_qc_N_swap import Parameters, analysis
 from qualibration_libs.parameters import get_qubits
 from qualibration_libs.runtime import simulate_and_plot
 
@@ -21,12 +21,13 @@ baseline). With a coherent iSWAP, population is exchanged back and forth between
 swap by swap.
 
 The swap macro is invoked bare (`.apply()` with no extra args), so the chosen macro must be
-callable that way (its amplitudes/pulses baked into the QUAM macro definition). Analysis is
-intentionally an empty estimator: no fit and no state writeback; the node renders a 1D
-population-vs-N line per measured qubit for visual inspection.
+callable that way (its amplitudes/pulses baked into the QUAM macro definition). Analysis fits
+each measured qubit's population-vs-N curve with a cosine (scqat SwapOscillationEstimator),
+extracting the swap-oscillation frequency f (cycles per swap) and swap_period = 1/f; the
+outcome is gated on fit success. There is still no state writeback.
 
 This node is a thin qualibrate shell: the acquisition probe lives in
-`customized.probes.qc_N_swap`; the (no-op) estimate adapter and the plot live in
+`customized.probes.qc_N_swap`; the estimate adapter lives in
 `customized.node.LCH_qc_N_swap`.
 """
 
@@ -44,11 +45,11 @@ node = QualibrationNode[Parameters, Quam](
 @node.run_action(skip_if=node.modes.external)
 def custom_param(node: QualibrationNode[Parameters, Quam]):
     """Allow the user to locally set the node parameters for debugging purposes, or execution in the Python IDE."""
-    node.parameters.qubits = ["q1", "q2"]
-    node.parameters.swap_pair = "q1_q2"
+    node.parameters.qubits = ["q2", "q3"]
+    node.parameters.swap_pair = "q2_q3"
     node.parameters.swap_operation = "iswap"
     node.parameters.min_rounds = 0
-    node.parameters.max_rounds = 20
+    node.parameters.max_rounds = 10
     node.parameters.rounds_step = 1
     node.parameters.simulate = False
     node.parameters.num_shots = 1000
@@ -124,26 +125,21 @@ def load_data(node: QualibrationNode[Parameters, Quam]):
 # %% {Analyse_data}
 @node.run_action(skip_if=node.parameters.simulate)
 def analyse_data(node: QualibrationNode[Parameters, Quam]):
-    """estimate (no-op) + render the 1D population-vs-N curves for visualization."""
-    node.results["fit_results"] = analysis.estimate(
+    """estimate: fit each measured qubit's swap oscillation with scqat (via the core)."""
+    node.results["fit_results"], node.results["figures"] = analysis.fit(
         node.results["ds_raw"],
-        use_state_discrimination=node.parameters.use_state_discrimination,
-    )
-    node.results["figures"] = plotting.plot_rounds_1d(
-        node.results["ds_raw"],
-        node.namespace["qubits"],
         use_state_discrimination=node.parameters.use_state_discrimination,
     )
     node.outcomes = {
-        q.name: ("successful" if node.results["fit_results"][q.name]["success"] else "failed")
-        for q in node.namespace["qubits"]
+        qubit_name: ("successful" if fit_result["success"] else "failed")
+        for qubit_name, fit_result in node.results["fit_results"].items()
     }
 
 
 # %% {Plot_data}
 @node.run_action(skip_if=node.parameters.simulate)
 def plot_data(node: QualibrationNode[Parameters, Quam]):
-    """Figures are produced in analyse_data."""
+    """Figures are produced by the scqat estimator in analyse_data."""
     pass
 
 
