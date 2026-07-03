@@ -7,8 +7,8 @@ from quam_config import Quam
 from qualibration_libs.parameters import get_qubits, get_idle_times_in_clock_cycles
 from qualibration_libs.runtime import simulate_and_plot
 
-from customized.probes import zz_interaction as probe
-from customized.node.LCH_zz_interaction import (
+from customized.probes import qc_zz_interaction as probe
+from customized.node.LCH_qc_zz_interaction import (
     Parameters,
     process_raw_dataset,
     fit_raw_data,
@@ -23,7 +23,7 @@ description = """
 """
 
 
-node = QualibrationNode[Parameters, Quam](name="LCH_zz_interaction", description=description, parameters=Parameters())
+node = QualibrationNode[Parameters, Quam](name="LCH_qc_zz_interaction", description=description, parameters=Parameters())
 
 
 # Any parameters that should change for debugging purposes only should go in here
