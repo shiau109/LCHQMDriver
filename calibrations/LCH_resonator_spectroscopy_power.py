@@ -11,7 +11,7 @@ from qualibration_libs.parameters import get_qubits
 from qualibration_libs.runtime import simulate_and_plot
 from qualibration_libs.core import tracked_updates
 
-from customized.probes import resonator_spectroscopy_vs_power as probe
+from customized.probes import resonator_spectroscopy_power as probe
 from customized.node.LCH_resonator_spectroscopy_power import Parameters, analysis, update
 
 # %% {Node initialisation}
@@ -23,13 +23,13 @@ resonator frequency at that power.
 
 Unlike the official 02b node, the averaging loop runs innermost (as in
 LCH_resonator_spectroscopy_flux), and the analysis is done by the scqat
-ResonatorSpectroscopyVsPowerEstimator: it fits the resonator dip power-by-power
+ResonatorSpectroscopyPowerEstimator: it fits the resonator dip power-by-power
 (single inverted Lorentzian per slice) to collapse the 2-D (power, detuning) map to a
 1-D centre-frequency(power) trace, then picks the optimal readout power from where the
 centre stops shifting.
 
 This node is a thin qualibrate shell: the acquisition probe lives in
-`customized.probes.resonator_spectroscopy_vs_power` (shared with scqo); the scqat
+`customized.probes.resonator_spectroscopy_power` (shared with scqo); the scqat
 analysis adapter and update policy live in `customized.node.LCH_resonator_spectroscopy_power`.
 
 Prerequisites:

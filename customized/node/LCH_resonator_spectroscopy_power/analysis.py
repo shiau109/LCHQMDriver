@@ -19,7 +19,7 @@ import xarray as xr
 
 def fit(ds_raw: xr.Dataset, qubits, **analyze_kwargs) -> Tuple[Dict, Dict, object]:
     """Fit each qubit's resonator-vs-power map with scqat's
-    ``ResonatorSpectroscopyVsPowerEstimator``.
+    ``ResonatorSpectroscopyPowerEstimator``.
 
     `ds_raw` carries I/Q and the qubit/detuning/power coords. `analyze_kwargs`
     (``n_sigma`` and the derivative-pick tuning params) are forwarded to the
@@ -32,9 +32,9 @@ def fit(ds_raw: xr.Dataset, qubits, **analyze_kwargs) -> Tuple[Dict, Dict, objec
       * estimator - the instance to pass back to `figures`.
     """
     from scqat.parsers import repetition_data
-    from scqat.estimators.resonator_spectroscopy_vs_power import ResonatorSpectroscopyVsPowerEstimator
+    from scqat.estimators.resonator_spectroscopy_power import ResonatorSpectroscopyPowerEstimator
 
-    estimator = ResonatorSpectroscopyVsPowerEstimator()
+    estimator = ResonatorSpectroscopyPowerEstimator()
     fit_results: Dict = {}
     sep_results: Dict = {}
 
