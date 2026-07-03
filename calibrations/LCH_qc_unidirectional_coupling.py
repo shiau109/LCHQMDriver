@@ -64,9 +64,9 @@ def custom_param(node: QualibrationNode[Parameters, Quam]):
     node.parameters.num_shots = 2048
     # multiplexed=True -> joint state populations (000, 001, ...); False -> per-qubit marginals.
     node.parameters.multiplexed = True
-    # settle_ns idles each pair's flux lines before its swap so a preceding parametric-reset
-    # flux can settle before the swap fires (0 = no settle).
-    node.parameters.settle_ns = 16
+    # operation_gap_ns idles each pair's flux lines between gate operations so a preceding
+    # parametric-reset flux can settle before the swap fires (0 = no gap).
+    node.parameters.operation_gap_ns = 16
     pass
 
 
@@ -106,7 +106,7 @@ def create_qua_program(node: QualibrationNode[Parameters, Quam]):
         num_shots=p.num_shots,
         reset_type=p.reset_type,
         use_state_discrimination=p.use_state_discrimination,
-        settle_ns=p.settle_ns,
+        operation_gap_ns=p.operation_gap_ns,
         simulate=p.simulate,
     )
 

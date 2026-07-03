@@ -36,9 +36,10 @@ class NodeSpecificParameters(RunnableParameters):
     reset_operation: str = "reset"
     """Macro key on the reset qubit (`reset_qubit.macros[reset_operation].apply()`). Must
     be invokable with no extra args. Default is "reset"."""
-    settle_ns: int = 0
-    """Idle time (ns, multiple of 4) inserted on the swap pair's flux lines before each swap,
-    so a preceding reset's flux pulse can settle before the narrow swap resonance. Default 0."""
+    operation_gap_ns: int = 0
+    """Idle gap (ns, multiple of 4) inserted between the circuit's gate operations on the swap
+    pair's flux lines, so a preceding reset's flux pulse can settle before the narrow swap
+    resonance. Default 0."""
     use_state_discrimination: bool = True
     """Whether to read out qubit state (True) or raw I/Q (False). Default is True."""
 

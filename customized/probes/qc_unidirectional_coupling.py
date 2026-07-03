@@ -84,7 +84,7 @@ def build_program(
     num_shots: int,
     reset_type: str,
     use_state_discrimination: bool,
-    settle_ns: int = 0,
+    operation_gap_ns: int = 0,
     simulate: bool = False,
 ):
     """Build the unidirectional-coupling QUA program.
@@ -101,8 +101,10 @@ def build_program(
     allowed, giving just the x180 prep). All measured qubits are read out within the same
     shot (joint / multiplexed readout), since they share one circuit.
 
-    `settle_ns` (multiple of 4, default 0) idles each swap pair's flux lines before its
-    swap, so a preceding pulse's flux can settle before the swap fires.
+    `operation_gap_ns` (multiple of 4, default 0) idles the flux lines between the
+    circuit's gate operations, so a preceding pulse's flux can settle before the swap
+    fires. The gap follows the initial reset and each swap; the in-loop reset has no
+    trailing gap before the next round's first swap.
     """
     measure_qubits = list(measure_qubits)
     swap_pairs = list(swap_pairs)
@@ -111,9 +113,9 @@ def build_program(
 
     if not swap_pairs:
         raise ValueError("swap_pairs must contain at least one qubit pair.")
-    if settle_ns < 0 or settle_ns % 4 != 0:
-        raise ValueError(f"settle_ns must be a non-negative multiple of 4 ns, got {settle_ns}.")
-    settle_cycles = settle_ns // 4
+    if operation_gap_ns < 0 or operation_gap_ns % 4 != 0:
+        raise ValueError(f"operation_gap_ns must be a non-negative multiple of 4 ns, got {operation_gap_ns}.")
+    gap_cycles = operation_gap_ns // 4
 
     involved = _dedup_involved(measure_qubits, swap_pairs, reset_qubit, excite_qubit)
 
@@ -164,17 +166,17 @@ def build_program(
 
                 # Circuit body: R rounds of (ordered swap chain, reset on the ancilla).
                 # Dynamic loop bound on r -> R=0 skips the body entirely (baseline).
-                # `settle_cycles` idles each pair's flux lines before its swap so a
+                # `gap_cycles` idles each pair's flux lines between gate operations so a
                 # preceding flux pulse can settle before the narrow swap resonance.
                 reset_qubit.macros[reset_operation].apply()
-                if settle_cycles > 0:
-                    wait(settle_cycles)
+                if gap_cycles > 0:
+                    wait(gap_cycles)
                 align()
                 with for_(rr, 0, rr < r, rr + 1):
                     for pair in swap_pairs:
                         pair.macros[swap_operation].apply()
-                        if settle_cycles > 0:
-                            pair.wait(settle_cycles)
+                        if gap_cycles > 0:
+                            pair.wait(gap_cycles)
                         align()
                     reset_qubit.macros[reset_operation].apply()
                     align()

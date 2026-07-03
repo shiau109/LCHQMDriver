@@ -73,7 +73,7 @@ def build_program(
     num_shots: int,
     reset_type: str,
     use_state_discrimination: bool,
-    settle_ns: int = 0,
+    operation_gap_ns: int = 0,
     simulate: bool = False,
 ):
     """Build the swap-based-reset QUA program.
@@ -89,17 +89,18 @@ def build_program(
     giving just the x180 prep). All measured qubits are read out within the same shot
     (joint / multiplexed readout), since they share one circuit.
 
-    `settle_ns` (multiple of 4, default 0) idles the swap pair's flux lines before each
-    swap, so a preceding reset's flux pulse can settle before the swap fires.
+    `operation_gap_ns` (multiple of 4, default 0) idles the swap pair's flux lines between
+    the circuit's gate operations (before/after each swap), so a preceding reset's flux
+    pulse can settle before the swap fires.
     (For pure swap rounds with no reset, use the `qc_N_swap` node instead.)
     """
     measure_qubits = list(measure_qubits)
     num_qubits = len(measure_qubits)
     rounds_array = np.asarray(rounds_array).astype(int)
 
-    if settle_ns < 0 or settle_ns % 4 != 0:
-        raise ValueError(f"settle_ns must be a non-negative multiple of 4 ns, got {settle_ns}.")
-    settle_cycles = settle_ns // 4
+    if operation_gap_ns < 0 or operation_gap_ns % 4 != 0:
+        raise ValueError(f"operation_gap_ns must be a non-negative multiple of 4 ns, got {operation_gap_ns}.")
+    gap_cycles = operation_gap_ns // 4
 
     involved = _dedup_involved(measure_qubits, swap_pair, reset_qubit, excite_qubit)
 
@@ -150,17 +151,17 @@ def build_program(
 
                 # Circuit body: R rounds of (swap on the pair, reset on the ancilla).
                 # Dynamic loop bound on r -> R=0 skips the body entirely (baseline).
-                # `settle_cycles` idles the pair's flux lines before each swap so a
+                # `gap_cycles` idles the pair's flux lines between gate operations so a
                 # preceding reset's flux pulse can settle before the swap fires.
                 reset_qubit.macros[reset_operation].apply()
                 align()
                 with for_(rr, 0, rr < r, rr + 1):
-                    if settle_cycles > 0:
-                        swap_pair.wait(settle_cycles)
+                    if gap_cycles > 0:
+                        swap_pair.wait(gap_cycles)
                     align()
                     swap_pair.macros[swap_operation].apply()
-                    if settle_cycles > 0:
-                        swap_pair.wait(settle_cycles)
+                    if gap_cycles > 0:
+                        swap_pair.wait(gap_cycles)
                     align()
                     reset_qubit.macros[reset_operation].apply()
                     align()
