@@ -27,6 +27,9 @@ class NodeSpecificParameters(RunnableParameters):
     swap_operation: str = "iswap"
     """Macro key on the swap pair (`pair.macros[swap_operation].apply()`). Must be
     invokable with no extra args. Default is "iswap"."""
+    operation_gap_ns: int = 0
+    """Idle gap (ns, multiple of 4) inserted on the swap pair's flux lines after each swap,
+    so its flux pulse can settle before the next swap fires. Default 0."""
     use_state_discrimination: bool = True
     """Whether to read out qubit state (True) or raw I/Q (False). Default is True."""
 

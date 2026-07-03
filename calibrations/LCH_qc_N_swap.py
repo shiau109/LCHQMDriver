@@ -45,14 +45,17 @@ node = QualibrationNode[Parameters, Quam](
 @node.run_action(skip_if=node.modes.external)
 def custom_param(node: QualibrationNode[Parameters, Quam]):
     """Allow the user to locally set the node parameters for debugging purposes, or execution in the Python IDE."""
-    node.parameters.qubits = ["q2", "q3"]
-    node.parameters.swap_pair = "q2_q3"
+    node.parameters.qubits = ["q1", "q2", "q3"]
+    node.parameters.swap_pair = "q1_q2"
     node.parameters.swap_operation = "iswap"
     node.parameters.min_rounds = 0
     node.parameters.max_rounds = 10
     node.parameters.rounds_step = 1
     node.parameters.simulate = False
     node.parameters.num_shots = 1000
+    # operation_gap_ns idles the pair's flux lines between swaps so each swap's flux
+    # can settle before the next one fires (0 = no gap).
+    node.parameters.operation_gap_ns = 16
     pass
 
 
@@ -84,6 +87,7 @@ def create_qua_program(node: QualibrationNode[Parameters, Quam]):
         num_shots=p.num_shots,
         reset_type=p.reset_type,
         use_state_discrimination=p.use_state_discrimination,
+        operation_gap_ns=p.operation_gap_ns,
         simulate=p.simulate,
     )
 

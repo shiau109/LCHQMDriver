@@ -11,7 +11,8 @@ Circuit per shot (for a swept swap count N):
   1. Initialize every involved qubit with `q.reset(reset_type, simulate)`
      (involved = measured qubits + the swap pair's control/target).
   2. State prep: `swap_pair.qubit_control.xy.play("x180")`.
-  3. Repeat N times: `swap_pair.macros[swap_operation].apply()`.
+  3. Repeat N times: `swap_pair.macros[swap_operation].apply()`, then idle the pair's
+     flux lines for `operation_gap_ns` (if nonzero).
   4. Read out every measured qubit (state discrimination -> discriminated state, else raw I/Q).
 
 The swap macro is invoked **bare** (`.apply()` with no extra args), so the chosen macro
@@ -62,6 +63,7 @@ def build_program(
     num_shots: int,
     reset_type: str,
     use_state_discrimination: bool,
+    operation_gap_ns: int = 0,
     simulate: bool = False,
 ):
     """Build the N-swap (swap-chain) QUA program.
@@ -73,10 +75,18 @@ def build_program(
     `rounds_array` is the integer sweep over the number of swaps (N=0 allowed, giving just
     the x180 prep). All measured qubits are read out within the same shot (joint /
     multiplexed readout), since they share one circuit.
+
+    `operation_gap_ns` (multiple of 4, default 0) idles the swap pair's flux lines after
+    each swap, so its flux pulse can settle before the next swap fires (the gap also
+    separates the last swap from readout).
     """
     measure_qubits = list(measure_qubits)
     num_qubits = len(measure_qubits)
     rounds_array = np.asarray(rounds_array).astype(int)
+
+    if operation_gap_ns < 0 or operation_gap_ns % 4 != 0:
+        raise ValueError(f"operation_gap_ns must be a non-negative multiple of 4 ns, got {operation_gap_ns}.")
+    gap_cycles = operation_gap_ns // 4
 
     involved = _dedup_involved(measure_qubits, swap_pair)
 
@@ -115,8 +125,12 @@ def build_program(
 
                 # Circuit body: N swaps on the pair.
                 # Dynamic loop bound on r -> N=0 skips the body entirely (baseline).
+                # `gap_cycles` idles the pair's flux lines between gate operations so each
+                # swap's flux pulse can settle before the next one fires.
                 with for_(rr, 0, rr < r, rr + 1):
                     swap_pair.macros[swap_operation].apply()
+                    if gap_cycles > 0:
+                        swap_pair.wait(gap_cycles)
                     align()
 
                 # Joint (multiplexed) readout of all measured qubits.
