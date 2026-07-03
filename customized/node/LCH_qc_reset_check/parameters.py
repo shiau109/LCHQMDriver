@@ -41,7 +41,7 @@ class Parameters(
     QubitsExperimentNodeParameters,
     PlottingParameters,
 ):
-    """Parameter set for LCH_reset_check (power-Rabi-shaped reset diagnostic).
+    """Parameter set for LCH_qc_reset_check (power-Rabi-shaped reset diagnostic).
 
     `qubits` (from QubitsExperimentNodeParameters) is the measured set read out each shot;
     `reset_type`/`simulate`/`timeout`/`load_data_id`/`multiplexed` come from

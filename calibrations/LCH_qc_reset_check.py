@@ -3,11 +3,11 @@ import numpy as np
 
 from qualibrate import QualibrationNode
 from quam_config import Quam
-from customized.node.LCH_reset_check import Parameters, analysis, plotting
+from customized.node.LCH_qc_reset_check import Parameters, analysis, plotting
 from qualibration_libs.parameters import get_qubits
 from qualibration_libs.runtime import simulate_and_plot
 
-from customized.probes import reset_check as probe
+from customized.probes import qc_reset_check as probe
 
 
 # %% {Description}
@@ -32,14 +32,14 @@ Analysis is intentionally an empty estimator: no fit and no state writeback; the
 the overlay for visual inspection.
 
 This node is a thin qualibrate shell: the acquisition probe lives in
-`customized.probes.reset_check`; the (no-op) estimate adapter and the plot live in
-`customized.node.LCH_reset_check`.
+`customized.probes.qc_reset_check`; the (no-op) estimate adapter and the plot live in
+`customized.node.LCH_qc_reset_check`.
 """
 
 
 # Be sure to include [Parameters, Quam] so the node has proper type hinting
 node = QualibrationNode[Parameters, Quam](
-    name="LCH_reset_check",
+    name="LCH_qc_reset_check",
     description=description,
     parameters=Parameters(),
 )
