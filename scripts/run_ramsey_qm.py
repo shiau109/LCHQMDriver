@@ -15,7 +15,7 @@ import json
 from scqo import Session
 from scqo.testing import InMemoryDevice, SimulatedBackend
 
-import customized.scqo  # noqa: F401  registers QMRamsey / QMPowerRabi into the catalog
+import customized.scqo  # noqa: F401  registers QMQubitRamsey / QMQubitPowerRabi into the catalog
 
 
 def main() -> None:
@@ -35,13 +35,13 @@ def main() -> None:
     print("catalog:", [e["name"] for e in sess.catalog()])
 
     print("\ndrive_freq before:", {q: s["drive_freq"] for q, s in sess.device_state().items()})
-    ramsey = sess.run("ramsey", {"qubits": ["q4", "q5"], "num_averages": 200})
-    print("ramsey result:", json.dumps(ramsey, indent=2))
+    ramsey = sess.run("qubit_ramsey", {"qubits": ["q4", "q5"], "num_averages": 200})
+    print("qubit_ramsey result:", json.dumps(ramsey, indent=2))
     print("drive_freq after: ", {q: s["drive_freq"] for q, s in sess.device_state().items()})
 
     print("\npi_amp before:", {q: s["pi_amp"] for q, s in sess.device_state().items()})
-    rabi = sess.run("power_rabi", {"qubits": ["q4", "q5"], "num_averages": 200})
-    print("power_rabi result:", json.dumps(rabi, indent=2))
+    rabi = sess.run("qubit_power_rabi", {"qubits": ["q4", "q5"], "num_averages": 200})
+    print("qubit_power_rabi result:", json.dumps(rabi, indent=2))
     print("pi_amp after: ", {q: s["pi_amp"] for q, s in sess.device_state().items()})
 
     print("\nreadout_freq before:", {q: s["readout_freq"] for q, s in sess.device_state().items()})

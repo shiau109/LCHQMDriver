@@ -63,7 +63,7 @@ def test_catalog_registers_qm_experiments():
     from scqo import catalog
 
     names = {e["name"] for e in catalog()}
-    assert {"ramsey", "power_rabi", "resonator_spectroscopy"} <= names
+    assert {"qubit_ramsey", "qubit_power_rabi", "resonator_spectroscopy"} <= names
 
 
 # ------------------------------------------------------------------ requires QUAM
@@ -78,7 +78,7 @@ def machine():
 
 
 def test_probe_matches_direct_build(machine):
-    """QMRamsey/QMPowerRabi.probe() must produce the same QUA program as calling the
+    """QMQubitRamsey/QMQubitPowerRabi.probe() must produce the same QUA program as calling the
     LCHQM build_program directly with the mapped kwargs (proves the param mapping)."""
     from qm import generate_qua_script
 
@@ -89,8 +89,8 @@ def test_probe_matches_direct_build(machine):
     from customized.probes import ramsey as ramsey_probe
     from customized.probes import power_rabi as power_rabi_probe
     from customized.probes import resonator_spectroscopy as resonator_spec_probe
-    from customized.scqo.experiments.ramsey import QMRamsey
-    from customized.scqo.experiments.power_rabi import QMPowerRabi
+    from customized.scqo.experiments.qubit_ramsey import QMQubitRamsey
+    from customized.scqo.experiments.qubit_power_rabi import QMQubitPowerRabi
     from customized.scqo.experiments.resonator_spectroscopy import QMResonatorSpectroscopy
 
     backend = QMBackend(machine)
@@ -99,7 +99,7 @@ def test_probe_matches_direct_build(machine):
     qubits = select_qubits(machine, qubits_names, multiplexed=True)
 
     # Ramsey
-    r = QMRamsey(backend, QMRamsey.Parameters(qubits=qubits_names, num_averages=200))
+    r = QMQubitRamsey(backend, QMQubitRamsey.Parameters(qubits=qubits_names, num_averages=200))
     r.sweep_axes = r.define_sweep()
     r_prog, _ = r.probe()
     idle_cycles = np.maximum(1, np.round(r.sweep_axes["idle_time_ns"] / 4)).astype(int)
@@ -111,7 +111,7 @@ def test_probe_matches_direct_build(machine):
     assert script(r_prog) == script(r_direct)
 
     # Power Rabi
-    p = QMPowerRabi(backend, QMPowerRabi.Parameters(qubits=qubits_names, num_averages=200))
+    p = QMQubitPowerRabi(backend, QMQubitPowerRabi.Parameters(qubits=qubits_names, num_averages=200))
     p.sweep_axes = p.define_sweep()
     p_prog, _ = p.probe()
     p_direct, _ = power_rabi_probe.build_program(

@@ -1,7 +1,7 @@
-"""QM power Rabi for scqo - supplies only ``probe()``.
+"""QM qubit power Rabi for scqo - supplies only ``probe()``.
 
 Parameters, the cosine fit, pi_amp_factor extraction and the pi_amp writeback are
-inherited from ``scqo.experiments.PowerRabi``. scqo's ``amp_factor`` is already a
+inherited from ``scqo.experiments.QubitPowerRabi``. scqo's ``amp_factor`` is already a
 factor of the current pi pulse, which is exactly the LCHQM probe's
 ``amplitude_scale``, so the sweep passes straight through.
 """
@@ -11,11 +11,11 @@ from __future__ import annotations
 from typing import Any
 
 from scqo import register
-from scqo.experiments import PowerRabi
+from scqo.experiments import QubitPowerRabi
 
 
 @register
-class QMPowerRabi(PowerRabi):
+class QMQubitPowerRabi(QubitPowerRabi):
     """Build a multiplexed power-Rabi QUA program on the QM OPX."""
 
     def probe(self) -> Any:

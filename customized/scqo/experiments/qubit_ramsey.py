@@ -1,7 +1,7 @@
 """QM Ramsey for scqo - supplies only ``probe()``.
 
 Parameters, the decaying-cosine fit, T2*/detuning extraction and the drive_freq
-writeback are all inherited from ``scqo.experiments.Ramsey``. This class only
+writeback are all inherited from ``scqo.experiments.QubitRamsey``. This class only
 compiles the scqo sweep into a QUA program via the shared LCHQM Ramsey probe.
 """
 
@@ -11,11 +11,11 @@ from typing import Any
 
 import numpy as np
 from scqo import register
-from scqo.experiments import Ramsey
+from scqo.experiments import QubitRamsey
 
 
 @register
-class QMRamsey(Ramsey):
+class QMQubitRamsey(QubitRamsey):
     """Build a multiplexed Ramsey QUA program on the QM OPX."""
 
     def probe(self) -> Any:
