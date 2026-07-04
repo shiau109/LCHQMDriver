@@ -6,7 +6,9 @@ REM          qm.bat setup   -> run the interactive QUAlibrate configuration
 REM          double-click   -> same as "start"
 REM ===========================================================================
 
-REM --- Edit this to target a different conda environment -----------------------
+REM --- Environment: uv venv .venv-qm (see SCQO/INSTALL.md section 1); ----------
+REM     conda LCHQM_test is the legacy fallback until the venv is battle-tested.
+set "VENV_ACTIVATE=D:\github\.venv-qm\Scripts\activate.bat"
 set "ENV_NAME=LCHQM_test"
 REM ----------------------------------------------------------------------------
 
@@ -17,6 +19,20 @@ REM Default action is "start" when no argument / double-clicked
 set "CMD=%~1"
 if "%CMD%"=="" set "CMD=start"
 
+REM "qm.bat conda ..." forces the legacy conda env (fallback while transitioning)
+if /I "%CMD%"=="conda" (
+    set "CMD=%~2"
+    if "%CMD%"=="" set "CMD=start"
+    goto use_conda
+)
+
+if exist "%VENV_ACTIVATE%" (
+    echo Activating venv .venv-qm ...
+    CALL "%VENV_ACTIVATE%"
+    goto env_ready
+)
+
+:use_conda
 REM Locate conda's activate.bat (miniconda3, then anaconda3)
 set "ACTIVATE_PATH=%USERPROFILE%\miniconda3\Scripts\activate.bat"
 if not exist "%ACTIVATE_PATH%" set "ACTIVATE_PATH=%USERPROFILE%\anaconda3\Scripts\activate.bat"
@@ -31,6 +47,8 @@ if not exist "%ACTIVATE_PATH%" (
 
 echo Activating conda environment "%ENV_NAME%" ...
 CALL "%ACTIVATE_PATH%" %ENV_NAME%
+
+:env_ready
 
 if /I "%CMD%"=="setup" (
     setup-qualibrate-config
