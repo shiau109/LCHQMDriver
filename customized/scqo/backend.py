@@ -63,16 +63,26 @@ class QMQubitView(QubitView):
 
 
 class QMDeviceModel(DeviceModel):
-    """Wraps a QUAM machine (`Quam`)."""
+    """Wraps a QUAM machine (`Quam`).
 
-    def __init__(self, machine: Any) -> None:
+    ``state_dir``: explicit save target. Set it whenever the machine was loaded from a
+    non-default location (e.g. the qm_sim virtual-twin working copy) — a bare
+    ``machine.save()`` writes to QUAM's configured default (the live ``quam_state/``),
+    which must never be the target of simulated runs.
+    """
+
+    def __init__(self, machine: Any, state_dir: str | None = None) -> None:
         self._machine = machine
+        self._state_dir = state_dir
 
     def qubit(self, name: str) -> QMQubitView:
         return QMQubitView(self._machine.qubits[name])
 
     def save(self) -> None:
-        self._machine.save()
+        if self._state_dir is not None:
+            self._machine.save(path=self._state_dir)
+        else:
+            self._machine.save()
 
     def snapshot(self) -> dict:
         # Loop memory: report every qubit's state, tolerating uncalibrated qubits

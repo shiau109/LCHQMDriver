@@ -38,11 +38,27 @@ def build_session(config_path: str | None = None) -> tuple[Session, LabConfig]:
                 'lab config sets state_sync != "pull" for the QM backend: forbidden while '
                 "qualibrate nodes still write QUAM directly (see LCHQMDriver CLAUDE.md)"
             )
+    elif cfg.backend == "qm_sim":
+        # Virtual twin: load a REAL QUAM state (working copy), acquire simulated data.
+        # Writebacks are saved to that working copy ONLY — never the live quam_state/.
+        from pathlib import Path
+
+        from customized.scqo.backend import QMDeviceModel
+        from quam_config import Quam
+
+        state_dir = cfg.extras.get("qm", {}).get("state_dir")
+        if not state_dir or not (Path(state_dir) / "state.json").is_file():
+            raise SystemExit(
+                'backend "qm_sim" needs [qm] state_dir = "<folder>" in the lab config, '
+                "holding a WORKING COPY of state.json + wiring.json (not the live quam_state/)"
+            )
+        machine = Quam.load(str(state_dir))
+        backend = SimulatedBackend(QMDeviceModel(machine, state_dir=str(state_dir)))
     elif cfg.backend == "simulated":
         backend = SimulatedBackend(InMemoryDevice(DEMO_QUBITS))
     else:
         raise SystemExit(
             f"unsupported backend {cfg.backend!r} in {cfg.source or 'defaults'} "
-            "(this repo drives 'qm' or 'simulated'; 'qblox' scripts live in LCHQBDriver)"
+            "(this repo drives 'qm', 'qm_sim' or 'simulated'; 'qblox' scripts live in LCHQBDriver)"
         )
     return make_session(backend, cfg), cfg
