@@ -36,7 +36,9 @@ def main() -> int:
     work = Path(tempfile.mkdtemp(prefix="scqo_qm_selftest_"))
     shutil.copy(source / "state.json", work / "state.json")
     shutil.copy(source / "wiring.json", work / "wiring.json")
-    print(f"work dir (originals untouched): {work}")
+    print(f"sandbox: {work}")
+    print("  (temporary self-test copies + throwaway run data: your originals and your")
+    print("   real data_root are NOT touched; real measurements use run_experiment.py)")
 
     try:
         from quam_config import Quam
