@@ -38,7 +38,14 @@ def main() -> int:
     shutil.copy(source / "wiring.json", work / "wiring.json")
     print(f"work dir (originals untouched): {work}")
 
-    from quam_config import Quam
+    try:
+        from quam_config import Quam
+    except ModuleNotFoundError as err:
+        raise SystemExit(
+            f"missing package: {err.name}\n"
+            "This self-test needs the QM stack (quam/qm + this repo installed). "
+            "Run it in the lab's QM environment:  conda activate LCHQM_test"
+        )
 
     machine = Quam.load(str(work))
     print(f"[1/5] loaded QUAM | qubits: {list(machine.qubits)}")
