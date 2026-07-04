@@ -49,7 +49,7 @@ def custom_param(node: QualibrationNode[Parameters, Quam]):
     """Allow the user to locally set the node parameters for debugging purposes, or execution in the Python IDE."""
     node.parameters.qubit_pairs = ["q2_q3"]
     node.parameters.simulate = False
-    node.parameters.num_shots = 100
+    node.parameters.num_shots = 200
     # FlatTopCosinePulse flux op (register first: python quam_config/register_flattop_cosine.py).
     # Leave flux_time = None so each op plays its native length (duration override is meant for
     # the constant/square waveform, not a shaped pulse).
@@ -58,12 +58,12 @@ def custom_param(node: QualibrationNode[Parameters, Quam]):
     # node.parameters.flux_time = 100
     # node.parameters.flux_role = "control"
     # node.parameters.drive_role = "control"
-    node.parameters.coupler_amp_start = -0.05
-    node.parameters.coupler_amp_end = 0.05
-    node.parameters.coupler_amp_step = 0.01
-    node.parameters.qubit_amp_start = 0.145
-    node.parameters.qubit_amp_end = 0.155
-    node.parameters.qubit_amp_step = 0.0005
+    node.parameters.coupler_amp_start = -0.1
+    node.parameters.coupler_amp_end = 0.1
+    node.parameters.coupler_amp_step = 0.005
+    node.parameters.qubit_amp_start = 0.147
+    node.parameters.qubit_amp_end = 0.152
+    node.parameters.qubit_amp_step = 0.0002
     node.parameters.amp_mode = "absolute"
     # Debug isolation: play the swap through the iswap macro's .apply() (the qc_swap_reset
     # path) instead of the direct flux play, to test whether the macro reproduces the swap.

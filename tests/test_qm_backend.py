@@ -86,8 +86,8 @@ def test_probe_matches_direct_build(machine):
         return "\n".join(ln for ln in generate_qua_script(prog, config).splitlines() if "generated at" not in ln)
 
     from customized.probes._lib import select_qubits
-    from customized.probes import ramsey as ramsey_probe
-    from customized.probes import power_rabi as power_rabi_probe
+    from customized.probes import qubit_ramsey as ramsey_probe
+    from customized.probes import qubit_power_rabi as power_rabi_probe
     from customized.probes import resonator_spectroscopy as resonator_spec_probe
     from customized.scqo.experiments.qubit_ramsey import QMQubitRamsey
     from customized.scqo.experiments.qubit_power_rabi import QMQubitPowerRabi

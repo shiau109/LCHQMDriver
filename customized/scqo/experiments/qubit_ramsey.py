@@ -20,7 +20,7 @@ class QMQubitRamsey(QubitRamsey):
 
     def probe(self) -> Any:
         from customized.probes._lib import select_qubits
-        from customized.probes import ramsey as ramsey_probe
+        from customized.probes import qubit_ramsey as ramsey_probe
 
         machine = self.backend.machine  # type: ignore[attr-defined]
         qubits = select_qubits(machine, self.params.qubits, multiplexed=True)
