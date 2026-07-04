@@ -74,8 +74,9 @@ qualibrate node writes QUAM anymore. (`customized/scqo/scripts/run_experiment.py
 ### scqo scripts (student entry points, no repo edits)
 `customized/scqo/scripts/` mirrors LCHQBDriver's full Tier-1 script set — `_lab.py` (config ->
 Session; forces `state_sync="pull"` on QM), `_cli.py`, `run_experiment.py`, `calibrate.py`
-(standard sequence), `find_runs.py`, `tag_run.py`, `device.py`, plus `experiments/<name>.py`
-(one auto-generated launcher per cataloged experiment; regenerate with
+(standard sequence), `find_runs.py`, `tag_run.py`, `device.py`, `check_real_config.py`
+(self-test vs a real `state.json`/`wiring.json` on temp copies, run in `LCHQM_test`), plus
+`experiments/<name>.py` (one auto-generated launcher per cataloged experiment; regenerate with
 `experiments/_sync.py`) — all reading `~/.scqo/config.toml`
 (see `scqo.labconfig`; `backend = "qm"` loads QUAM via `QMBackend.load()`). Only the three
 migrated experiments run here; all other calibrations still run through the qualibrate GUI,
