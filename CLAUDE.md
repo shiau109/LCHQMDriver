@@ -72,11 +72,12 @@ measures. The migration finish line is flipping this device to `"push"` — do t
 qualibrate node writes QUAM anymore. (`customized/scqo/scripts/run_experiment.py` enforces this.)
 
 ### scqo scripts (student entry points, no repo edits)
-`customized/scqo/scripts/run_experiment.py` runs the three migrated experiments through
-`scqo.Session` (catalog / run / persist to the lab datastore) and
-`customized/scqo/scripts/find_runs.py` queries saved runs — both read `~/.scqo/config.toml`
-(see `scqo.labconfig`; `backend = "qm"` loads QUAM via `QMBackend.load()`). All other calibrations
-still run through the qualibrate GUI, whose own archive stays as-is (legacy, frozen; do not merge).
+`customized/scqo/scripts/` mirrors LCHQBDriver's full Tier-1 script set — `_lab.py` (config ->
+Session; forces `state_sync="pull"` on QM), `run_experiment.py`, `calibrate.py` (standard
+sequence), `find_runs.py`, `tag_run.py`, `device.py` — all reading `~/.scqo/config.toml`
+(see `scqo.labconfig`; `backend = "qm"` loads QUAM via `QMBackend.load()`). Only the three
+migrated experiments run here; all other calibrations still run through the qualibrate GUI,
+whose own archive stays as-is (legacy, frozen; do not merge).
 
 ### Future repo split (decided, deferred)
 When node migration is (near) complete, `customized/` (probes + quam_fields + scqo backend) is
