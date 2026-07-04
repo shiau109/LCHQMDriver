@@ -63,6 +63,28 @@ in `customized/node/LCH_power_rabi/parameters.py`), **never** in vendored `calib
 node analysis/update + thin shell); verified by QUA program-equivalence + unit tests. Remaining LCH
 nodes migrate opportunistically. Next: scqo `QMBackend` calling these probes.
 
+### State authority during the transition (scqo `state_sync` rule)
+Two writers exist for QUAM today: unmigrated qualibrate nodes (write QUAM directly) and scqo's
+`RecordingDevice` (owns its own state JSON). To prevent a stale scqo state file from clobbering
+fresher QUAM calibrations at startup, **QM sessions MUST run `state_sync="pull"`** (scqo's default):
+the vendor wins at startup, scqo loads only its change history, and pushes only values it freshly
+measures. The migration finish line is flipping this device to `"push"` — do that only when no
+qualibrate node writes QUAM anymore. (`customized/scqo/scripts/run_experiment.py` enforces this.)
+
+### scqo scripts (student entry points, no repo edits)
+`customized/scqo/scripts/run_experiment.py` runs the three migrated experiments through
+`scqo.Session` (catalog / run / persist to the lab datastore) and
+`customized/scqo/scripts/find_runs.py` queries saved runs — both read `~/.scqo/config.toml`
+(see `scqo.labconfig`; `backend = "qm"` loads QUAM via `QMBackend.load()`). All other calibrations
+still run through the qualibrate GUI, whose own archive stays as-is (legacy, frozen; do not merge).
+
+### Future repo split (decided, deferred)
+When node migration is (near) complete, `customized/` (probes + quam_fields + scqo backend) is
+extracted into a clean QM-backend repo symmetric with LCHQBDriver, and this repo (qualibrate
+shells + vendored official nodes) winds down. Do NOT split earlier: `quam_state/`, `quam_config/`
+and the probes are shared and still changing — the one-way import rule above (shells → probes,
+probes never import qualibrate) is the boundary the split will cut along.
+
 ## Key Entrypoints
 - `quam_config/my_quam.py` → defines the `Quam(FluxTunableQuam)` class imported by every calibration node and config script. The custom-type bindings (`qubit_type = ChargeTunableTransmon`, `qubit_pair_type = LCH_FluxTunableTransmonQCQPair`) are **toggled in/out per experiment** — they are intentionally commented out by default and uncommented only when a run needs the custom charge-tunable types. Do NOT treat either state as "wrong"; read the live class body to see what is active, and ask before flipping it.
 - `customized/quam_builder/` → custom qubit type `ChargeTunableTransmon`
