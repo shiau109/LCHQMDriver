@@ -69,17 +69,17 @@ Two writers exist for QUAM today: unmigrated qualibrate nodes (write QUAM direct
 fresher QUAM calibrations at startup, **QM sessions MUST run `state_sync="pull"`** (scqo's default):
 the vendor wins at startup, scqo loads only its change history, and pushes only values it freshly
 measures. The migration finish line is flipping this device to `"push"` — do that only when no
-qualibrate node writes QUAM anymore. (`customized/scqo/scripts/run_experiment.py` enforces this.)
+qualibrate node writes QUAM anymore. (`scripts/run_experiment.py` enforces this.)
 
 ### scqo scripts (student entry points, no repo edits)
-`customized/scqo/scripts/` mirrors LCHQBDriver's full Tier-1 script set — `_lab.py` (config ->
+`scripts/` mirrors LCHQBDriver's full Tier-1 script set — `_lab.py` (config ->
 Session; forces `state_sync="pull"` on QM), `_cli.py`, `run_experiment.py`, `calibrate.py`
 (standard sequence), `find_runs.py`, `tag_run.py`, `device.py`, `check_real_config.py`
-(self-test vs a real `state.json`/`wiring.json` on temp copies, run in `LCHQM_test`), plus
+(self-test vs a real `state.json`/`wiring.json` on temp copies, run in `.venv-qm`), plus
 `experiments/<name>.py` (one auto-generated launcher per cataloged experiment; regenerate with
 `experiments/_sync.py`) — all reading `~/.scqo/config.toml`
-(see `scqo.labconfig`; `backend = "qm"` loads QUAM via `QMBackend.load()`). Only the three
-migrated experiments run here; all other calibrations still run through the qualibrate GUI,
+(see `scqo.labconfig`; `backend = "qm"` loads QUAM via `QMBackend.load()`). Only the migrated
+experiments (res spec, qubit spec, ramsey, power rabi) run here; all other calibrations still run through the qualibrate GUI,
 whose own archive stays as-is (legacy, frozen; do not merge).
 
 ### Future repo split (decided, deferred)

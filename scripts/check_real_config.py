@@ -1,7 +1,7 @@
 """Self-test the scqo stack against a REAL QUAM state (OPX1000) — no hardware needed.
 
-    python customized/scqo/scripts/check_real_config.py D:\\qpu_data\\SQ_demo\\QM_OPX1000_config
-    python customized/scqo/scripts/check_real_config.py <state_dir> --qubits q1 q2
+    python scripts/check_real_config.py D:\\qpu_data\\SQ_demo\\QM_OPX1000_config
+    python scripts/check_real_config.py <state_dir> --qubits q1 q2
 
 Loads your ``state.json`` + ``wiring.json``, then runs the full scqo pipeline with
 SIMULATED data over the REAL device tree: read neutral fields -> run experiments ->
@@ -20,7 +20,7 @@ import sys
 import tempfile
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[3]))  # repo root for `customized`
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # repo root for `customized`
 
 
 def main() -> int:

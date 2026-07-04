@@ -13,8 +13,8 @@ import sys
 from pathlib import Path
 
 # Make `import customized` work when the repo is not pip-installed: running a script
-# here puts customized/scqo/scripts on sys.path, not the repo root (3 levels up).
-sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
+# here puts scripts/ on sys.path, not the repo root.
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from scqo import LabConfig, Session, load_lab_config, make_session
 from scqo.testing import InMemoryDevice, SimulatedBackend
