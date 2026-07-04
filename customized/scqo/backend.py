@@ -150,14 +150,40 @@ class QMBackend(Backend):
         vars I/Q. The probe already emits I/Q with a qubit dim; only the sweep axis is
         renamed to the scqo `define_sweep` name (e.g. idle_time -> idle_time_ns,
         amp_prefactor -> amp_factor).
+
+        On a structure mismatch the raw dataset is pickled for offline inspection —
+        a bring-up run against the real QOP is never wasted (a raise here happens
+        before the datastore ever sees the dataset).
         """
         non_qubit_dims = [d for d in raw.dims if d != "qubit"]
         target = list(experiment.sweep_axes.keys())
-        if len(non_qubit_dims) == 1 and len(target) == 1:
-            if non_qubit_dims[0] != target[0]:
-                raw = raw.rename({non_qubit_dims[0]: target[0]})
-            return raw
-        raise NotImplementedError(
-            "Multi-axis canonical relabeling is not implemented yet (only single-sweep "
-            f"experiments). Raw sweep dims={non_qubit_dims}, scqo axes={target}."
-        )
+        if "qubit" not in raw.dims:
+            raise ValueError(
+                f"raw dataset has no 'qubit' dimension (dims={dict(raw.sizes)}, "
+                f"data_vars={list(raw.data_vars)}); {_dump_raw(raw)}"
+            )
+        if len(non_qubit_dims) != 1 or len(target) != 1:
+            raise NotImplementedError(
+                "only single-sweep experiments are canonicalized so far: "
+                f"raw sweep dims={non_qubit_dims}, scqo axes={target}, "
+                f"data_vars={list(raw.data_vars)}; {_dump_raw(raw)}"
+            )
+        if non_qubit_dims[0] != target[0]:
+            raw = raw.rename({non_qubit_dims[0]: target[0]})
+        return raw
+
+
+def _dump_raw(raw: xr.Dataset) -> str:
+    """Pickle the raw QOP dataset for offline inspection (bring-up diagnostics)."""
+    import pickle
+    import tempfile
+    from datetime import datetime
+    from pathlib import Path
+
+    dump = Path(tempfile.gettempdir()) / f"qm_raw_{datetime.now():%Y%m%d-%H%M%S}.pkl"
+    try:
+        with open(dump, "wb") as f:
+            pickle.dump(raw, f)
+        return f"raw dataset pickled to {dump}"
+    except Exception as err:
+        return f"raw dataset could not be pickled ({type(err).__name__}: {err})"
