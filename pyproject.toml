@@ -60,3 +60,6 @@ allow-direct-references = true
 # [tool.uv.sources]
 # quam-builder = { git = "https://github.com/qua-platform/quam-builder.git" }
 # qualibration-libs = { git = "https://github.com/qua-platform/qualibration-libs.git" }
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]   # never collect calibrations/ (qualibrate nodes execute at import; exclude/ has *_test.py names)
