@@ -27,6 +27,12 @@ DEMO_QUBITS = {
 }
 
 
+def default_qubits(sess: Session) -> list[str]:
+    """Measurable qubits for 'run on everything' defaults (mirror of LCHQBDriver:
+    the lab convention is qubits q*; couplers/auxiliary elements are excluded)."""
+    return [q for q in sess.device_state() if q.startswith("q")]
+
+
 def build_session(config_path: str | None = None) -> tuple[Session, LabConfig]:
     cfg = load_lab_config(config_path)
     if cfg.backend == "qm":
