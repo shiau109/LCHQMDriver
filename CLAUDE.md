@@ -100,9 +100,11 @@ probes never import qualibrate) is the boundary the split will cut along.
 - **`calibrations/offline_graph/`** holds `LCH_graph_*.py` post-processing/graph scripts. Editable lab code, same `LCH_` convention as nodes. qualibrate does not list them (it scans `calibrations/` non-recursively); run them manually.
 - **Environments (2026-07-05):** the scqo path runs in the uv venv `D:\github\.venv-qm`,
   rebuildable from `requirements-qm.lock.txt` (exact pins frozen from `LCHQM_test`; see
-  SCQO/INSTALL.md §1). Conda is being retired lab-wide; `LCHQM_test` remains ONLY until
-  `qm.bat` is repointed after an at-instrument validation of `.venv-qm`.
-- **Run / setup** (conda env `LCHQM_test`; the launcher targets this env):
+  SCQO/INSTALL.md §1). Sibling envs: `.venv-view` (data browsing, no instrument libs —
+  the lab's daily default) and `.venv-qblox` (Qblox measurement). Conda is being retired
+  lab-wide; `qm.bat` already targets `.venv-qm` (`qm.bat conda` = legacy fallback) and
+  the conda envs get deleted after one validated qualibrate GUI session.
+- **Run / setup** (`qm.bat` activates `.venv-qm`; `qm.bat conda` forces the legacy fallback):
   - `qm.bat` (Windows) / `qm.command` (macOS/Linux) → wrappers that activate the env and run `qualibrate start` (launches the GUI server). These replaced the old Windows-only `start_server.bat` / `setup_qualibrate_config.bat`.
   - `setup-qualibrate-config` → one-time qualibrate config setup.
 - **Packaging:** `pyproject.toml` — Python `>=3.10,<3.13`, black `line-length = 120`. Wheel packages: `calibrations`, `calibration_utils`, `quam_config`, `customized`.
