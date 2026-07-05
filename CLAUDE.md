@@ -70,6 +70,10 @@ fresher QUAM calibrations at startup, **QM sessions MUST run `state_sync="pull"`
 the vendor wins at startup, scqo loads only its change history, and pushes only values it freshly
 measures. The migration finish line is flipping this device to `"push"` — do that only when no
 qualibrate node writes QUAM anymore. (`scripts/run_experiment.py` enforces this.)
+**Which QUAM state loads** is decided by the scqo lab config alone: `[qm] state_dir` applies to
+BOTH `qm_sim` and real `qm` (PR #16, v0.1.2) — never rely on `~/.qualibrate` resolution for scqo
+sessions; keep qualibrate's own `[quam] state_path` pointed at the same folder on machines that
+run both stacks.
 
 ### scqo scripts (student entry points, no repo edits)
 `scripts/` mirrors LCHQBDriver's full Tier-1 script set — `_lab.py` (config ->
