@@ -1,0 +1,42 @@
+"""QM T2 echo (Hahn) for scqo - supplies only ``probe()``.
+
+Parameters, exponential-envelope fit and reporting are inherited from
+``scqo.experiments.T2Echo``. scqo sweeps ``wait_time_ns`` (the TOTAL echo idle
+time tau); the LCHQM probe sweeps the per-arm wait in clock cycles (two arms of
+tau/2, 4 ns per cycle -> cycles = tau_ns / 8) and builds the same sweep on coord
+``idle_time``, which the backend's ``_to_canonical`` renames back.
+"""
+
+from __future__ import annotations
+
+from typing import Any
+
+import numpy as np
+
+from scqo import register
+from scqo.experiments import T2Echo
+
+
+@register
+class QMT2Echo(T2Echo):
+    """Build a multiplexed Hahn-echo QUA program on the QM OPX."""
+
+    def probe(self) -> Any:
+        from customized.probes._lib import select_qubits
+        from customized.probes import t2_echo as echo_probe
+
+        machine = self.backend.machine  # type: ignore[attr-defined]
+        qubits = select_qubits(machine, self.params.qubits, multiplexed=True)
+
+        # Total idle time tau (ns) -> per-arm clock cycles: tau/2 per arm, 4 ns per
+        # cycle. QUA wait() needs >= 1 cycle, hence the floor.
+        wait_ns = self.sweep_axes["wait_time_ns"]
+        arm_cycles = np.maximum(1, np.round(np.asarray(wait_ns) / 8)).astype(int)
+
+        return echo_probe.build_program(
+            machine,
+            qubits,
+            idle_times_cycles=arm_cycles,
+            num_shots=self.params.num_averages,
+            reset_type="thermal",
+        )

@@ -146,11 +146,15 @@ class QMBackend(Backend):
         from customized.probes._lib import acquire as run_acquire
 
         program, sweep_axes = experiment.probe()  # QM probe returns (program, sweep_axes)
+        # Progress denominator: per-shot experiments (single_shot_readout) declare
+        # `num_shots` instead of the averaging mixin's `num_averages`.
+        params = experiment.params
+        shots = getattr(params, "num_averages", None) or getattr(params, "num_shots", 1)
         raw = run_acquire(
             self._machine,
             program,
             sweep_axes,
-            num_shots=experiment.params.num_averages,  # type: ignore[attr-defined]
+            num_shots=shots,
             timeout=self._timeout,
         )
         return self._to_canonical(raw, experiment)
@@ -158,11 +162,26 @@ class QMBackend(Backend):
     @staticmethod
     def _to_canonical(raw: xr.Dataset, experiment: "Experiment") -> xr.Dataset:
         """Relabel the raw probe dataset into scqo's convention: dims (qubit, *sweeps),
-        vars I/Q. The probe already emits I/Q with a qubit dim; the sweep axes are
-        renamed positionally to the scqo `define_sweep` names (e.g. idle_time ->
-        idle_time_ns, or (detuning, power) -> (detuning_hz, power_db)) — the fetcher
-        preserves the probe's sweep_axes order, and both dicts are built by the same
-        wrapper, so order-based mapping is exact; sizes are asserted per axis.
+        vars I/Q. The probe already emits I/Q with a qubit dim.
+
+        Two mapping modes for the sweep axes:
+
+        1. Name-based (preferred, order-independent): when the raw non-qubit dim
+           NAMES already equal the scqo `define_sweep` names as a set, nothing is
+           renamed — only per-name sizes are asserted. This is how probes whose raw
+           nesting order differs from the scqo declaration order stay correct: the
+           QUA stream nesting fixes the raw dim order (e.g. flux spectroscopy is
+           (detuning, flux) on the wire while scqo declares (flux, detuning));
+           downstream code transposes by NAME, so order does not matter, but a
+           positional rename would silently swap equal-sized axes. Wrappers opt in
+           by returning `sweep_axes` keyed with the canonical names in raw nesting
+           order (readout_fidelity's probe already is canonical).
+
+        2. Positional fallback: axes are renamed positionally to the scqo names
+           (e.g. idle_time -> idle_time_ns, (detuning, power) -> (detuning_hz,
+           power_db)) — the fetcher preserves the probe's sweep_axes order, and the
+           wrapper guarantees that order matches `define_sweep`; sizes are asserted
+           per axis.
 
         On a structure mismatch the raw dataset is pickled for offline inspection —
         a bring-up run against the real QOP is never wasted (a raise here happens
@@ -182,6 +201,15 @@ class QMBackend(Backend):
                 f"sweep-axis count mismatch: raw {raw_axes} vs scqo {target}, "
                 f"data_vars={list(raw.data_vars)}; {_dump_raw(raw)}"
             )
+        if set(raw_axes) == set(target):
+            # Name-based: already canonical; assert sizes by name, never reorder.
+            for name in target:
+                if raw.sizes[name] != len(experiment.sweep_axes[name]):
+                    raise ValueError(
+                        f"axis size mismatch: raw {name}={raw.sizes[name]} vs "
+                        f"scqo {name}={len(experiment.sweep_axes[name])}; {_dump_raw(raw)}"
+                    )
+            return raw
         for raw_dim, name in zip(raw_axes, target):
             if raw.sizes[raw_dim] != len(experiment.sweep_axes[name]):
                 raise ValueError(

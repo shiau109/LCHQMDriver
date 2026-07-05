@@ -66,6 +66,43 @@ def test_to_canonical_renames_two_axes():
     assert out["I"].dims == ("qubit", "detuning_hz", "power_db")
 
 
+def test_to_canonical_name_based_ignores_order_2d():
+    """Flux spectroscopy: raw nesting (detuning_hz, flux_bias_v) vs scqo declaration
+    (flux_bias_v, detuning_hz), with EQUAL sizes — positional renaming would swap the
+    axes silently; the name-based path must leave the data untouched."""
+    n = 4  # equal-length axes: the dangerous case
+    data = np.arange(2 * n * n, dtype=float).reshape(2, n, n)
+    raw = xr.Dataset(
+        {"I": (("qubit", "detuning_hz", "flux_bias_v"), data), "Q": (("qubit", "detuning_hz", "flux_bias_v"), data)},
+        coords={"qubit": ["q0", "q1"], "detuning_hz": np.linspace(-1e6, 1e6, n), "flux_bias_v": np.linspace(-0.1, 0.1, n)},
+    )
+    out = QMBackend._to_canonical(
+        raw, _FakeExp({"flux_bias_v": np.zeros(n), "detuning_hz": np.zeros(n)})
+    )
+    assert out["I"].dims == ("qubit", "detuning_hz", "flux_bias_v")  # raw order kept
+    np.testing.assert_array_equal(out["I"].values, data)
+    np.testing.assert_array_equal(out["detuning_hz"].values, raw["detuning_hz"].values)
+
+
+def test_to_canonical_name_based_single_shot():
+    """Per-shot readout: raw nesting (shot_idx, prepared_state) vs scqo declaration
+    (prepared_state, shot_idx) — resolved by name, sizes checked per name."""
+    n_shots = 7
+    data = np.zeros((2, n_shots, 2))
+    raw = xr.Dataset(
+        {"I": (("qubit", "shot_idx", "prepared_state"), data), "Q": (("qubit", "shot_idx", "prepared_state"), data)},
+        coords={"qubit": ["q0", "q1"], "shot_idx": np.arange(1, n_shots + 1), "prepared_state": [0, 1]},
+    )
+    out = QMBackend._to_canonical(
+        raw, _FakeExp({"prepared_state": np.array([0, 1]), "shot_idx": np.arange(n_shots)})
+    )
+    assert out["I"].dims == ("qubit", "shot_idx", "prepared_state")
+    # size check is per NAME even though the declaration order differs
+    bad = _FakeExp({"prepared_state": np.array([0, 1]), "shot_idx": np.arange(n_shots + 1)})
+    with pytest.raises(ValueError):
+        QMBackend._to_canonical(raw, bad)
+
+
 def test_to_canonical_rejects_axis_count_mismatch():
     raw = _raw("idle_time")  # one sweep axis
     with pytest.raises(NotImplementedError):
