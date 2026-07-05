@@ -2,7 +2,7 @@
 
 The active `LCH_*` calibration nodes have been migrated off the old `qcat`
 analysis package (`D:\github\QCAT`) onto **`scqat`**
-(`D:\github\SCqubit-analysis-tool`, top-level import `scqat`). scqat was built
+(`D:\github\scqat`, top-level import `scqat`). scqat was built
 as the deliberate successor to qcat (see scqat's own `MIGRATION.md`).
 
 Done 2026-06-06. Scope: all active nodes + commented-out refs. `calibrations/exclude/`
