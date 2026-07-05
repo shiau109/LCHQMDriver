@@ -38,7 +38,11 @@ def build_session(config_path: str | None = None) -> tuple[Session, LabConfig]:
     if cfg.backend == "qm":
         from customized.scqo.backend import QMBackend
 
-        backend = QMBackend.load()
+        # Honor [qm] state_dir like the qm_sim branch below does. Without this the
+        # QUAM state comes from quam's default resolution (~/.qualibrate config or
+        # QUAM_STATE_PATH), which on the lab server silently pointed at a stale
+        # dev-era state — the scqo lab config must stay the single authority.
+        backend = QMBackend.load(state_path=cfg.extras.get("qm", {}).get("state_dir"))
         if cfg.state_sync != "pull":
             raise SystemExit(
                 'lab config sets state_sync != "pull" for the QM backend: forbidden while '
