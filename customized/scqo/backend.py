@@ -61,6 +61,14 @@ class QMQubitView(QubitView):
     def pi_amp(self, value: float) -> None:
         quam_fields.set_pi_amp(self._q, value)
 
+    @property
+    def readout_amp(self) -> float:
+        return quam_fields.get_readout_amp(self._q)
+
+    @readout_amp.setter
+    def readout_amp(self, value: float) -> None:
+        quam_fields.set_readout_amp(self._q, value)
+
 
 class QMDeviceModel(DeviceModel):
     """Wraps a QUAM machine (`Quam`).
@@ -90,7 +98,10 @@ class QMDeviceModel(DeviceModel):
         state: dict[str, dict] = {}
         for name in self._machine.qubits:
             view = self.qubit(name)
-            state[name] = {field: _read_or_none(view, field) for field in ("readout_freq", "drive_freq", "pi_amp")}
+            state[name] = {
+                field: _read_or_none(view, field)
+                for field in ("readout_freq", "drive_freq", "pi_amp", "readout_amp")
+            }
         return state
 
 
@@ -146,31 +157,39 @@ class QMBackend(Backend):
 
     @staticmethod
     def _to_canonical(raw: xr.Dataset, experiment: "Experiment") -> xr.Dataset:
-        """Relabel the raw probe dataset into scqo's convention: dims (qubit, <sweep>),
-        vars I/Q. The probe already emits I/Q with a qubit dim; only the sweep axis is
-        renamed to the scqo `define_sweep` name (e.g. idle_time -> idle_time_ns,
-        amp_prefactor -> amp_factor).
+        """Relabel the raw probe dataset into scqo's convention: dims (qubit, *sweeps),
+        vars I/Q. The probe already emits I/Q with a qubit dim; the sweep axes are
+        renamed positionally to the scqo `define_sweep` names (e.g. idle_time ->
+        idle_time_ns, or (detuning, power) -> (detuning_hz, power_db)) — the fetcher
+        preserves the probe's sweep_axes order, and both dicts are built by the same
+        wrapper, so order-based mapping is exact; sizes are asserted per axis.
 
         On a structure mismatch the raw dataset is pickled for offline inspection —
         a bring-up run against the real QOP is never wasted (a raise here happens
         before the datastore ever sees the dataset).
         """
-        non_qubit_dims = [d for d in raw.dims if d != "qubit"]
         target = list(experiment.sweep_axes.keys())
         if "qubit" not in raw.dims:
             raise ValueError(
                 f"raw dataset has no 'qubit' dimension (dims={dict(raw.sizes)}, "
                 f"data_vars={list(raw.data_vars)}); {_dump_raw(raw)}"
             )
-        if len(non_qubit_dims) != 1 or len(target) != 1:
+        # Axis order from an actual data variable (Dataset.dims is unordered).
+        ref_var = "I" if "I" in raw.data_vars else next(iter(raw.data_vars))
+        raw_axes = [d for d in raw[ref_var].dims if d != "qubit"]
+        if len(raw_axes) != len(target):
             raise NotImplementedError(
-                "only single-sweep experiments are canonicalized so far: "
-                f"raw sweep dims={non_qubit_dims}, scqo axes={target}, "
+                f"sweep-axis count mismatch: raw {raw_axes} vs scqo {target}, "
                 f"data_vars={list(raw.data_vars)}; {_dump_raw(raw)}"
             )
-        if non_qubit_dims[0] != target[0]:
-            raw = raw.rename({non_qubit_dims[0]: target[0]})
-        return raw
+        for raw_dim, name in zip(raw_axes, target):
+            if raw.sizes[raw_dim] != len(experiment.sweep_axes[name]):
+                raise ValueError(
+                    f"axis size mismatch: raw {raw_dim}={raw.sizes[raw_dim]} vs "
+                    f"scqo {name}={len(experiment.sweep_axes[name])}; {_dump_raw(raw)}"
+                )
+        rename = {r: t for r, t in zip(raw_axes, target) if r != t}
+        return raw.rename(rename) if rename else raw
 
 
 def _dump_raw(raw: xr.Dataset) -> str:

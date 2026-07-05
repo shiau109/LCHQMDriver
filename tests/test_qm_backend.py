@@ -52,10 +52,30 @@ def test_to_canonical_noop_when_names_match():
     assert "idle_time_ns" in out.dims
 
 
-def test_to_canonical_rejects_multi_axis():
-    raw = _raw("idle_time").expand_dims({"prepared_state": [0, 1]})
+def test_to_canonical_renames_two_axes():
+    """2D sweeps (punchout): both axes rename positionally with size checks."""
+    data = np.zeros((2, 5, 3))
+    raw = xr.Dataset(
+        {"I": (("qubit", "detuning", "power"), data), "Q": (("qubit", "detuning", "power"), data)},
+        coords={"qubit": ["q0", "q1"], "detuning": np.arange(5), "power": np.arange(3)},
+    )
+    out = QMBackend._to_canonical(
+        raw, _FakeExp({"detuning_hz": np.arange(5), "power_db": np.arange(3)})
+    )
+    assert {"detuning_hz", "power_db"} <= set(out.dims)
+    assert out["I"].dims == ("qubit", "detuning_hz", "power_db")
+
+
+def test_to_canonical_rejects_axis_count_mismatch():
+    raw = _raw("idle_time")  # one sweep axis
     with pytest.raises(NotImplementedError):
         QMBackend._to_canonical(raw, _FakeExp({"a": np.arange(5), "b": np.arange(2)}))
+
+
+def test_to_canonical_rejects_axis_size_mismatch():
+    raw = _raw("idle_time", n_sweep=5)
+    with pytest.raises(ValueError):
+        QMBackend._to_canonical(raw, _FakeExp({"idle_time_ns": np.arange(7)}))
 
 
 def test_catalog_registers_qm_experiments():
@@ -157,8 +177,14 @@ def test_device_view_roundtrip(machine):
         view.pi_amp = 0.123
         assert view.pi_amp == pytest.approx(0.123)
 
+        a0 = view.readout_amp
+        view.readout_amp = 0.111
+        assert view.readout_amp == pytest.approx(0.111)
+        assert float(q.resonator.operations["readout"].amplitude) == pytest.approx(0.111)
+        view.readout_amp = a0
+
         snap = backend.device.snapshot()
-        assert set(snap["q4"]) == {"readout_freq", "drive_freq", "pi_amp"}
+        assert set(snap["q4"]) == {"readout_freq", "drive_freq", "pi_amp", "readout_amp"}
     finally:
         # Restore the in-memory state (never saved); keep the loaded machine pristine.
         view.readout_freq = r0

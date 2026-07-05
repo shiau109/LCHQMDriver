@@ -22,8 +22,8 @@ from scqo.testing import InMemoryDevice, SimulatedBackend
 import customized.scqo.experiments  # noqa: F401  registers the QM experiments
 
 DEMO_QUBITS = {
-    "q1": {"readout_freq": 5.95e9, "drive_freq": 3.87e9, "pi_amp": 0.20},
-    "q2": {"readout_freq": 6.05e9, "drive_freq": 4.01e9, "pi_amp": 0.18},
+    "q1": {"readout_freq": 5.95e9, "drive_freq": 3.87e9, "pi_amp": 0.20, "readout_amp": 0.25},
+    "q2": {"readout_freq": 6.05e9, "drive_freq": 4.01e9, "pi_amp": 0.18, "readout_amp": 0.22},
 }
 
 

@@ -73,6 +73,22 @@ def shift_drive_freq(qubit: Any, delta: float) -> None:
     qubit.xy.RF_frequency = float(qubit.xy.RF_frequency) + delta
 
 
+# ---------------------------------------------------------------------- readout amplitude
+#: The readout operation whose amplitude is the neutral ``readout_amp``.
+READOUT_OPERATION = "readout"
+
+
+def get_readout_amp(qubit: Any, operation: str = READOUT_OPERATION) -> float:
+    return float(qubit.resonator.operations[operation].amplitude)
+
+
+def set_readout_amp(qubit: Any, value: float, *, operation: str = READOUT_OPERATION) -> None:
+    """Write the readout pulse amplitude (within the current output-power config;
+    large power reconfiguration — FEM gain — stays with the qualibrate power node's
+    ``set_output_power`` path)."""
+    qubit.resonator.operations[operation].amplitude = float(value)
+
+
 # ------------------------------------------------------------------------- pi amplitude
 def get_pi_amp(qubit: Any, operation: str = PI_OPERATION) -> float:
     return float(qubit.xy.operations[operation].amplitude)
