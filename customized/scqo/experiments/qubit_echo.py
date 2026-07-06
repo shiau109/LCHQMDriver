@@ -1,7 +1,7 @@
-"""QM T2 echo (Hahn) for scqo - supplies only ``probe()``.
+"""QM qubit echo (Hahn) for scqo - supplies only ``probe()``.
 
 Parameters, exponential-envelope fit and reporting are inherited from
-``scqo.experiments.T2Echo``. scqo sweeps ``wait_time_ns`` (the TOTAL echo idle
+``scqo.experiments.QubitEcho``. scqo sweeps ``wait_time_ns`` (the TOTAL echo idle
 time tau); the LCHQM probe sweeps the per-arm wait in clock cycles (two arms of
 tau/2, 4 ns per cycle -> cycles = tau_ns / 8) and builds the same sweep on coord
 ``idle_time``, which the backend's ``_to_canonical`` renames back.
@@ -14,16 +14,16 @@ from typing import Any
 import numpy as np
 
 from scqo import register
-from scqo.experiments import T2Echo
+from scqo.experiments import QubitEcho
 
 
 @register
-class QMT2Echo(T2Echo):
+class QMQubitEcho(QubitEcho):
     """Build a multiplexed Hahn-echo QUA program on the QM OPX."""
 
     def probe(self) -> Any:
         from customized.probes._lib import select_qubits
-        from customized.probes import t2_echo as echo_probe
+        from customized.probes import qubit_echo as echo_probe
 
         machine = self.backend.machine  # type: ignore[attr-defined]
         qubits = select_qubits(machine, self.params.qubits, multiplexed=True)

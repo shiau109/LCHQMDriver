@@ -1,7 +1,7 @@
-"""QM T1 relaxation for scqo - supplies only ``probe()``.
+"""QM qubit relaxation (T1) for scqo - supplies only ``probe()``.
 
 Parameters, exponential fit and reporting are inherited from
-``scqo.experiments.T1Relaxation``. scqo sweeps ``wait_time_ns``; the LCHQM probe
+``scqo.experiments.QubitRelaxation``. scqo sweeps ``wait_time_ns``; the LCHQM probe
 builds the same sweep on coord ``idle_time``, which the backend's ``_to_canonical``
 renames back.
 """
@@ -13,16 +13,16 @@ from typing import Any
 import numpy as np
 
 from scqo import register
-from scqo.experiments import T1Relaxation
+from scqo.experiments import QubitRelaxation
 
 
 @register
-class QMT1Relaxation(T1Relaxation):
+class QMQubitRelaxation(QubitRelaxation):
     """Build a multiplexed T1 QUA program on the QM OPX."""
 
     def probe(self) -> Any:
         from customized.probes._lib import select_qubits
-        from customized.probes import t1_relaxation as t1_probe
+        from customized.probes import qubit_relaxation as t1_probe
 
         machine = self.backend.machine  # type: ignore[attr-defined]
         qubits = select_qubits(machine, self.params.qubits, multiplexed=True)
