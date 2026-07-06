@@ -9,8 +9,15 @@ LCHQMDriver CLAUDE.md).
 
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path
+
+# The scripts are headless (figures are saved to run folders, never shown): pin the
+# non-interactive matplotlib backend BEFORE anything imports pyplot. On Windows the
+# default TkAgg intermittently fails mid-session (TclError "Can't find a usable
+# tk.tcl") and the artifact fallback would silently drop the figure PNGs.
+os.environ.setdefault("MPLBACKEND", "Agg")
 
 # Make `import customized` work when the repo is not pip-installed: running a script
 # here puts scripts/ on sys.path, not the repo root.
