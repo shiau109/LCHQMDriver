@@ -69,25 +69,26 @@ Two writers exist for QUAM today: unmigrated qualibrate nodes (write QUAM direct
 fresher QUAM calibrations at startup, **QM sessions MUST run `state_sync="pull"`** (scqo's default):
 the vendor wins at startup, scqo loads only its change history, and pushes only values it freshly
 measures. The migration finish line is flipping this device to `"push"` — do that only when no
-qualibrate node writes QUAM anymore. (`scripts/run_experiment.py` enforces this.)
+qualibrate node writes QUAM anymore. (`customized/scqo/backend_factory.py` enforces
+this — the guard fires before any QUAM state is loaded.)
 **Which QUAM state loads** is decided by the scqo lab config alone: `[qm] state_dir` applies to
 BOTH `qm_sim` and real `qm` (PR #16, v0.1.2) — never rely on `~/.qualibrate` resolution for scqo
 sessions; keep qualibrate's own `[quam] state_path` pointed at the same folder on machines that
 run both stacks.
 
-### scqo scripts (student entry points, no repo edits)
-`scripts/` mirrors LCHQBDriver's full Tier-1 script set — `_lab.py` (config ->
-Session; forces `state_sync="pull"` on QM), `_cli.py`, `run_experiment.py`, `calibrate.py`
-(standard sequence), `find_runs.py` (incl. `--cooldown`), `tag_run.py`, `device.py`
-(history shows `by=<operator>`), `devices.py` (Tier-1 backend/sample menu, no instrument),
-`cooldown.py` (cycle registry: validate/start/end), `sample.py` (add-a-sample
-scaffold: paste-ready snippets, edits nothing shared), `check_real_config.py`
-(self-test vs a real `state.json`/`wiring.json` on temp copies, run in `.venv-qm`), plus
-`experiments/<name>.py` (one auto-generated launcher per cataloged experiment; regenerate with
-`experiments/_sync.py`) — all reading `~/.scqo/config.toml` + the per-user `~/.scqo/user.toml` overlay
-(see `scqo.labconfig`; `backend = "qm"` loads QUAM via `QMBackend.load()`). Only the migrated
-experiments (res spec, qubit spec, ramsey, power rabi) run here; all other calibrations still run through the qualibrate GUI,
-whose own archive stays as-is (legacy, frozen; do not merge).
+### scqo student surface (the `scqo` command; scripts are compat wrappers)
+Since scqo v0.4.0 the Tier-1 engine lives in `scqo/cli` — students use the **`scqo`
+command** (`run/calibrate/find/tag/device/devices/cooldown/sample`) from any directory
+in `.venv-qm`. This repo contributes `customized/scqo/backend_factory.py`, registered
+under the `scqo.backends` entry-point group (name `qm`): builds the `qm` / `qm_sim`
+Backend, honors `[qm] state_dir` as the single QUAM-state authority, and fires the
+`state_sync="pull"` guard BEFORE any QUAM state is touched. `scripts/` holds ≤10-line
+backward-compat wrappers (+ per-repo `check_real_config.py`) and the auto-generated
+`experiments/<name>.py` launchers (regenerate: `scqo sync-launchers` or
+`python scripts/experiments/_sync.py` in this venv). NOTE: the built-in simulated demo
+device is now q0/q1 (this repo's old q1/q2 demo names retired, fresh-start). Only the
+migrated experiments run here; all other calibrations still run through the qualibrate
+GUI, whose own archive stays as-is (legacy, frozen; do not merge).
 
 ### Future repo split (decided, deferred)
 When node migration is (near) complete, `customized/` (probes + quam_fields + scqo backend) is
