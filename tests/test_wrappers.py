@@ -1,8 +1,7 @@
 """Backward-compat surface: the scripts/ wrappers + the qm backend entry point.
 
 The real CLI coverage lives in SCQO/tests (test_cli_*.py); this smoke test proves
-the QM-side glue only. NOTE: the built-in simulated demo device is q0/q1 since the
-CLI consolidation (this repo's old scripts used q1/q2 demo names — fresh-start).
+the QM-side glue with the v0.5.0 factory signature build_backend(cfg, setup).
 """
 
 from __future__ import annotations
@@ -17,10 +16,15 @@ REPO = Path(__file__).resolve().parents[1]
 
 
 def _env(tmp_path: Path) -> dict:
+    data_root = tmp_path / "data"
+    (data_root / "simdev").mkdir(parents=True)
+    (data_root / "simdev" / "cooldowns.toml").write_text(
+        '[cd1]\nstart = 2026-07-01\n[[cd1.setup]]\nsince = 2026-07-01\nbackend = "simulated"\n',
+        encoding="utf-8",
+    )
     config = tmp_path / "config.toml"
     config.write_text(
-        f"[lab]\nbackend = \"simulated\"\ndata_root = '{(tmp_path / 'data').as_posix()}'\n",
-        encoding="utf-8",
+        f"[lab]\ndevice = \"simdev\"\ndata_root = '{data_root.as_posix()}'\n", encoding="utf-8"
     )
     return {**os.environ, "SCQO_CONFIG": str(config), "SCQO_USER_CONFIG": "none"}
 
@@ -45,22 +49,30 @@ def test_regenerated_stub_help(tmp_path):
     assert "frequency_span_hz" in proc.stdout  # schema epilog through scqo.cli
 
 
-def test_backend_entry_point_resolves_and_pull_guard_fires(tmp_path, monkeypatch):
-    """The qm factory loads (vendor-free import) and the state-authority guard now
-    fires BEFORE any QUAM state is touched — no hardware or state file needed."""
+def test_backend_entry_point_resolves_and_guards_fire(tmp_path):
+    """The qm factory loads (vendor-free import); the pull-guard fires BEFORE any
+    QUAM state is touched; missing canonical files are named — no hardware needed."""
     from importlib.metadata import entry_points
 
     import pytest
 
-    from scqo import load_lab_config
+    from scqo.labconfig import LabConfig
 
     eps = {ep.name: ep for ep in entry_points(group="scqo.backends")}
     assert "qm" in eps, "reinstall the editable (uv pip install -e . --no-deps) to register entry points"
     factory = eps["qm"].load()
 
-    monkeypatch.setenv("SCQO_USER_CONFIG", "none")  # hermetic: no real ~/.scqo/user.toml
-    config = tmp_path / "config.toml"
-    config.write_text('[lab]\nbackend = "qm"\nstate_sync = "push"\n', encoding="utf-8")
-    cfg = load_lab_config(str(config))
+    empty = tmp_path / "empty"
+    empty.mkdir()
+    setup = {"since": "2026-07-01", "backend": "qm", "instrument_config": str(empty)}
+
+    push_cfg = LabConfig(state_sync="push")
     with pytest.raises(SystemExit, match="pull"):
-        factory(cfg)
+        factory(push_cfg, setup)  # state-authority guard, before any file access
+
+    pull_cfg = LabConfig(state_sync="pull")
+    with pytest.raises(SystemExit, match="state.json"):
+        factory(pull_cfg, setup)  # canonical QUAM files required in the folder
+
+    with pytest.raises(SystemExit, match="qm"):
+        factory(pull_cfg, {"backend": "qblox"})  # wrong family refused

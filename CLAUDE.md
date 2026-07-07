@@ -71,18 +71,23 @@ the vendor wins at startup, scqo loads only its change history, and pushes only 
 measures. The migration finish line is flipping this device to `"push"` — do that only when no
 qualibrate node writes QUAM anymore. (`customized/scqo/backend_factory.py` enforces
 this — the guard fires before any QUAM state is loaded.)
-**Which QUAM state loads** is decided by the scqo lab config alone: `[qm] state_dir` applies to
-BOTH `qm_sim` and real `qm` (PR #16, v0.1.2) — never rely on `~/.qualibrate` resolution for scqo
-sessions; keep qualibrate's own `[quam] state_path` pointed at the same folder on machines that
-run both stacks.
+**Which QUAM state loads** is decided by the device's cooldown setup alone (scqo v0.5.0): the
+`instrument_config` folder of the current `[[<cycle>.setup]]` block must hold `state.json` +
+`wiring.json` under exactly those canonical names (the old `[qm] state_dir` config key is retired
+and no longer read) — never rely on `~/.qualibrate` resolution for scqo sessions; keep
+qualibrate's own `[quam] state_path` pointed at the same folder on machines that run both stacks.
 
 ### scqo student surface (the `scqo` command; scripts are compat wrappers)
 Since scqo v0.4.0 the Tier-1 engine lives in `scqo/cli` — students use the **`scqo`
-command** (`run/calibrate/find/tag/device/devices/cooldown/sample`) from any directory
-in `.venv-qm`. This repo contributes `customized/scqo/backend_factory.py`, registered
-under the `scqo.backends` entry-point group (name `qm`): builds the `qm` / `qm_sim`
-Backend, honors `[qm] state_dir` as the single QUAM-state authority, and fires the
-`state_sync="pull"` guard BEFORE any QUAM state is touched. `scripts/` holds ≤10-line
+command** (`run/calibrate/find/tag/device/devices/cooldown/sample/doctor`) from any
+directory in `.venv-qm`; they select a sample (`device` in `~/.scqo/user.toml`), and
+the device's cooldown setup names this backend. This repo contributes
+`customized/scqo/backend_factory.py`, registered under the `scqo.backends`
+entry-point group (name `qm`): `build_backend(cfg, setup)` (scqo v0.5.0) fires the
+`state_sync="pull"` guard BEFORE any QUAM state is touched, then loads the setup's
+`instrument_config` folder (canonical names `state.json` + `wiring.json` — the single
+QUAM-state authority; loud SystemExit when missing). The `qm_sim` twin mode was
+retired with v0.5.0 (`simulated` is the practice mode). `scripts/` holds ≤10-line
 backward-compat wrappers (+ per-repo `check_real_config.py`) and the auto-generated
 `experiments/<name>.py` launchers (regenerate: `scqo sync-launchers` or
 `python scripts/experiments/_sync.py` in this venv). NOTE: the built-in simulated demo
