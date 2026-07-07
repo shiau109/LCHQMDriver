@@ -80,7 +80,8 @@ run both stacks.
 Session; forces `state_sync="pull"` on QM), `_cli.py`, `run_experiment.py`, `calibrate.py`
 (standard sequence), `find_runs.py` (incl. `--cooldown`), `tag_run.py`, `device.py`
 (history shows `by=<operator>`), `devices.py` (Tier-1 backend/sample menu, no instrument),
-`cooldown.py` (cycle registry: validate/start/end), `check_real_config.py`
+`cooldown.py` (cycle registry: validate/start/end), `sample.py` (add-a-sample
+scaffold: paste-ready snippets, edits nothing shared), `check_real_config.py`
 (self-test vs a real `state.json`/`wiring.json` on temp copies, run in `.venv-qm`), plus
 `experiments/<name>.py` (one auto-generated launcher per cataloged experiment; regenerate with
 `experiments/_sync.py`) — all reading `~/.scqo/config.toml` + the per-user `~/.scqo/user.toml` overlay
