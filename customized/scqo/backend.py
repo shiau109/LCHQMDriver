@@ -74,9 +74,9 @@ class QMDeviceModel(DeviceModel):
     """Wraps a QUAM machine (`Quam`).
 
     ``state_dir``: explicit save target. Set it whenever the machine was loaded from a
-    non-default location (e.g. the qm_sim virtual-twin working copy) — a bare
+    non-default location (e.g. the setup's ``instrument_config`` folder) — a bare
     ``machine.save()`` writes to QUAM's configured default (the live ``quam_state/``),
-    which must never be the target of simulated runs.
+    which may not be the folder this session's state actually lives in.
     """
 
     def __init__(self, machine: Any, state_dir: str | None = None) -> None:

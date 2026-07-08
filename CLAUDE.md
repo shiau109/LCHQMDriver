@@ -35,7 +35,7 @@ LCH nodes are being refactored so qualibrate is a thin shell, not the architectu
 
 | Folder | Side | May import |
 |---|---|---|
-| `customized/probes/<name>.py` | acquisition: params in → `xr.Dataset` out. Called by BOTH the qualibrate shell today and the scqo `QMBackend` (planned). | qm.qua, quam, qualang_tools, `qualibration_libs.core`/`.data`. **NEVER** qualibrate, scqo, or scqat — probes acquire, they never fit. |
+| `customized/probes/<name>.py` | acquisition: params in → `xr.Dataset` out. Called by BOTH the qualibrate shell and the scqo `QMBackend` (`customized/scqo/`, live since v0.1.x). | qm.qua, quam, qualang_tools, `qualibration_libs.core`/`.data`. **NEVER** qualibrate, scqo, or scqat — probes acquire, they never fit. |
 | `customized/node/LCH_<name>/` | the qualibrate node: `parameters.py` (GUI schema), `analysis.py` (scqat estimate adapter), `update.py` (pure `compute_update` + `apply_update` state-update policy). | qualibrate, vendored official params, scqat (lazy, inside `fit`). |
 | `calibrations/LCH_<name>.py` | qualibrate shell: `@node.run_action` glue (~3–10 lines each) unpacking `node.parameters` into probe/analysis/update calls. | everything. |
 
@@ -48,8 +48,9 @@ must stay framework-free, while analysis/update are qualibrate-path adapters. ("
 canonical vocabulary and avoids colliding with scqo's `Experiment`.)
 
 **Two orchestration paths, one estimator implementation:**
-- **scqo-driven** (planned): scqo `Session` owns the probe→estimate→update lifecycle, data saving, and
-  run history; it calls `customized/probes/<name>.py` and runs the scqat estimator itself.
+- **scqo-driven** (live, migrated experiments only): scqo `Session` owns the probe→estimate→update
+  lifecycle, data saving, and run history; it calls `customized/probes/<name>.py` and runs the scqat
+  estimator itself.
 - **QM-only** (today): qualibrate owns orchestration, saving, GUI approval; the LCH node calls its own
   `customized/node/LCH_<name>/{analysis,update}`. Vendored **official** nodes keep QM's built-in
   analysis and never run under scqo.

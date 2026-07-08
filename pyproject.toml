@@ -39,9 +39,10 @@ scqo = ["scqo"]
 [project.entry-points."scqo.experiments"]
 lchqm = "customized.scqo.experiments"
 
-# Advertise the QM BACKEND factory to the scqo CLI: `backend = "qm"`/"qm_sim" in the
-# lab config resolves to this (needs scqo >= 0.4.0; re-run `uv pip install -e` after
-# adding — entry points register at install time, not import time).
+# Advertise the QM BACKEND factory to the scqo CLI: a device whose current cooldown
+# setup says `backend = "qm"` resolves to this build_backend(cfg, setup) (scqo >=
+# 0.5.0; re-run `uv pip install -e` after adding — entry points register at install
+# time, not import time).
 [project.entry-points."scqo.backends"]
 qm = "customized.scqo.backend_factory:build_backend"
 
