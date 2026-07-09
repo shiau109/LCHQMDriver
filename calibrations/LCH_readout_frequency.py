@@ -35,7 +35,7 @@ node = QualibrationNode[Parameters, Quam](
 @node.run_action(skip_if=node.modes.external)
 def custom_param(node: QualibrationNode[Parameters, Quam]):
     # You can get type hinting in your IDE by typing node.parameters.
-    node.parameters.qubits = ["q3", "q4", "q5"]
+    node.parameters.qubits = ["q1"]
     node.parameters.num_shots = 4000
     node.parameters.multiplexed = True
     node.parameters.start_freq_in_mhz = -2
