@@ -3,7 +3,7 @@ import numpy as np
 
 from qualibrate import QualibrationNode
 from quam_config import Quam
-from customized.node.LCH_qc_N_swap import Parameters, analysis
+from customized.node.LCH_qc_N_swap import Parameters, analysis, plotting
 from qualibration_libs.parameters import get_qubits
 from qualibration_libs.runtime import simulate_and_plot
 
@@ -16,18 +16,18 @@ description = """
 Exercises a coherent swap chain. Each shot prepares an excitation on the swap pair's
 control qubit (x180), then applies a SWAP on the qubit pair (`swap_pair.macros[swap_operation]`)
 N times. The number of swaps N is swept, and the selected `qubits` (the measured set) are
-read out at the end, giving one population-vs-N curve per measured qubit (N=0 is the no-swap
-baseline). With a coherent iSWAP, population is exchanged back and forth between the pair
-swap by swap.
+read out at the end (N=0 is the no-swap baseline). With a coherent iSWAP, population is
+exchanged back and forth between the pair swap by swap.
 
-The swap macro is invoked bare (`.apply()` with no extra args), so the chosen macro must be
-callable that way (its amplitudes/pulses baked into the QUAM macro definition). Analysis fits
-each measured qubit's population-vs-N curve with a cosine (scqat SwapOscillationEstimator),
-extracting the swap-oscillation frequency f (cycles per swap) and swap_period = 1/f; the
-outcome is gated on fit success. There is still no state writeback.
+With state discrimination the probe keeps the per-shot states, and the node plots the joint
+multi-qubit populations (000, 001, ... one line per state vs N) when `multiplexed`, else each
+measured qubit's marginal P(excited). The swap macro is invoked bare (`.apply()` with no extra
+args), so the chosen macro must be callable that way (its amplitudes/pulses baked into the
+QUAM macro definition). Analysis is intentionally an empty estimator: no fit and no state
+writeback; the plot is for visual inspection.
 
 This node is a thin qualibrate shell: the acquisition probe lives in
-`customized.probes.qc_N_swap`; the estimate adapter lives in
+`customized.probes.qc_N_swap`; the (no-op) estimate adapter and the plot live in
 `customized.node.LCH_qc_N_swap`.
 """
 
@@ -53,6 +53,8 @@ def custom_param(node: QualibrationNode[Parameters, Quam]):
     node.parameters.rounds_step = 1
     node.parameters.simulate = False
     node.parameters.num_shots = 1000
+    # multiplexed=True -> joint state populations (000, 001, ...); False -> per-qubit marginals.
+    node.parameters.multiplexed = True
     # operation_gap_ns idles the pair's flux lines between swaps so each swap's flux
     # can settle before the next one fires (0 = no gap).
     node.parameters.operation_gap_ns = 16
@@ -129,21 +131,27 @@ def load_data(node: QualibrationNode[Parameters, Quam]):
 # %% {Analyse_data}
 @node.run_action(skip_if=node.parameters.simulate)
 def analyse_data(node: QualibrationNode[Parameters, Quam]):
-    """estimate: fit each measured qubit's swap oscillation with scqat (via the core)."""
-    node.results["fit_results"], node.results["figures"] = analysis.fit(
+    """estimate (no-op) + render the population-vs-N curves (one line per joint state)."""
+    node.results["fit_results"] = analysis.estimate(
         node.results["ds_raw"],
         use_state_discrimination=node.parameters.use_state_discrimination,
     )
+    node.results["figures"] = plotting.plot_rounds_1d(
+        node.results["ds_raw"],
+        node.namespace["qubits"],
+        use_state_discrimination=node.parameters.use_state_discrimination,
+        multiplexed=node.parameters.multiplexed,
+    )
     node.outcomes = {
-        qubit_name: ("successful" if fit_result["success"] else "failed")
-        for qubit_name, fit_result in node.results["fit_results"].items()
+        q.name: ("successful" if node.results["fit_results"][q.name]["success"] else "failed")
+        for q in node.namespace["qubits"]
     }
 
 
 # %% {Plot_data}
 @node.run_action(skip_if=node.parameters.simulate)
 def plot_data(node: QualibrationNode[Parameters, Quam]):
-    """Figures are produced by the scqat estimator in analyse_data."""
+    """Figures are produced in analyse_data."""
     pass
 
 

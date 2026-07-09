@@ -5,7 +5,8 @@ Exercises a coherent swap chain. Each shot prepares an excitation on the swap pa
 control qubit (`x180`), then applies a SWAP on the qubit pair N times. The number of
 swaps N is the swept axis, so reading out a chosen set of qubits versus N shows the
 population exchanged back and forth between the pair swap by swap (N=0 is the no-swap
-baseline: just the x180 prep). One curve per measured qubit.
+baseline: just the x180 prep). One line per joint state of the measured set (000, 001,
+...), or a per-qubit marginal when `multiplexed` is off.
 
 Circuit per shot (for a swept swap count N):
   1. Initialize every involved qubit with `q.reset(reset_type, simulate)`
@@ -22,9 +23,10 @@ must be callable that way - its amplitudes/pulses baked into the QUAM macro defi
 needs `ctrl_amp`/`cplr_amp`) needs a default-carrying variant before it can be used here
 as `swap_operation`.
 
-Downstream, the node fits each population-vs-N curve with a cosine (scqat
-SwapOscillationEstimator) to extract the swap-oscillation frequency; there is no state
-writeback.
+With state discrimination the probe saves the **per-shot** discriminated states (var
+`state`, dims `(qubit, shot, round)`) so the node can render the joint multi-qubit
+populations (000, 001, ... one line per state vs N) or the per-qubit marginals; without it
+the shot-averaged raw I/Q is saved instead. There is no fit and no state writeback.
 """
 
 from typing import Callable, List, Optional
@@ -90,12 +92,24 @@ def build_program(
 
     involved = _dedup_involved(measure_qubits, swap_pair)
 
-    sweep_axes = {
-        "qubit": xr.DataArray([q.name for q in measure_qubits]),
-        "round": xr.DataArray(
-            rounds_array, attrs={"long_name": "number of swaps"}
-        ),
-    }
+    # With state discrimination we save the per-shot discriminated states (so the joint
+    # multi-qubit populations can be reconstructed downstream), hence the extra `shot` axis.
+    # Without it we keep the shot-averaged raw I/Q schema (no `shot` axis).
+    if use_state_discrimination:
+        sweep_axes = {
+            "qubit": xr.DataArray([q.name for q in measure_qubits]),
+            "shot": xr.DataArray(np.arange(num_shots)),
+            "round": xr.DataArray(
+                rounds_array, attrs={"long_name": "number of swaps"}
+            ),
+        }
+    else:
+        sweep_axes = {
+            "qubit": xr.DataArray([q.name for q in measure_qubits]),
+            "round": xr.DataArray(
+                rounds_array, attrs={"long_name": "number of swaps"}
+            ),
+        }
 
     with program() as prog:
         # Macro to declare I, Q, n and their respective streams for the measured qubits.
@@ -148,7 +162,9 @@ def build_program(
             n_st.save("n")
             for i in range(num_qubits):
                 if use_state_discrimination:
-                    state_st[i].buffer(len(rounds_array)).average().save(f"state{i + 1}")
+                    # Keep every shot (no average) so the joint populations stay reconstructable:
+                    # inner `round` buffer first, then group `num_shots` of them -> (shot, round).
+                    state_st[i].buffer(len(rounds_array)).buffer(num_shots).save(f"state{i + 1}")
                 else:
                     I_st[i].buffer(len(rounds_array)).average().save(f"I{i + 1}")
                     Q_st[i].buffer(len(rounds_array)).average().save(f"Q{i + 1}")

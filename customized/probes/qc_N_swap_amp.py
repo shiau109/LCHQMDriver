@@ -17,11 +17,13 @@ Circuit per shot (for a swept amplitude a and swap count N):
      pair's flux lines for `operation_gap_ns` (if nonzero).
   4. Read out every measured qubit (state discrimination -> discriminated state, else raw I/Q).
 
-Reading the measured qubits versus (amplitude, N) gives one 2D population map per qubit:
-a swap-amplitude fine-tuning map by error amplification (more swaps amplify a small
-amplitude miscalibration). Downstream, the node fits each qubit's population-vs-N curve
-at every amplitude with a cosine (scqat SwapOscillationEstimator), giving the
-swap-oscillation frequency versus amplitude; there is no state writeback.
+Reading the measured qubits versus (amplitude, N) gives a 2D population map per joint state
+(a swap-amplitude fine-tuning map by error amplification: more swaps amplify a small
+amplitude miscalibration). With state discrimination the probe saves the **per-shot**
+discriminated states (var `state`, dims `(qubit, shot, qubit_amplitude, round)`) so the node
+can render the joint multi-qubit populations (one 2D map per state) or the per-qubit
+marginals; without it the shot-averaged raw I/Q is saved instead. There is no fit and no
+state writeback.
 
 The chosen macro must expose a string `flux_pulse` playable on the control qubit's z
 line and accept `apply(ctrl_amp=...)` (e.g. the lab `ISwapImplementation`); its stored
@@ -142,15 +144,30 @@ def build_program(
             f"Reduce the amplitude range or raise the stored pulse amplitude."
         )
 
-    sweep_axes = {
-        "qubit": xr.DataArray([q.name for q in measure_qubits]),
-        # Outer loop -> y axis.
-        "qubit_amplitude": xr.DataArray(
-            qubit_amplitudes, attrs={"long_name": "control qubit flux amplitude", "units": "V"}
-        ),
-        # Inner loop -> x axis.
-        "round": xr.DataArray(rounds_array, attrs={"long_name": "number of swaps"}),
-    }
+    # With state discrimination we save the per-shot discriminated states (so the joint
+    # multi-qubit populations can be reconstructed downstream), hence the extra `shot` axis.
+    # Without it we keep the shot-averaged raw I/Q schema (no `shot` axis).
+    if use_state_discrimination:
+        sweep_axes = {
+            "qubit": xr.DataArray([q.name for q in measure_qubits]),
+            "shot": xr.DataArray(np.arange(num_shots)),
+            # Outer loop -> y axis.
+            "qubit_amplitude": xr.DataArray(
+                qubit_amplitudes, attrs={"long_name": "control qubit flux amplitude", "units": "V"}
+            ),
+            # Inner loop -> x axis.
+            "round": xr.DataArray(rounds_array, attrs={"long_name": "number of swaps"}),
+        }
+    else:
+        sweep_axes = {
+            "qubit": xr.DataArray([q.name for q in measure_qubits]),
+            # Outer loop -> y axis.
+            "qubit_amplitude": xr.DataArray(
+                qubit_amplitudes, attrs={"long_name": "control qubit flux amplitude", "units": "V"}
+            ),
+            # Inner loop -> x axis.
+            "round": xr.DataArray(rounds_array, attrs={"long_name": "number of swaps"}),
+        }
 
     with program() as prog:
         # Macro to declare I, Q, n and their respective streams for the measured qubits.
@@ -207,9 +224,11 @@ def build_program(
         with stream_processing():
             n_st.save("n")
             for i in range(num_qubits):
-                # Inner buffer = swap count (x), outer buffer = qubit amplitude (y).
+                # Inner buffer = swap count (x), next buffer = qubit amplitude (y).
                 if use_state_discrimination:
-                    state_st[i].buffer(len(rounds_array)).buffer(len(qubit_amplitudes)).average().save(f"state{i + 1}")
+                    # Keep every shot (no average) so the joint populations stay reconstructable:
+                    # round buffer, then qubit_amplitude, then group num_shots -> (shot, qubit_amplitude, round).
+                    state_st[i].buffer(len(rounds_array)).buffer(len(qubit_amplitudes)).buffer(num_shots).save(f"state{i + 1}")
                 else:
                     I_st[i].buffer(len(rounds_array)).buffer(len(qubit_amplitudes)).average().save(f"I{i + 1}")
                     Q_st[i].buffer(len(rounds_array)).buffer(len(qubit_amplitudes)).average().save(f"Q{i + 1}")

@@ -3,7 +3,7 @@ import numpy as np
 
 from qualibrate import QualibrationNode
 from quam_config import Quam
-from customized.node.LCH_qc_N_swap_amp import Parameters, analysis
+from customized.node.LCH_qc_N_swap_amp import Parameters, analysis, plotting
 from qualibration_libs.parameters import get_qubits
 from qualibration_libs.runtime import simulate_and_plot
 
@@ -20,18 +20,17 @@ excitation on the swap pair's control qubit (x180), then applies the SWAP
 (`swap_pair.macros[swap_operation].apply(ctrl_amp=a)`) N times, every swap at the swept
 amplitude a in ABSOLUTE VOLTS (the macro rescales its z flux pulse; the coupler plays
 bare at its baked amplitude). The selected `qubits` (the measured set) are read out at
-the end, giving one 2D population map (N x amplitude) per measured qubit -- a
-swap-amplitude fine-tuning map by error amplification (N=0 is the no-swap baseline).
+the end (N=0 is the no-swap baseline) -- a swap-amplitude fine-tuning map by error
+amplification.
 
-Analysis fits each qubit's population-vs-N curve at EVERY amplitude with a cosine (scqat
-SwapOscillationEstimator), extracting the swap-oscillation frequency f (cycles per swap)
-and contrast versus amplitude; `best_amplitude` (the successful row with the largest
-contrast -- the resonance indicator, since a detuned swap oscillates faster but
-shallower) is reported for inspection only. The outcome is gated on at least one row
-fitting; there is still no state writeback.
+With state discrimination the probe keeps the per-shot states, and the node plots one 2D
+population map per joint multi-qubit state (000, 001, ... population vs N x amplitude) when
+`multiplexed`, else one map per measured qubit's marginal P(excited). Analysis is
+intentionally an empty estimator: no fit and no state writeback; the maps are for visual
+inspection.
 
 This node is a thin qualibrate shell: the acquisition probe lives in
-`customized.probes.qc_N_swap_amp`; the estimate adapter and plot live in
+`customized.probes.qc_N_swap_amp`; the (no-op) estimate adapter and the plot live in
 `customized.node.LCH_qc_N_swap_amp`.
 """
 
@@ -61,6 +60,8 @@ def custom_param(node: QualibrationNode[Parameters, Quam]):
     node.parameters.simulate = False
     node.parameters.num_shots = 100
     node.parameters.use_state_discrimination = True
+    # multiplexed=True -> one 2D map per joint state (000, 001, ...); False -> per-qubit marginals.
+    node.parameters.multiplexed = True
     # operation_gap_ns idles the pair's flux lines between swaps so each swap's flux
     # can settle before the next one fires (0 = no gap).
     node.parameters.operation_gap_ns = 16
@@ -140,21 +141,27 @@ def load_data(node: QualibrationNode[Parameters, Quam]):
 # %% {Analyse_data}
 @node.run_action(skip_if=node.parameters.simulate)
 def analyse_data(node: QualibrationNode[Parameters, Quam]):
-    """estimate: fit each qubit's swap oscillation at every amplitude with scqat (via the core)."""
-    node.results["fit_results"], node.results["figures"] = analysis.fit(
+    """estimate (no-op) + render one 2D population map per joint state (N x amplitude)."""
+    node.results["fit_results"] = analysis.estimate(
         node.results["ds_raw"],
         use_state_discrimination=node.parameters.use_state_discrimination,
     )
+    node.results["figures"] = plotting.plot_amp_state_maps(
+        node.results["ds_raw"],
+        node.namespace["qubits"],
+        use_state_discrimination=node.parameters.use_state_discrimination,
+        multiplexed=node.parameters.multiplexed,
+    )
     node.outcomes = {
-        qubit_name: ("successful" if fit_result["success"] else "failed")
-        for qubit_name, fit_result in node.results["fit_results"].items()
+        q.name: ("successful" if node.results["fit_results"][q.name]["success"] else "failed")
+        for q in node.namespace["qubits"]
     }
 
 
 # %% {Plot_data}
 @node.run_action(skip_if=node.parameters.simulate)
 def plot_data(node: QualibrationNode[Parameters, Quam]):
-    """Figures are produced by the scqat-based adapter in analyse_data."""
+    """Figures are produced in analyse_data."""
     pass
 
 
