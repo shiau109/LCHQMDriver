@@ -1,7 +1,9 @@
-"""Backward-compat surface: the scripts/ wrappers + the qm backend entry point.
+"""Driver-side scqo glue: the `scqo` CLI works in THIS venv + the qm factory.
 
 The real CLI coverage lives in SCQO/tests (test_cli_*.py); this smoke test proves
-the QM-side glue with the v0.5.0 factory signature build_backend(cfg, setup).
+the QM-side glue with build_backend(cfg, setup) — the setup is a v0.7.0 NAMED
+record (backend + instrument_config + note). The v0.4-era scripts/ wrapper layer
+and the launcher stubs were retired in v0.7.0.
 """
 
 from __future__ import annotations
@@ -19,7 +21,7 @@ def _env(tmp_path: Path) -> dict:
     data_root = tmp_path / "data"
     (data_root / "simdev").mkdir(parents=True)
     (data_root / "simdev" / "cooldowns.toml").write_text(
-        '[cd1]\nstart = 2026-07-01\n[[cd1.setup]]\nsince = 2026-07-01\nbackend = "simulated"\n',
+        '[cd1]\nstart = 2026-07-01\n[cd1.setup.practice]\nbackend = "simulated"\n',
         encoding="utf-8",
     )
     config = tmp_path / "config.toml"
@@ -29,24 +31,14 @@ def _env(tmp_path: Path) -> dict:
     return {**os.environ, "SCQO_CONFIG": str(config), "SCQO_USER_CONFIG": "none"}
 
 
-def test_wrapper_runs_end_to_end(tmp_path):
+def test_scqo_run_end_to_end(tmp_path):
     proc = subprocess.run(
-        [sys.executable, str(REPO / "scripts" / "run_experiment.py"),
-         "resonator_spectroscopy", "--qubits", "q0"],
+        [sys.executable, "-m", "scqo.cli", "run", "resonator_spectroscopy", "--qubits", "q0"],
         capture_output=True, text=True, env=_env(tmp_path), cwd=REPO,
     )
     assert proc.returncode == 0, proc.stderr
     result = json.loads(proc.stdout.split("\nsaved:")[0])
     assert result["outcomes"] == {"q0": "successful"}
-
-
-def test_regenerated_stub_help(tmp_path):
-    proc = subprocess.run(
-        [sys.executable, str(REPO / "scripts" / "experiments" / "resonator_spectroscopy.py"), "--help"],
-        capture_output=True, text=True, env=_env(tmp_path), cwd=REPO,
-    )
-    assert proc.returncode == 0, proc.stderr
-    assert "frequency_span_hz" in proc.stdout  # schema epilog through scqo.cli
 
 
 def test_backend_entry_point_resolves_and_guards_fire(tmp_path):
@@ -64,7 +56,7 @@ def test_backend_entry_point_resolves_and_guards_fire(tmp_path):
 
     empty = tmp_path / "empty"
     empty.mkdir()
-    setup = {"since": "2026-07-01", "backend": "qm", "instrument_config": str(empty)}
+    setup = {"backend": "qm", "instrument_config": str(empty)}
 
     push_cfg = LabConfig(state_sync="push")
     with pytest.raises(SystemExit, match="pull"):

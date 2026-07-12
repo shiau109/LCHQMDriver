@@ -72,27 +72,34 @@ the vendor wins at startup, scqo loads only its change history, and pushes only 
 measures. The migration finish line is flipping this device to `"push"` — do that only when no
 qualibrate node writes QUAM anymore. (`customized/scqo/backend_factory.py` enforces
 this — the guard fires before any QUAM state is loaded.)
-**Which QUAM state loads** is decided by the device's cooldown setup alone (scqo v0.5.0): the
-`instrument_config` folder of the current `[[<cycle>.setup]]` block must hold `state.json` +
+**Which QUAM state loads** is decided by the device's cooldown setup alone (scqo v0.7.0): the
+`instrument_config` folder of the SELECTED `[<cycle>.setup.<name>]` block (users pick one with
+`scqo user --setup <name>`; a single-setup cycle auto-selects) must hold `state.json` +
 `wiring.json` under exactly those canonical names (the old `[qm] state_dir` config key is retired
 and no longer read) — never rely on `~/.qualibrate` resolution for scqo sessions; keep
 qualibrate's own `[quam] state_path` pointed at the same folder on machines that run both stacks.
 
 ### scqo student surface (the `scqo` command; scripts are compat wrappers)
 Since scqo v0.4.0 the Tier-1 engine lives in `scqo/cli` — students use the **`scqo`
-command** (`run/calibrate/find/tag/device/devices/cooldown/sample/doctor`) from any
-directory in `.venv-qm`; they select a sample (`device` in `~/.scqo/user.toml`), and
-the device's cooldown setup names this backend. This repo contributes
+command** (`run/calibrate/find/accept/tag/state/user/device/doctor`; scqo v0.7.0
+renamed the old state view `device` -> `state` and folded `devices`/`cooldown`/
+`sample` into the admin group `device`) from any directory in `.venv-qm`; they select
+a sample and setup with `scqo user --device <name> [--setup <name>]` (written to
+`~/.scqo/user.toml`), and the SELECTED named setup of the device's ACTIVE cooldown
+cycle names this backend. This repo contributes
 `customized/scqo/backend_factory.py`, registered under the `scqo.backends`
-entry-point group (name `qm`): `build_backend(cfg, setup)` (scqo v0.5.0) fires the
+entry-point group (name `qm`): `build_backend(cfg, setup)` fires the
 `state_sync="pull"` guard BEFORE any QUAM state is touched, then loads the setup's
 `instrument_config` folder (canonical names `state.json` + `wiring.json` — the single
 QUAM-state authority; loud SystemExit when missing). The `qm_sim` twin mode was
-retired with v0.5.0 (`simulated` is the practice mode). `scripts/` holds ≤10-line
-backward-compat wrappers (+ per-repo `check_real_config.py`) and the auto-generated
-`experiments/<name>.py` launchers (regenerate: `scqo sync-launchers` or
-`python scripts/experiments/_sync.py` in this venv). NOTE: the built-in simulated demo
-device is now q0/q1 (this repo's old q1/q2 demo names retired, fresh-start). Only the
+retired with v0.5.0 (`simulated` is the practice mode). `scripts/` holds ONLY the
+per-repo `check_real_config.py` — the whole v0.4-era wrapper layer (command
+wrappers, `_lab`/`_cli` shims, auto-generated `experiments/<name>.py` launcher
+stubs and scqo's `sync-launchers` subcommand) was fully RETIRED in v0.7.0;
+`scqo run <name>` is the one way to run an experiment (never add wrappers or
+per-command stubs again; tests/test_wrappers.py became tests/test_scqo_glue.py).
+NOTE: the built-in simulated
+demo device is q0/q1 (this repo's old q1/q2 demo names retired, fresh-start). Only the
 migrated experiments run here; all other calibrations still run through the qualibrate
 GUI, whose own archive stays as-is (legacy, frozen; do not merge).
 

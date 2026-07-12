@@ -1,12 +1,13 @@
 """QM backend factory for the scqo CLI (entry-point group ``scqo.backends``, name ``qm``).
 
-Since scqo v0.5.0 the factory receives the device's current SETUP (the era record
-from its cooldown registry): ``setup["instrument_config"]`` is the folder holding the
-QUAM files under canonical names — ``state.json`` + ``wiring.json``. That folder is
-the single QUAM-state authority for this device's era (quam's own resolution via
-~/.qualibrate or QUAM_STATE_PATH is deliberately bypassed). Vendor imports stay
-INSIDE the function so loading this module is cheap and vendor-free. (The
-virtual-twin ``qm_sim`` mode was retired with v0.5.0.)
+The factory receives the device's SELECTED named setup record from its cooldown
+registry (scqo v0.7.0: ``[<cycle>.setup.<name>]`` — backend + instrument_config +
+note): ``setup["instrument_config"]`` is the folder holding the QUAM files under
+canonical names — ``state.json`` + ``wiring.json``. That folder is the single
+QUAM-state authority for this device's setup (quam's own resolution via ~/.qualibrate
+or QUAM_STATE_PATH is deliberately bypassed). Vendor imports stay INSIDE the function
+so loading this module is cheap and vendor-free. (The virtual-twin ``qm_sim`` mode
+was retired with v0.5.0.)
 """
 
 from __future__ import annotations
@@ -32,7 +33,7 @@ def build_backend(cfg: LabConfig, setup: dict) -> Backend:
     missing = [n for n in ("state.json", "wiring.json") if not (folder / n).is_file()]
     if missing:
         raise SystemExit(
-            f"qm setup (since {setup.get('since')}): {', '.join(missing)} not found in {folder} — "
+            f"qm setup: {', '.join(missing)} not found in {folder} — "
             "canonical QUAM filenames required"
         )
     from customized.scqo.backend import QMBackend

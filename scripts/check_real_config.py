@@ -38,7 +38,7 @@ def main() -> int:
     shutil.copy(source / "wiring.json", work / "wiring.json")
     print(f"sandbox: {work}")
     print("  (temporary self-test copies + throwaway run data: your originals and your")
-    print("   real data_root are NOT touched; real measurements use run_experiment.py)")
+    print("   real data_root are NOT touched; real measurements use `scqo run`)")
 
     try:
         from quam_config import Quam
