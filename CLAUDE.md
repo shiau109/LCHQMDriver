@@ -81,7 +81,7 @@ qualibrate's own `[quam] state_path` pointed at the same folder on machines that
 
 ### scqo student surface (the `scqo` command; scripts are compat wrappers)
 Since scqo v0.4.0 the Tier-1 engine lives in `scqo/cli` — students use the **`scqo`
-command** (`run/calibrate/find/accept/tag/state/user/device/doctor`; scqo v0.7.0
+command** (`run/find/accept/tag/state/user/device/doctor`; scqo v0.7.0
 renamed the old state view `device` -> `state` and folded `devices`/`cooldown`/
 `sample` into the admin group `device`) from any directory in `.venv-qm`; they select
 a sample and setup with `scqo user --device <name> [--setup <name>]` (written to
