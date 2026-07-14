@@ -14,6 +14,8 @@ modules in customized/node/LCH_*/update.py:
 
 from __future__ import annotations
 
+import math
+import warnings
 from typing import TYPE_CHECKING, Any
 
 import xarray as xr
@@ -21,6 +23,12 @@ from scqo.backend import Backend
 from scqo.device import DeviceModel, QubitView
 
 from customized import quam_fields
+
+#: MW-FEM full-scale grid (dBm): -11..+16 in 3 dB steps (power_tools validates the
+#: same values; its docstring's "[-41,10]" range is stale).
+_FS_GRID_MIN, _FS_GRID_MAX, _FS_GRID_STEP = -11, 16, 3
+#: The canonical digital operating point: keep the readout amplitude <= 0.5 full scale.
+_CANONICAL_MAX_AMP = 0.5
 
 if TYPE_CHECKING:
     from scqo.experiment import Experiment
@@ -69,6 +77,49 @@ class QMQubitView(QubitView):
     def readout_amp(self, value: float) -> None:
         quam_fields.set_readout_amp(self._q, value)
 
+    # readout_power_dbm lives HERE (not in quam_fields): the chain solve needs
+    # quam_builder.tools.power_tools, whose module top imports quam — quam_fields is
+    # contractually pure (stub-testable without an instrument). backend.py already
+    # owns the lazy-vendor-import pattern, so the import stays inside the accessors.
+    @property
+    def readout_power_dbm(self) -> float:
+        from quam_builder.tools.power_tools import get_output_power_mw_channel
+
+        amp = self._q.resonator.operations[quam_fields.READOUT_OPERATION].amplitude
+        if not amp:  # None or 0 -> log10 domain error / -inf must never reach the config
+            raise ValueError(
+                f"{self.name}: readout amplitude is unset/zero — absolute power undefined"
+            )
+        return float(get_output_power_mw_channel(self._q.resonator, quam_fields.READOUT_OPERATION))
+
+    @readout_power_dbm.setter
+    def readout_power_dbm(self, value: float) -> None:
+        from quam_builder.tools.power_tools import set_output_power_mw_channel
+
+        target = float(value)
+        # Bidirectional full-scale selection: the SMALLEST grid value that keeps the
+        # amplitude <= 0.5 (it lands in (0.354, 0.5]). Chosen here — not by the bare
+        # helper, whose internal loop only ever bumps full-scale UP and would leave a
+        # tiny amplitude after a high-power era.
+        headroom = 20.0 * math.log10(2.0)  # amp 0.5 -> -6.02 dB below full scale
+        fs = _FS_GRID_MIN + _FS_GRID_STEP * math.ceil(
+            (target + headroom - _FS_GRID_MIN) / _FS_GRID_STEP
+        )
+        fs = min(_FS_GRID_MAX, max(_FS_GRID_MIN, fs))
+        amp_needed = 10.0 ** ((target - fs) / 20.0)
+        if amp_needed > _CANONICAL_MAX_AMP:  # only when fs is pinned at the grid top
+            warnings.warn(
+                f"{self.name}: hitting {target} dBm at full scale {fs} dBm needs "
+                f"amplitude {amp_needed:.3f} > {_CANONICAL_MAX_AMP} — above the "
+                f"canonical operating point"
+            )
+        # max_amplitude=1: the explicit full_scale_power_dbm already encodes the
+        # <=0.5 policy; the helper then just sets fs + the exact amplitude.
+        set_output_power_mw_channel(
+            self._q.resonator, target, quam_fields.READOUT_OPERATION,
+            full_scale_power_dbm=int(fs), max_amplitude=1,
+        )
+
 
 class QMDeviceModel(DeviceModel):
     """Wraps a QUAM machine (`Quam`).
@@ -100,16 +151,20 @@ class QMDeviceModel(DeviceModel):
             view = self.qubit(name)
             state[name] = {
                 field: _read_or_none(view, field)
-                for field in ("readout_freq", "drive_freq", "pi_amp", "readout_amp")
+                for field in ("readout_freq", "drive_freq", "pi_amp", "readout_amp",
+                              "readout_power_dbm")
             }
         return state
 
 
 def _read_or_none(view: QubitView, field: str) -> float | None:
-    """Read a neutral field, returning None if the underlying QUAM value is unset."""
+    """Read a neutral field, returning None if the underlying QUAM value is unset.
+
+    ValueError covers readout_power_dbm on a zero/unset readout amplitude (the
+    absolute power is undefined there, not zero)."""
     try:
         return getattr(view, field)
-    except (TypeError, AttributeError, KeyError):
+    except (TypeError, AttributeError, KeyError, ValueError):
         return None
 
 
@@ -141,6 +196,26 @@ class QMBackend(Backend):
     def machine(self) -> Any:
         """The underlying QUAM machine (read by the QM experiment probes)."""
         return self._machine
+
+    def power_context(self, qubits: list[str]) -> dict:
+        """Raw readout output-chain values per qubit (run-record provenance only)."""
+        from quam_builder.tools.power_tools import get_output_power_mw_channel
+
+        out: dict = {}
+        for name in qubits:
+            try:
+                q = self._machine.qubits[name]
+                ro = q.resonator.operations[quam_fields.READOUT_OPERATION]
+                out[name] = {
+                    "full_scale_power_dbm": q.resonator.opx_output.full_scale_power_dbm,
+                    "readout_amplitude": float(ro.amplitude),
+                    "readout_power_dbm": float(
+                        get_output_power_mw_channel(q.resonator, quam_fields.READOUT_OPERATION)
+                    ),
+                }
+            except Exception:  # provenance must never fail a run
+                out[name] = {}
+        return out
 
     def acquire(self, experiment: "Experiment") -> xr.Dataset:
         from customized.probes._lib import acquire as run_acquire
@@ -179,7 +254,7 @@ class QMBackend(Backend):
 
         2. Positional fallback: axes are renamed positionally to the scqo names
            (e.g. idle_time -> idle_time_ns, (detuning, power) -> (detuning_hz,
-           power_db)) — the fetcher preserves the probe's sweep_axes order, and the
+           power_dbm)) — the fetcher preserves the probe's sweep_axes order, and the
            wrapper guarantees that order matches `define_sweep`; sizes are asserted
            per axis.
 

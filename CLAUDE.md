@@ -103,6 +103,25 @@ demo device is q0/q1 (this repo's old q1/q2 demo names retired, fresh-start). On
 migrated experiments run here; all other calibrations still run through the qualibrate
 GUI, whose own archive stays as-is (legacy, frozen; do not merge).
 
+**scqo v0.8.0 (2026-07-13) — absolute readout power:** `QMQubitView.readout_power_dbm`
+maps to `full_scale_power_dbm` + the readout operation amplitude via
+`quam_builder.tools.power_tools` (imported LAZILY inside the property —
+`customized/quam_fields.py` stays pure/stub-testable; do not add power_tools there).
+The setter is BIDIRECTIONAL: it picks the smallest full-scale grid value (−11…+16
+by 3) keeping amplitude ≤ 0.5 and passes it as the explicit `full_scale_power_dbm=`
+arg (the bare helper only bumps full scale UP). `QMBackend.power_context(qubits)`
+stamps {full_scale_power_dbm, readout_amplitude, readout_power_dbm} into run
+records. New probe subclass `resonator_spectroscopy_power_chain` (renamed
+2026-07-14 from `_absolute`) is
+CHAIN-STEPPED: the core run() sweeps power with a PYTHON loop (fs is not
+FPGA-sweepable), re-solving full_scale+amplitude per point and acquiring one 1D
+scan per point — the probe literally reuses `customized/probes/
+resonator_spectroscopy.build_program` (incl. its depletion wait; the shared
+acquire regenerates the config per cycle) — no qualibrate/tracked_updates in the
+scqo path. The test fixture
+`machine` skips when the live `quam_state/` doesn't match the my_quam root-class
+toggle (e.g. flux-tunable pairs under a FixedFrequencyQuam root).
+
 ### Future repo split (decided, deferred)
 When node migration is (near) complete, `customized/` (probes + quam_fields + scqo backend) is
 extracted into a clean QM-backend repo symmetric with LCHQBDriver, and this repo (qualibrate
@@ -149,3 +168,26 @@ The following dependency packages are available in the workspace for reference. 
 5. **Flag critical dependencies.** When creating or modifying customized code, if any dependency (from `qm`, `quam`, `quam_builder`, `qualibrate`, or other packages) is critical to the implementation, explicitly tell the user which dependencies are involved.
 6. **Check workspace completeness.** If the workspace is missing expected folders (e.g., `qm`, `quam`, `quam_builder`, `qualibrate`), notify the user so they can add them on the current device.
 7. **Report conflicts.** If existing code contradicts these instructions (e.g., an LCH node has unnecessary analysis.py/plotting.py files, or imports don't follow the expected pattern), inform the user before making changes.
+
+**2026-07-14 — scqo relative punchout renamed `resonator_spectroscopy_power_amp`**
+(scqo-facing name only; the shared probe module `customized/probes/
+resonator_spectroscopy_power.py` and the qualibrate `LCH_*` node keep their names).
+The probe's loop order is now amplitude → averages → frequency (frequency
+INNERMOST/fastest; was freq → amp → avg) with middle-axis stream averaging
+(`buffer(dfs).buffer(n_avg).map(FUNCTIONS.average(0)).buffer(amps)`) — acquired
+axis order (power, detuning); this changes acquisition order for BOTH orchestration
+paths (the scqat estimator transposes by name, so both are unaffected; sweep_axes
+reordered to {qubit, power, detuning}). New optional
+kwarg `depletion_time_ns` on `build_program` (scqo param
+`resonator_relaxation_time_ns`) overrides the resonators' QUAM `depletion_time`
+for the ring-down wait; default None keeps per-qubit values (qualibrate shell
+unaffected). Same day the chain-stepped sibling was renamed `_absolute` →
+`resonator_spectroscopy_power_chain` (class `QMResonatorSpectroscopyPowerChain`):
+both punchouts are now named for the knob each sweeps and take IDENTICAL
+absolute-dBm inputs (`min/max_power_dbm`; `_amp`'s relative `_db` params are
+gone). `_amp` is realized SET-TOP — the scqo core run() solves the chain for
+`max_power_dbm` (recorded, auto-reverted) and the probe passes prefactors
+`10**((power_dbm − max)/20)` (top exactly 1.0, all ≤ 1) — the SAME pattern as the
+qualibrate `LCH_resonator_spectroscopy_power` node, whose shared probe module
+(`amps` = shared prefactor list + `for_each_`/`amplitude_scale`) is therefore
+reused with NO signature change; the LCH node itself is untouched.
