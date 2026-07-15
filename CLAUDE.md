@@ -4,7 +4,7 @@
 Superconducting qubit calibration system for Quantum Machines OPX1000 hardware (MW-FEM + LF-FEM), built on three layers: **qm-qua** → **quam** → **qualibrate** (see Workspace Packages for details).
 
 ## Related — shared experiment API
-This repo is the **QM reference backend** for **`scqo`**, a vendor-neutral protocol/parameters API shared with the Qblox driver (`D:\github\SCQO`, `D:\github\LCHQBDriver`). The neutral layer lets the same experiment run on either instrument — manually or via an AI agent — through one `Session` (`catalog()` / `run()` / `device_state()`, all JSON in/out). **Wired up here:** the QM `scqo` backend lives in `customized/scqo/` (`backend.py` + `experiments/*` supplying only `probe()`), discovered via the `scqo.experiments` entry point; the qualibrate `calibrations/` path still runs the QM nodes directly (the two orchestration paths share one probe — see **Probes vs shells**). See `SCQO\CLAUDE.md` for the full design. Cross-repo terminology (Experiment = probe + estimator; "protocol" retired) lives in `SCQO\CLAUDE.md` → Terminology; this repo's analysis nodes consume scqat **estimators** (`scqat.estimators`).
+This repo is the **QM reference backend** for **`scqo`**, the vendor-neutral protocol/parameters API shared with the Qblox driver, so the same experiment runs on either instrument through one `Session`. The QM backend lives in `customized/scqo/`; qualibrate's `calibrations/` path runs the same probes directly (see **Probes vs shells**). Design, the `Session` contract, and cross-repo terminology (Experiment = probe + estimator) live in `SCQO\CLAUDE.md`; this repo's analysis nodes consume scqat **estimators** (`scqat.estimators`).
 
 ## Folder Roles
 
@@ -60,9 +60,13 @@ canonical vocabulary and avoids colliding with scqo's `Experiment`.)
 in `customized/node/LCH_power_rabi/parameters.py`), **never** in vendored `calibration_utils/` (which
 `sync_official.py` reverts).
 
-**Status (2026-06-13):** ramsey, power_rabi, readout_frequency are extracted to this layout (probe +
-node analysis/update + thin shell); verified by QUA program-equivalence + unit tests. Remaining LCH
-nodes migrate opportunistically. Next: scqo `QMBackend` calling these probes.
+**Readout-power punchout probes:** both `resonator_spectroscopy_power_chain` (sweeps full-scale
+power) and `resonator_spectroscopy_power_amp` (sweeps amplitude prefactors) take absolute-dBm inputs
+(`min/max_power_dbm`).
+
+**Migration status:** qualibrate-node migration is in progress; the `customized/` split into a
+standalone QM-backend repo (symmetric with LCHQBDriver) is decided but deferred until migration
+completes — the shells→probes import rule above is the boundary the split will cut along.
 
 ### State authority during the transition (scqo `state_sync` rule)
 Two writers exist for QUAM today: unmigrated qualibrate nodes (write QUAM directly) and scqo's
@@ -72,62 +76,28 @@ the vendor wins at startup, scqo loads only its change history, and pushes only 
 measures. The migration finish line is flipping this device to `"push"` — do that only when no
 qualibrate node writes QUAM anymore. (`customized/scqo/backend_factory.py` enforces
 this — the guard fires before any QUAM state is loaded.)
-**Which QUAM state loads** is decided by the device's cooldown setup alone (scqo v0.7.0): the
+**Which QUAM state loads** is decided by the device's cooldown setup alone: the
 `instrument_config` folder of the SELECTED `[<cycle>.setup.<name>]` block (users pick one with
 `scqo user --setup <name>`; a single-setup cycle auto-selects) must hold `state.json` +
-`wiring.json` under exactly those canonical names (the old `[qm] state_dir` config key is retired
-and no longer read) — never rely on `~/.qualibrate` resolution for scqo sessions; keep
-qualibrate's own `[quam] state_path` pointed at the same folder on machines that run both stacks.
+`wiring.json` under exactly those canonical names — never rely on `~/.qualibrate` resolution for
+scqo sessions; keep qualibrate's own `[quam] state_path` pointed at the same folder on machines
+that run both stacks.
 
-### scqo student surface (the `scqo` command; scripts are compat wrappers)
-Since scqo v0.4.0 the Tier-1 engine lives in `scqo/cli` — students use the **`scqo`
-command** (`run/find/accept/tag/state/user/device/doctor`; scqo v0.7.0
-renamed the old state view `device` -> `state` and folded `devices`/`cooldown`/
-`sample` into the admin group `device`) from any directory in `.venv-qm`; they select
-a sample and setup with `scqo user --device <name> [--setup <name>]` (written to
-`~/.scqo/user.toml`), and the SELECTED named setup of the device's ACTIVE cooldown
-cycle names this backend. This repo contributes
-`customized/scqo/backend_factory.py`, registered under the `scqo.backends`
-entry-point group (name `qm`): `build_backend(cfg, setup)` fires the
-`state_sync="pull"` guard BEFORE any QUAM state is touched, then loads the setup's
-`instrument_config` folder (canonical names `state.json` + `wiring.json` — the single
-QUAM-state authority; loud SystemExit when missing). The `qm_sim` twin mode was
-retired with v0.5.0 (`simulated` is the practice mode). `scripts/` holds ONLY the
-per-repo `check_real_config.py` — the whole v0.4-era wrapper layer (command
-wrappers, `_lab`/`_cli` shims, auto-generated `experiments/<name>.py` launcher
-stubs and scqo's `sync-launchers` subcommand) was fully RETIRED in v0.7.0;
-`scqo run <name>` is the one way to run an experiment (never add wrappers or
-per-command stubs again; tests/test_wrappers.py became tests/test_scqo_glue.py).
-NOTE: the built-in simulated
-demo device is q0/q1 (this repo's old q1/q2 demo names retired, fresh-start). Only the
-migrated experiments run here; all other calibrations still run through the qualibrate
-GUI, whose own archive stays as-is (legacy, frozen; do not merge).
+### scqo student surface
+Students use the **`scqo` command** (`run/find/accept/tag/state/user/device/doctor`) from any
+directory in `.venv-qm`, selecting a sample and setup with
+`scqo user --device <name> [--setup <name>]` (written to `~/.scqo/user.toml`); `scqo run <name>` is
+the one way to run an experiment (never add per-command wrappers or launcher stubs). This repo
+contributes `customized/scqo/backend_factory.py`, registered under the `scqo.backends` entry-point
+group (name `qm`): `build_backend(cfg, setup)` fires the `state_sync="pull"` guard BEFORE any QUAM
+state is touched, then loads the setup's `instrument_config` folder (canonical names `state.json` +
+`wiring.json` — the single QUAM-state authority; loud SystemExit when missing). `simulated` is the
+practice mode. Only migrated experiments run under scqo here; all other calibrations still run
+through the qualibrate GUI (legacy, frozen; do not merge).
 
-**scqo v0.8.0 (2026-07-13) — absolute readout power:** `QMQubitView.readout_power_dbm`
-maps to `full_scale_power_dbm` + the readout operation amplitude via
-`quam_builder.tools.power_tools` (imported LAZILY inside the property —
-`customized/quam_fields.py` stays pure/stub-testable; do not add power_tools there).
-The setter is BIDIRECTIONAL: it picks the smallest full-scale grid value (−11…+16
-by 3) keeping amplitude ≤ 0.5 and passes it as the explicit `full_scale_power_dbm=`
-arg (the bare helper only bumps full scale UP). `QMBackend.power_context(qubits)`
-stamps {full_scale_power_dbm, readout_amplitude, readout_power_dbm} into run
-records. New probe subclass `resonator_spectroscopy_power_chain` (renamed
-2026-07-14 from `_absolute`) is
-CHAIN-STEPPED: the core run() sweeps power with a PYTHON loop (fs is not
-FPGA-sweepable), re-solving full_scale+amplitude per point and acquiring one 1D
-scan per point — the probe literally reuses `customized/probes/
-resonator_spectroscopy.build_program` (incl. its depletion wait; the shared
-acquire regenerates the config per cycle) — no qualibrate/tracked_updates in the
-scqo path. The test fixture
-`machine` skips when the live `quam_state/` doesn't match the my_quam root-class
-toggle (e.g. flux-tunable pairs under a FixedFrequencyQuam root).
-
-### Future repo split (decided, deferred)
-When node migration is (near) complete, `customized/` (probes + quam_fields + scqo backend) is
-extracted into a clean QM-backend repo symmetric with LCHQBDriver, and this repo (qualibrate
-shells + vendored official nodes) winds down. Do NOT split earlier: `quam_state/`, `quam_config/`
-and the probes are shared and still changing — the one-way import rule above (shells → probes,
-probes never import qualibrate) is the boundary the split will cut along.
+The my_quam root-class toggle governs test fixtures too: the `machine` fixture skips when the live
+`quam_state/` doesn't match the active root (e.g. flux-tunable pairs under a `FixedFrequencyQuam`
+root).
 
 ## Key Entrypoints
 - `quam_config/my_quam.py` → defines the `Quam(FluxTunableQuam)` class imported by every calibration node and config script. The custom-type bindings (`qubit_type = ChargeTunableTransmon`, `qubit_pair_type = LCH_FluxTunableTransmonQCQPair`) are **toggled in/out per experiment** — they are intentionally commented out by default and uncommented only when a run needs the custom charge-tunable types. Do NOT treat either state as "wrong"; read the live class body to see what is active, and ask before flipping it.
@@ -148,16 +118,11 @@ probes never import qualibrate) is the boundary the split will cut along.
   - `qm.bat` (Windows) / `qm.command` (macOS/Linux) → wrappers that activate the env and run `qualibrate start` (launches the GUI server). These replaced the old Windows-only `start_server.bat` / `setup_qualibrate_config.bat`.
   - `setup-qualibrate-config` → one-time qualibrate config setup.
 - **Packaging:** `pyproject.toml` — Python `>=3.10,<3.13`, black `line-length = 120`. Wheel packages: `calibrations`, `calibration_utils`, `quam_config`, `customized`.
+- **Tests:** the scqo-glue tests live in `tests/test_scqo_glue.py`; run the suite with `pytest`.
 - **External analysis dependency.** LCH analysis nodes lazily import `scqat` (`D:\github\scqat`, the lab's analysis tool that **replaced** the older `qcat`/`D:\github\QCAT`), installed editable. It is **not declared in `pyproject.toml`** and must be installed in the runtime env — now present (editable) in both `LCHQM` and `LCHQM_test` (the launcher env; verified 2026-06-07) — or those nodes raise `ImportError` at plot time. Official (non-`LCH_`) nodes do not depend on it and run regardless. The qcat→scqat migration of the active `LCH_*` nodes is complete (`calibrations/exclude/` still references qcat); see `ANALYSIS_MIGRATION.md`.
 
 ## Workspace Packages (Read-Only)
-The following dependency packages are available in the workspace for reference. Do NOT modify them.
-- **qm** — Low-level QUA instrument control API
-- **quam** — Hardware abstraction layer (QUAM core)
-- **quam_builder** — QUAM state generation utilities
-- **qualibrate** — Calibration GUI framework
-
-**Expected workspace setup:** This is a multi-root workspace. If any of the above packages are missing from the workspace folders, inform the user. They should be added via File → Add Folder to Workspace from the conda environment's `site-packages/` directory.
+The vendor dependency stack (`qm` QUA control → `quam` hardware abstraction → `quam_builder` → `qualibrate` GUI) is available read-only in the workspace; do NOT modify. For the SC-qubit repo layout see the global workspace map `C:\Users\shiau\.claude\CLAUDE.md`.
 
 ## Rules for the AI assistant
 
@@ -168,26 +133,3 @@ The following dependency packages are available in the workspace for reference. 
 5. **Flag critical dependencies.** When creating or modifying customized code, if any dependency (from `qm`, `quam`, `quam_builder`, `qualibrate`, or other packages) is critical to the implementation, explicitly tell the user which dependencies are involved.
 6. **Check workspace completeness.** If the workspace is missing expected folders (e.g., `qm`, `quam`, `quam_builder`, `qualibrate`), notify the user so they can add them on the current device.
 7. **Report conflicts.** If existing code contradicts these instructions (e.g., an LCH node has unnecessary analysis.py/plotting.py files, or imports don't follow the expected pattern), inform the user before making changes.
-
-**2026-07-14 — scqo relative punchout renamed `resonator_spectroscopy_power_amp`**
-(scqo-facing name only; the shared probe module `customized/probes/
-resonator_spectroscopy_power.py` and the qualibrate `LCH_*` node keep their names).
-The probe's loop order is now amplitude → averages → frequency (frequency
-INNERMOST/fastest; was freq → amp → avg) with middle-axis stream averaging
-(`buffer(dfs).buffer(n_avg).map(FUNCTIONS.average(0)).buffer(amps)`) — acquired
-axis order (power, detuning); this changes acquisition order for BOTH orchestration
-paths (the scqat estimator transposes by name, so both are unaffected; sweep_axes
-reordered to {qubit, power, detuning}). New optional
-kwarg `depletion_time_ns` on `build_program` (scqo param
-`resonator_relaxation_time_ns`) overrides the resonators' QUAM `depletion_time`
-for the ring-down wait; default None keeps per-qubit values (qualibrate shell
-unaffected). Same day the chain-stepped sibling was renamed `_absolute` →
-`resonator_spectroscopy_power_chain` (class `QMResonatorSpectroscopyPowerChain`):
-both punchouts are now named for the knob each sweeps and take IDENTICAL
-absolute-dBm inputs (`min/max_power_dbm`; `_amp`'s relative `_db` params are
-gone). `_amp` is realized SET-TOP — the scqo core run() solves the chain for
-`max_power_dbm` (recorded, auto-reverted) and the probe passes prefactors
-`10**((power_dbm − max)/20)` (top exactly 1.0, all ≤ 1) — the SAME pattern as the
-qualibrate `LCH_resonator_spectroscopy_power` node, whose shared probe module
-(`amps` = shared prefactor list + `for_each_`/`amplitude_scale`) is therefore
-reused with NO signature change; the LCH node itself is untouched.
