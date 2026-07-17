@@ -76,12 +76,13 @@ the vendor wins at startup, scqo loads only its change history, and pushes only 
 measures. The migration finish line is flipping this device to `"push"` — do that only when no
 qualibrate node writes QUAM anymore. (`customized/scqo/backend_factory.py` enforces
 this — the guard fires before any QUAM state is loaded.)
-**Which QUAM state loads** is decided by the device's cooldown setup alone: the
-`instrument_config` folder of the SELECTED `[<cycle>.setup.<name>]` block (users pick one with
-`scqo user --setup <name>`; a single-setup cycle auto-selects) must hold `state.json` +
+**Which QUAM state loads** is decided by the device's cooldown setup alone: the SELECTED
+`[<cycle>.setup.<name>]` block's vendor folder — DERIVED since scqo v0.9 as
+`<device>/<cycle>/<name>/backend_config/` (no path key in the registry; users pick a setup with
+`scqo user --setup <name>`, a single-setup cycle auto-selects) — must hold `state.json` +
 `wiring.json` under exactly those canonical names — never rely on `~/.qualibrate` resolution for
 scqo sessions; keep qualibrate's own `[quam] state_path` pointed at the same folder on machines
-that run both stacks.
+that run both stacks (re-point it each new cooldown).
 
 ### scqo student surface
 Students use the **`scqo` command** (`run/find/accept/tag/state/user/device/doctor`) from any
@@ -90,7 +91,8 @@ directory in `.venv-qm`, selecting a sample and setup with
 the one way to run an experiment (never add per-command wrappers or launcher stubs). This repo
 contributes `customized/scqo/backend_factory.py`, registered under the `scqo.backends` entry-point
 group (name `qm`): `build_backend(cfg, setup)` fires the `state_sync="pull"` guard BEFORE any QUAM
-state is touched, then loads the setup's `instrument_config` folder (canonical names `state.json` +
+state is touched, then loads the setup's vendor folder (`setup["instrument_config"]`, injected by
+scqo from the registry keys; canonical names `state.json` +
 `wiring.json` — the single QUAM-state authority; loud SystemExit when missing). `simulated` is the
 practice mode. Only migrated experiments run under scqo here; all other calibrations still run
 through the qualibrate GUI (legacy, frozen; do not merge).

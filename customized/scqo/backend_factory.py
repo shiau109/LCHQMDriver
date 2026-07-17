@@ -1,8 +1,9 @@
 """QM backend factory for the scqo CLI (entry-point group ``scqo.backends``, name ``qm``).
 
 The factory receives the device's SELECTED named setup record from its cooldown
-registry (scqo v0.7.0: ``[<cycle>.setup.<name>]`` — backend + instrument_config +
-note): ``setup["instrument_config"]`` is the folder holding the QUAM files under
+registry (``[<cycle>.setup.<name>]`` — backend + note; since scqo v0.9 the vendor
+folder is DERIVED from the keys and injected by ``load_cooldowns``):
+``setup["instrument_config"]`` is the folder holding the QUAM files under
 canonical names — ``state.json`` + ``wiring.json``. That folder is the single
 QUAM-state authority for this device's setup (quam's own resolution via ~/.qualibrate
 or QUAM_STATE_PATH is deliberately bypassed). Vendor imports stay INSIDE the function

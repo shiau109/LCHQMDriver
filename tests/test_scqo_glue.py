@@ -1,9 +1,10 @@
 """Driver-side scqo glue: the `scqo` CLI works in THIS venv + the qm factory.
 
 The real CLI coverage lives in SCQO/tests (test_cli_*.py); this smoke test proves
-the QM-side glue with build_backend(cfg, setup) — the setup is a v0.7.0 NAMED
-record (backend + instrument_config + note). The v0.4-era scripts/ wrapper layer
-and the launcher stubs were retired in v0.7.0.
+the QM-side glue with build_backend(cfg, setup) — the setup is a NAMED record
+(backend + note, plus the DERIVED "instrument_config" vendor folder injected by
+scqo since v0.9). The v0.4-era scripts/ wrapper layer and the launcher stubs were
+retired in v0.7.0.
 """
 
 from __future__ import annotations

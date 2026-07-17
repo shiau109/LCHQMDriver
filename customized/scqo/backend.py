@@ -236,6 +236,60 @@ class QMBackend(Backend):
 
     @staticmethod
     def _to_canonical(raw: xr.Dataset, experiment: "Experiment") -> xr.Dataset:
+        import numpy as np
+        
+        if experiment.name == "qubit_tomography":
+            from calibration_utils.new_tomography.analysis import process_raw_dataset
+            class MockQubits:
+                def __init__(self, qubits):
+                    self._q = qubits
+                def get_names(self):
+                    return self._q
+            class MockNode:
+                def __init__(self, exp):
+                    self.parameters = exp.params
+                    self.parameters.num_shots = exp.params.num_averages
+                    self.namespace = {"qubits": MockQubits(exp.params.qubits)}
+            return process_raw_dataset(raw, MockNode(experiment))
+
+        if experiment.name == "qubit_sqrb":
+            qubits = list(experiment.params.qubits)
+            use_sd = bool(experiment.params.use_state_discrimination)
+            i_rows = []
+            q_rows = []
+            
+            for idx, name in enumerate(qubits):
+                q_idx = idx + 1
+                if use_sd:
+                    key = f"state{q_idx}"
+                    if key not in raw.data_vars:
+                        raise KeyError(f"Acquisition variable {key!r} not found in raw data.")
+                    val = 1.0 - np.asarray(raw[key].values)
+                    val = val.T
+                    i_rows.append(val)
+                    q_rows.append(np.zeros_like(val))
+                else:
+                    key_i = f"I{q_idx}"
+                    key_q = f"Q{q_idx}"
+                    if key_i not in raw.data_vars or key_q not in raw.data_vars:
+                        raise KeyError(f"Acquisition variables {key_i!r}/{key_q!r} not found in raw data.")
+                    val_i = np.asarray(raw[key_i].values).T
+                    val_q = np.asarray(raw[key_q].values).T
+                    i_rows.append(val_i)
+                    q_rows.append(val_q)
+                    
+            return xr.Dataset(
+                {
+                    "I": (("qubit", "depth", "sequence_idx"), np.stack(i_rows)),
+                    "Q": (("qubit", "depth", "sequence_idx"), np.stack(q_rows)),
+                },
+                coords={
+                    "qubit": qubits,
+                    "depth": np.array(experiment.params.get_depths()),
+                    "sequence_idx": np.arange(experiment.params.num_random_sequences)
+                }
+            )
+
         """Relabel the raw probe dataset into scqo's convention: dims (qubit, *sweeps),
         vars I/Q. The probe already emits I/Q with a qubit dim.
 
