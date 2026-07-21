@@ -4,11 +4,18 @@ Add a line here for each new experiment module so its ``@register`` runs.
 """
 
 from . import pair_zz_coupler  # noqa: F401  (import side effect: @register)
+from . import qubit_drag_alternating  # noqa: F401  (import side effect: @register)
+from . import qubit_drag_equator  # noqa: F401  (import side effect: @register)
 from . import qubit_echo  # noqa: F401  (import side effect: @register)
+from . import qubit_echo_flux  # noqa: F401  (import side effect: @register)
+from . import qubit_pi_pulse_error  # noqa: F401  (import side effect: @register)
 from . import qubit_power_rabi  # noqa: F401  (import side effect: @register)
 from . import qubit_ramsey  # noqa: F401  (import side effect: @register)
 from . import qubit_relaxation  # noqa: F401  (import side effect: @register)
+from . import qubit_relaxation_flux  # noqa: F401  (import side effect: @register)
 from . import qubit_spectroscopy  # noqa: F401  (import side effect: @register)
+from . import qubit_sqrb  # noqa: F401  (import side effect: @register)
+from . import qubit_tomography  # noqa: F401  (import side effect: @register)
 from . import qubit_spectroscopy_flux  # noqa: F401  (import side effect: @register)
 from . import readout_frequency  # noqa: F401  (import side effect: @register)
 from . import readout_power  # noqa: F401  (import side effect: @register)

@@ -72,6 +72,14 @@ class QMReadableTransmon(make_view_base("ReadableTransmon")):
         quam_fields.set_pi_amp(self._q, value)
 
     @property
+    def drag_beta(self) -> float:
+        return quam_fields.get_drag_beta(self._q)
+
+    @drag_beta.setter
+    def drag_beta(self, value: float) -> None:
+        quam_fields.set_drag_beta(self._q, value)
+
+    @property
     def readout_amp(self) -> float:
         return quam_fields.get_readout_amp(self._q)
 
@@ -225,8 +233,8 @@ class QMDeviceModel(DeviceModel):
             view = self.component(name)
             state[name] = {
                 field: _read_or_none(view, field)
-                for field in ("readout_freq", "drive_freq", "pi_amp", "readout_amp",
-                              "readout_power_dbm", "readout_duration_s",
+                for field in ("readout_freq", "drive_freq", "pi_amp", "drag_beta",
+                              "readout_amp", "readout_power_dbm", "readout_duration_s",
                               "readout_integration_s", "idle_flux_v")
             }
         for name in (getattr(self._machine, "qubit_pairs", {}) or {}):
@@ -322,18 +330,29 @@ class QMBackend(Backend):
     def acquire(self, experiment: "Experiment") -> xr.Dataset:
         from customized.probes._lib import acquire as run_acquire
 
-        program, sweep_axes = experiment.probe()  # QM probe returns (program, sweep_axes)
         # Progress denominator: per-shot experiments (single_shot_readout) declare
         # `num_shots` instead of the averaging mixin's `num_averages`.
         params = experiment.params
         shots = getattr(params, "num_averages", None) or getattr(params, "num_shots", 1)
-        raw = run_acquire(
-            self._machine,
-            program,
-            sweep_axes,
-            num_shots=shots,
-            timeout=self._timeout,
-        )
+        # A probe returns ONE of three shapes:
+        #  - a ready-made xr.Dataset (drag_equator acquires itself with a baked config);
+        #  - (program, sweep_axes, probe_module): the module's own acquire() fetches
+        #    (tomography builds a heterogeneous-dims dataset per-shot);
+        #  - (program, sweep_axes): the shared _lib.acquire fetches (the common path).
+        res = experiment.probe()
+        if isinstance(res, xr.Dataset):
+            raw = res
+        else:
+            if isinstance(res, tuple) and len(res) == 3:
+                program, sweep_axes, probe_module = res
+                acquire_fn = getattr(probe_module, "acquire", run_acquire)
+            else:
+                program, sweep_axes = res
+                acquire_fn = run_acquire
+            raw = acquire_fn(
+                self._machine, program, sweep_axes,
+                num_shots=shots, timeout=self._timeout,
+            )
         # Optional per-experiment raw reduction (e.g. joint two-qubit state
         # populations -> the pair experiment's canonical `signal` variable),
         # applied BEFORE canonicalization so the contract sees final variables.
@@ -370,7 +389,6 @@ class QMBackend(Backend):
         a bring-up run against the real QOP is never wasted (a raise here happens
         before the datastore ever sees the dataset).
         """
-        target = list(experiment.sweep_axes.keys())
         # The raw target axis may be named per the probe family (single-qubit
         # probes: "qubit"; pair probes: "qubit_pair"); canonical is "target".
         raw_target = next((d for d in ("target", "qubit", "qubit_pair")
@@ -383,6 +401,18 @@ class QMBackend(Backend):
             )
         if raw_target != "target":
             raw = raw.rename({raw_target: "target"})
+        # A probe that already emits a CONFORMING dataset passes straight through —
+        # this is the path for probes whose sweep-axis names already equal the
+        # experiment's (tomography's heterogeneous non-standard dims, drag_equator's
+        # pre-built dataset, and the ported single-qubit probes). Experiments whose
+        # probe uses non-canonical axis names (e.g. "detuning" vs "detuning_hz") do
+        # NOT conform here and fall through to the positional renamer below.
+        try:
+            experiment.Contract.validate(raw)
+            return raw
+        except Exception:
+            pass
+        target = list(experiment.sweep_axes.keys())
         # Axis order from an actual data variable (Dataset.dims is unordered).
         ref_var = "I" if "I" in raw.data_vars else next(iter(raw.data_vars))
         raw_axes = [d for d in raw[ref_var].dims if d != "target"]

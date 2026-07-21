@@ -28,6 +28,11 @@ FIELD_BINDINGS: dict[str, dict[str, VendorBinding]] = {
                     "(quam_fields.set_drive_freq keeps the drive line on the qubit)"),
         "pi_amp": VendorBinding(
             path="q.xy.operations['x180'].amplitude", unit=""),
+        "drag_beta": VendorBinding(
+            path="q.xy.operations['x180_DragCosine'].alpha", unit="",
+            convert="QM stores DRAG as DragCosinePulse.alpha; written on the "
+                    "x180_DragCosine storage node (reference aliases follow)",
+            note="calibrated by qubit_drag_equator / qubit_drag_alternating"),
         "readout_amp": VendorBinding(
             path="q.resonator.operations['readout'].amplitude", unit=""),
         "readout_power_dbm": VendorBinding(
@@ -164,13 +169,12 @@ VENDOR_ONLY: dict[str, VendorOnly] = {
             "chipA: 32 ns here vs 200 ns on Qblox - genuinely per-chain "
             "calibrated); multiple of 4 ns. Qblox counterpart: rxy.duration (s)"),
     "drag_alpha": VendorOnly(
-        path="q.xy.operations['x180_DragCosine'].alpha", unit="", kind="candidate",
-        doc="DRAG coefficient, PER GATE on QM (chipA: x180 -0.94, x90 -0.50), "
-            "linked to the cached anharmonicity - neutral candidate with "
-            "pre-declared convention: anharmonicity-normalized lambda bound to "
-            "the x180 SCQO models; per-gate extras become vendor fine print "
-            "under LCD semantics. Qblox counterpart: rxy.beta (derivative "
-            "scale, different math convention)"),
+        path="q.xy.operations['<gate>_DragCosine'].alpha", unit="", kind="realizer",
+        doc="PER-GATE DRAG coefficient (chipA: x180 -0.94, x90 -0.50). The x180 "
+            "node now REALIZES the tracked neutral drag_beta (binding above; "
+            "governed write: scqo set QUBIT.drag_beta=...); the OTHER gates' "
+            "alpha values remain vendor fine print edited directly. Qblox "
+            "counterpart: rxy.beta (derivative scale, different math convention)"),
     "integration_weights_angle": VendorOnly(
         path="q.resonator.operations['readout'].integration_weights_angle",
         unit="rad", kind="vendor",

@@ -73,7 +73,12 @@ def acquire(
                 num_shots,
                 start_time=data_fetcher.t_start,
             )
-        # Expose possible runtime errors
+        # Expose possible runtime errors. execution_report is a method on some QM
+        # API versions and a property on others — tolerate both.
         if log:
-            log(job.execution_report())
+            rep = getattr(job, "execution_report", None)
+            if callable(rep):
+                log(rep())
+            elif rep is not None:
+                log(rep)
     return dataset
