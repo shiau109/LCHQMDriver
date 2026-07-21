@@ -32,7 +32,7 @@ class QMResonatorSpectroscopyPowerChain(ResonatorSpectroscopyPowerChain):
         from customized.probes import resonator_spectroscopy as res_spec_probe
 
         machine = self.backend.machine  # type: ignore[attr-defined]
-        qubits = select_qubits(machine, self.params.qubits, multiplexed=True)
+        qubits = select_qubits(machine, self.params.targets, multiplexed=True)
         return res_spec_probe.build_program(
             machine,
             qubits,

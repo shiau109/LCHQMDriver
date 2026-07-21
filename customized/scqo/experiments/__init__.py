@@ -3,6 +3,7 @@
 Add a line here for each new experiment module so its ``@register`` runs.
 """
 
+from . import pair_zz_coupler  # noqa: F401  (import side effect: @register)
 from . import qubit_echo  # noqa: F401  (import side effect: @register)
 from . import qubit_power_rabi  # noqa: F401  (import side effect: @register)
 from . import qubit_ramsey  # noqa: F401  (import side effect: @register)

@@ -23,7 +23,7 @@ class QMQubitSpectroscopy(QubitSpectroscopy):
         from customized.probes import qubit_spectroscopy as spec_probe
 
         machine = self.backend.machine  # type: ignore[attr-defined]
-        qubits = select_qubits(machine, self.params.qubits, multiplexed=True)
+        qubits = select_qubits(machine, self.params.targets, multiplexed=True)
 
         return spec_probe.build_program(
             machine,

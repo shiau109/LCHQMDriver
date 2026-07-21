@@ -40,7 +40,7 @@ class QMReadoutPower(ReadoutPower):
         from customized.probes import readout_power as power_probe
 
         machine = self.backend.machine  # type: ignore[attr-defined]
-        qubits = select_qubits(machine, self.params.qubits, multiplexed=True)
+        qubits = select_qubits(machine, self.params.targets, multiplexed=True)
 
         return power_probe.build_program(
             machine,

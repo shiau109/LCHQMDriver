@@ -25,6 +25,23 @@ def _env(tmp_path: Path) -> dict:
         '[cd1]\nstart = 2026-07-01\n[cd1.setup.practice]\nbackend = "simulated"\n',
         encoding="utf-8",
     )
+    # Post-cutover a configured device REQUIRES a component roster.
+    (data_root / "simdev" / "components.toml").write_text(
+        'schema = 1\n'
+        '[components.q0]\n'
+        'physical   = "FixedTransmon"\n'
+        'instrument = "ReadableTransmon"\n'
+        'operations = ["rx", "readout"]\n'
+        '[components.q0_res]\n'
+        'physical = "Resonator"\n'
+        '[components.q0_ro]\n'
+        'physical = "ReadoutLine"\n'
+        'members  = { transmon = "q0", resonator = "q0_res" }\n'
+        '[components.q0_xy]\n'
+        'physical = "XYControl"\n'
+        'members  = { transmon = "q0" }\n',
+        encoding="utf-8",
+    )
     config = tmp_path / "config.toml"
     config.write_text(
         f"[lab]\ndevice = \"simdev\"\ndata_root = '{data_root.as_posix()}'\n", encoding="utf-8"
@@ -34,12 +51,67 @@ def _env(tmp_path: Path) -> dict:
 
 def test_scqo_run_end_to_end(tmp_path):
     proc = subprocess.run(
-        [sys.executable, "-m", "scqo.cli", "run", "resonator_spectroscopy", "--qubits", "q0"],
+        [sys.executable, "-m", "scqo.cli", "run", "resonator_spectroscopy", "--targets", "q0"],
         capture_output=True, text=True, env=_env(tmp_path), cwd=REPO,
     )
     assert proc.returncode == 0, proc.stderr
     result = json.loads(proc.stdout.split("\nsaved:")[0])
     assert result["outcomes"] == {"q0": "successful"}
+
+
+def test_field_catalog_matches_implementation():
+    """The declared field catalog cannot drift: per category, bindings + declared
+    unrealized fields cover EXACTLY scqo's pushed fields (a new core field fails
+    here until this driver binds or declares it — the combo-release alarm),
+    coupled names are real sibling fields, the vendor-only inventory collides
+    with no tracked field, and the module is pure data (importable without
+    qm/quam — enforced on its import statements)."""
+    import ast
+
+    from scqo.categories import field_categories, pushed_fields
+
+    from customized.scqo import fieldmap
+
+    # BOTH declared categories (ReadableTransmon + TransmonPair) drift-checked
+    assert set(fieldmap.FIELD_BINDINGS) == {"ReadableTransmon", "TransmonPair"}
+    for cat, bindings in fieldmap.FIELD_BINDINGS.items():
+        unrealized = fieldmap.UNREALIZED.get(cat, {})
+        assert set(bindings) | set(unrealized) == set(pushed_fields(cat)), cat
+        assert not set(bindings) & set(unrealized)  # bound XOR declared out
+        for name, binding in bindings.items():
+            assert binding.path, f"{name}: empty vendor path"
+            assert set(binding.coupled) <= set(bindings) - {name}, name
+    for cat, fields in fieldmap.UNREALIZED.items():
+        for name, u in fields.items():
+            assert (u.category, u.field) == (cat, name) and u.reason, name
+    assert not set(fieldmap.VENDOR_ONLY) & set(field_categories())
+    assert all(v.path and v.doc for v in fieldmap.VENDOR_ONLY.values())
+
+    # every entry carries a valid placement-rule kind; unique entries must state
+    # the lock-in fact (no counterpart on the other backend)
+    from scqo.fieldmap import VENDOR_ONLY_KINDS
+
+    for name, v in fieldmap.VENDOR_ONLY.items():
+        assert v.kind in VENDOR_ONLY_KINDS, name
+        if v.kind == "unique":
+            assert "no qblox counterpart" in v.doc.lower(), name
+
+    tree = ast.parse(Path(fieldmap.__file__).read_text(encoding="utf-8"))
+    imported = {
+        name
+        for node in ast.walk(tree)
+        if isinstance(node, (ast.Import, ast.ImportFrom))
+        for name in ([a.name for a in node.names] if isinstance(node, ast.Import)
+                     else [node.module])
+    }
+    assert imported <= {"__future__", "scqo.fieldmap"}, imported
+
+    # the backend class serves exactly the declared catalog (methods are pure)
+    from customized.scqo.backend import QMBackend
+
+    assert QMBackend.field_bindings(None) == fieldmap.FIELD_BINDINGS
+    assert QMBackend.unrealized(None) == fieldmap.UNREALIZED
+    assert QMBackend.vendor_only(None) == fieldmap.VENDOR_ONLY
 
 
 def test_backend_entry_point_resolves_and_guards_fire(tmp_path):

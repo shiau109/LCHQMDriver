@@ -31,7 +31,7 @@ class QMSingleShotReadout(SingleShotReadout):
         from customized.probes import readout_fidelity as fidelity_probe
 
         machine = self.backend.machine  # type: ignore[attr-defined]
-        qubits = select_qubits(machine, self.params.qubits, multiplexed=True)
+        qubits = select_qubits(machine, self.params.targets, multiplexed=True)
 
         return fidelity_probe.build_program(
             machine,

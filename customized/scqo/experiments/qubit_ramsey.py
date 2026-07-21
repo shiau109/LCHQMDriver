@@ -23,7 +23,7 @@ class QMQubitRamsey(QubitRamsey):
         from customized.probes import qubit_ramsey as ramsey_probe
 
         machine = self.backend.machine  # type: ignore[attr-defined]
-        qubits = select_qubits(machine, self.params.qubits, multiplexed=True)
+        qubits = select_qubits(machine, self.params.targets, multiplexed=True)
 
         # scqo sweeps idle time in ns; the QUA program sweeps in clock cycles (4 ns).
         idle_ns = self.sweep_axes["idle_time_ns"]

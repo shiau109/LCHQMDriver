@@ -43,7 +43,7 @@ class QMReadoutFrequency(ReadoutFrequency):
         from customized.probes import readout_frequency as freq_probe
 
         machine = self.backend.machine  # type: ignore[attr-defined]
-        qubits = select_qubits(machine, self.params.qubits, multiplexed=True)
+        qubits = select_qubits(machine, self.params.targets, multiplexed=True)
 
         prog, axes = freq_probe.build_program(
             machine,

@@ -86,13 +86,121 @@ def test_set_pi_amp_other_operation_never_touches_x90():
     assert q.xy.operations["x90"].amplitude == pytest.approx(0.1)  # untouched
 
 
-def test_qmqubitview_uses_the_shared_mapping():
-    """The scqo QMQubitView and quam_fields produce identical QUAM writes (the dedup)."""
-    from customized.scqo.backend import QMQubitView
+# ------------------------------------------------------- readout duration / window
+class _ReadoutPulse:
+    """QUAM ReadoutPulse stand-in with REAL reference semantics: attribute reads
+    resolve the default-weights reference against the CURRENT length (exactly
+    what quam does); the raw slot keeps the stored form for assertions."""
+
+    def __init__(self, length=2000, weights=None, angle=0.35):
+        self.length = length
+        self.integration_weights_angle = angle
+        self._raw_weights = weights if weights is not None else (
+            quam_fields.DEFAULT_INTEGRATION_WEIGHTS_REF)
+
+    @property
+    def integration_weights(self):
+        if self._raw_weights == quam_fields.DEFAULT_INTEGRATION_WEIGHTS_REF:
+            return [(1, self.length)]
+        return self._raw_weights
+
+    @integration_weights.setter
+    def integration_weights(self, value):
+        self._raw_weights = value
+
+
+def _readout_qubit(length=2000, weights=None, angle=0.35):
+    q = _qubit()
+    q.resonator.operations = {"readout": _ReadoutPulse(length, weights, angle)}
+    return q
+
+
+def test_readout_duration_roundtrip():
+    q = _readout_qubit(length=2000)
+    assert quam_fields.get_readout_duration(q) == pytest.approx(2.0e-6)
+    quam_fields.set_readout_duration(q, 4.0e-6)
+    assert q.resonator.operations["readout"].length == 4000
+
+
+def test_duration_grow_preserves_window_numerically():
+    """Growing the pulse must NOT grow the window (Qblox parity: independent
+    knobs) — the old full-pulse window gets zero-padded into the new length."""
+    q = _readout_qubit(length=2000)  # default weights: window == 2000
+    quam_fields.set_readout_duration(q, 3.0e-6)
+    pulse = q.resonator.operations["readout"]
+    assert pulse.length == 3000
+    assert pulse._raw_weights == [(1.0, 2000), (0.0, 1000)]
+    assert quam_fields.get_readout_integration(q) == pytest.approx(2.0e-6)
+
+
+def test_duration_shrink_clamps_window_to_default_ref():
+    q = _readout_qubit(length=2000)  # window == 2000
+    quam_fields.set_readout_duration(q, 1.0e-6)
+    pulse = q.resonator.operations["readout"]
+    assert pulse.length == 1000
+    # window clamped to the full (new) pulse -> normalized back to the reference
+    assert pulse._raw_weights == quam_fields.DEFAULT_INTEGRATION_WEIGHTS_REF
+    assert quam_fields.get_readout_integration(q) == pytest.approx(1.0e-6)
+
+
+def test_duration_shrink_partial_keeps_shorter_window():
+    q = _readout_qubit(length=2000, weights=[(1.0, 800), (0.0, 1200)])
+    quam_fields.set_readout_duration(q, 1.0e-6)  # window 800 still fits
+    assert q.resonator.operations["readout"]._raw_weights == [(1.0, 800), (0.0, 200)]
+    quam_fields.set_readout_duration(q, 4.0e-7)  # 400 ns < window -> clamp
+    assert (q.resonator.operations["readout"]._raw_weights
+            == quam_fields.DEFAULT_INTEGRATION_WEIGHTS_REF)
+    assert quam_fields.get_readout_integration(q) == pytest.approx(4.0e-7)
+
+
+def test_set_window_zero_pads_and_preserves_angle():
+    q = _readout_qubit(length=2000, angle=6.13)
+    quam_fields.set_readout_integration(q, 1.0e-6)
+    pulse = q.resonator.operations["readout"]
+    assert pulse._raw_weights == [(1.0, 1000), (0.0, 1000)]
+    assert pulse.integration_weights_angle == pytest.approx(6.13)  # untouched
+    assert quam_fields.get_readout_integration(q) == pytest.approx(1.0e-6)
+
+
+def test_set_window_equal_to_pulse_restores_reference():
+    q = _readout_qubit(length=2000, weights=[(1.0, 1000), (0.0, 1000)])
+    quam_fields.set_readout_integration(q, 2.0e-6)
+    assert (q.resonator.operations["readout"]._raw_weights
+            == quam_fields.DEFAULT_INTEGRATION_WEIGHTS_REF)
+
+
+def test_set_window_beyond_pulse_refused():
+    q = _readout_qubit(length=2000)
+    with pytest.raises(ValueError, match="exceeds the readout pulse"):
+        quam_fields.set_readout_integration(q, 3.0e-6)
+    # nothing was written
+    assert (q.resonator.operations["readout"]._raw_weights
+            == quam_fields.DEFAULT_INTEGRATION_WEIGHTS_REF)
+
+
+def test_off_grid_durations_refused():
+    q = _readout_qubit(length=2000)
+    for bad in (1.002e-6, 2.0001e-6, -2.0e-6, 0.0):  # 1002 ns off the 4 ns grid, etc.
+        with pytest.raises(ValueError, match="multiple of 4 ns"):
+            quam_fields.set_readout_duration(q, bad)
+        with pytest.raises(ValueError, match="multiple of 4 ns"):
+            quam_fields.set_readout_integration(q, bad)
+    assert q.resonator.operations["readout"].length == 2000  # untouched
+
+
+def test_window_getter_reads_float_sample_weights():
+    """Per-sample float weights (1 ns each): the window is the nonzero count."""
+    q = _readout_qubit(length=2000, weights=[1.0] * 500 + [0.0] * 1500)
+    assert quam_fields.get_readout_integration(q) == pytest.approx(5.0e-7)
+
+
+def test_qm_view_uses_the_shared_mapping():
+    """The scqo QMReadableTransmon and quam_fields produce identical QUAM writes (the dedup)."""
+    from customized.scqo.backend import QMReadableTransmon
 
     q = _qubit(f_01=5.0e9, xy_rf=5.1e9)
     q.name = "q0"
-    view = QMQubitView(q)
+    view = QMReadableTransmon(q)
 
     view.drive_freq = 5.002e9
     assert q.f_01 == pytest.approx(5.002e9)
@@ -104,3 +212,10 @@ def test_qmqubitview_uses_the_shared_mapping():
     view.readout_freq = 6.4e9
     assert q.resonator.RF_frequency == pytest.approx(6.4e9)
     assert q.resonator.f_01 == pytest.approx(6.4e9)
+
+    q.resonator.operations = {"readout": _ReadoutPulse(length=2000, angle=6.13)}
+    view.readout_duration_s = 4.0e-6
+    assert q.resonator.operations["readout"].length == 4000
+    view.readout_integration_s = 2.0e-6
+    assert q.resonator.operations["readout"]._raw_weights == [(1.0, 2000), (0.0, 2000)]
+    assert view.readout_integration_s == pytest.approx(2.0e-6)

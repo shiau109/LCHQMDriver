@@ -10,7 +10,7 @@ offline-friendly). It is NEVER imported by the qualibrate calibration nodes, whi
 keeps the qualibrate path independent of scqo.
 """
 
-from customized.scqo.backend import QMBackend, QMDeviceModel, QMQubitView
+from customized.scqo.backend import QMBackend, QMDeviceModel, QMReadableTransmon
 from customized.scqo import experiments  # noqa: F401  (import side effect: @register)
 
-__all__ = ["QMBackend", "QMDeviceModel", "QMQubitView"]
+__all__ = ["QMBackend", "QMDeviceModel", "QMReadableTransmon"]

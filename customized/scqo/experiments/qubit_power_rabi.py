@@ -23,7 +23,7 @@ class QMQubitPowerRabi(QubitPowerRabi):
         from customized.probes import qubit_power_rabi as power_rabi_probe
 
         machine = self.backend.machine  # type: ignore[attr-defined]
-        qubits = select_qubits(machine, self.params.qubits, multiplexed=True)
+        qubits = select_qubits(machine, self.params.targets, multiplexed=True)
 
         return power_rabi_probe.build_program(
             machine,

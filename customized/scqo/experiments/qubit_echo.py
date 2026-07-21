@@ -26,7 +26,7 @@ class QMQubitEcho(QubitEcho):
         from customized.probes import qubit_echo as echo_probe
 
         machine = self.backend.machine  # type: ignore[attr-defined]
-        qubits = select_qubits(machine, self.params.qubits, multiplexed=True)
+        qubits = select_qubits(machine, self.params.targets, multiplexed=True)
 
         # Total idle time tau (ns) -> per-arm clock cycles: tau/2 per arm, 4 ns per
         # cycle. QUA wait() needs >= 1 cycle, hence the floor.

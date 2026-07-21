@@ -85,7 +85,7 @@ scqo sessions; keep qualibrate's own `[quam] state_path` pointed at the same fol
 that run both stacks (re-point it each new cooldown).
 
 ### scqo student surface
-Students use the **`scqo` command** (`run/find/accept/tag/state/user/device/doctor`) from any
+Students use the **`scqo` command** (`run/find/accept/suggest/set/tag/state/user/device/doctor`) from any
 directory in `.venv-qm`, selecting a sample and setup with
 `scqo user --device <name> [--setup <name>]` (written to `~/.scqo/user.toml`); `scqo run <name>` is
 the one way to run an experiment (never add per-command wrappers or launcher stubs). This repo
@@ -122,6 +122,11 @@ root).
 - **Packaging:** `pyproject.toml` — Python `>=3.10,<3.13`, black `line-length = 120`. Wheel packages: `calibrations`, `calibration_utils`, `quam_config`, `customized`.
 - **Tests:** the scqo-glue tests live in `tests/test_scqo_glue.py`; run the suite with `pytest`.
 - **External analysis dependency.** LCH analysis nodes lazily import `scqat` (`D:\github\scqat`, the lab's analysis tool that **replaced** the older `qcat`/`D:\github\QCAT`), installed editable. It is **not declared in `pyproject.toml`** and must be installed in the runtime env — now present (editable) in both `LCHQM` and `LCHQM_test` (the launcher env; verified 2026-06-07) — or those nodes raise `ImportError` at plot time. Official (non-`LCH_`) nodes do not depend on it and run regardless. The qcat→scqat migration of the active `LCH_*` nodes is complete (`calibrations/exclude/` still references qcat); see `ANALYSIS_MIGRATION.md`.
+
+- **Placement rule** (`scqo state --rule`; SCQO TUTORIAL §9): QUAM-tree copies of physics that the
+  tree operationally CONSUMES (T1 for thermalization waits, anharmonicity for DRAG) are CACHES with
+  scqo's physical.json as truth; QUAM's stored measured artifacts (confusion_matrix, gate_fidelity,
+  resonator f_01/frequency_bare) are dead to SCQO — never read, never written by it.
 
 ## Workspace Packages (Read-Only)
 The vendor dependency stack (`qm` QUA control → `quam` hardware abstraction → `quam_builder` → `qualibrate` GUI) is available read-only in the workspace; do NOT modify. For the SC-qubit repo layout see the global workspace map `C:\Users\shiau\.claude\CLAUDE.md`.
