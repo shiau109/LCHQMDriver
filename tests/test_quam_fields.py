@@ -219,3 +219,22 @@ def test_qm_view_uses_the_shared_mapping():
     view.readout_integration_s = 2.0e-6
     assert q.resonator.operations["readout"]._raw_weights == [(1.0, 2000), (0.0, 2000)]
     assert view.readout_integration_s == pytest.approx(2.0e-6)
+
+
+def test_drag_beta_writes_dragcosine_and_skips_alias():
+    """set_drag_beta writes the x180_DragCosine storage node (QUAM stores DRAG as
+    alpha) and leaves string-reference aliases untouched; get reads it back."""
+    class _Op:
+        def __init__(self, alpha=0.0, amplitude=0.1):
+            self.alpha = alpha
+            self.amplitude = amplitude
+
+    q = SimpleNamespace(xy=SimpleNamespace(operations={
+        "x180_DragCosine": _Op(), "x90_DragCosine": _Op(),
+        "x180": "#./x180_DragCosine",  # a string-reference alias
+    }))
+    quam_fields.set_drag_beta(q, -0.75)
+    assert q.xy.operations["x180_DragCosine"].alpha == pytest.approx(-0.75)
+    assert q.xy.operations["x90_DragCosine"].alpha == pytest.approx(-0.75)  # lock_x90 default True
+    assert q.xy.operations["x180"] == "#./x180_DragCosine"  # alias untouched
+    assert quam_fields.get_drag_beta(q) == pytest.approx(-0.75)

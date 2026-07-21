@@ -229,8 +229,8 @@ def test_device_view_roundtrip(machine):
         view.readout_amp = a0
 
         snap = backend.device.snapshot()
-        assert set(snap["q4"]) == {"readout_freq", "drive_freq", "pi_amp", "readout_amp",
-                                   "readout_power_dbm", "readout_duration_s",
+        assert set(snap["q4"]) == {"readout_freq", "drive_freq", "pi_amp", "drag_beta",
+                                   "readout_amp", "readout_power_dbm", "readout_duration_s",
                                    "readout_integration_s", "idle_flux_v"}
         # the pair entries carry the two coupler knobs (pull-mode seed source)
         for pair_name in backend.machine.qubit_pairs:
