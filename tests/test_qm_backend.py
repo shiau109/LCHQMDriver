@@ -63,7 +63,7 @@ def test_to_canonical_renames_two_axes():
         raw, _FakeExp({"detuning_hz": np.arange(5), "power_dbm": np.arange(3)})
     )
     assert {"detuning_hz", "power_dbm"} <= set(out.dims)
-    assert out["I"].dims == ("qubit", "detuning_hz", "power_dbm")
+    assert out["I"].dims == ("target", "detuning_hz", "power_dbm")
 
 
 def test_to_canonical_name_based_ignores_order_2d():
@@ -79,7 +79,7 @@ def test_to_canonical_name_based_ignores_order_2d():
     out = QMBackend._to_canonical(
         raw, _FakeExp({"flux_bias_v": np.zeros(n), "detuning_hz": np.zeros(n)})
     )
-    assert out["I"].dims == ("qubit", "detuning_hz", "flux_bias_v")  # raw order kept
+    assert out["I"].dims == ("target", "detuning_hz", "flux_bias_v")  # raw order kept
     np.testing.assert_array_equal(out["I"].values, data)
     np.testing.assert_array_equal(out["detuning_hz"].values, raw["detuning_hz"].values)
 
@@ -96,7 +96,7 @@ def test_to_canonical_name_based_single_shot():
     out = QMBackend._to_canonical(
         raw, _FakeExp({"prepared_state": np.array([0, 1]), "shot_idx": np.arange(n_shots)})
     )
-    assert out["I"].dims == ("qubit", "shot_idx", "prepared_state")
+    assert out["I"].dims == ("target", "shot_idx", "prepared_state")
     # size check is per NAME even though the declaration order differs
     bad = _FakeExp({"prepared_state": np.array([0, 1]), "shot_idx": np.arange(n_shots + 1)})
     with pytest.raises(ValueError):
@@ -164,7 +164,7 @@ def test_probe_matches_direct_build(machine):
     qubits = select_qubits(machine, qubits_names, multiplexed=True)
 
     # Ramsey
-    r = QMQubitRamsey(backend, QMQubitRamsey.Parameters(qubits=qubits_names, num_averages=200))
+    r = QMQubitRamsey(backend, QMQubitRamsey.Parameters(targets=qubits_names, num_averages=200))
     r.sweep_axes = r.define_sweep()
     r_prog, _ = r.probe()
     idle_cycles = np.maximum(1, np.round(r.sweep_axes["idle_time_ns"] / 4)).astype(int)
@@ -176,7 +176,7 @@ def test_probe_matches_direct_build(machine):
     assert script(r_prog) == script(r_direct)
 
     # Power Rabi
-    p = QMQubitPowerRabi(backend, QMQubitPowerRabi.Parameters(qubits=qubits_names, num_averages=200))
+    p = QMQubitPowerRabi(backend, QMQubitPowerRabi.Parameters(targets=qubits_names, num_averages=200))
     p.sweep_axes = p.define_sweep()
     p_prog, _ = p.probe()
     p_direct, _ = power_rabi_probe.build_program(
@@ -187,7 +187,7 @@ def test_probe_matches_direct_build(machine):
 
     # Resonator spectroscopy
     rs = QMResonatorSpectroscopy(
-        backend, QMResonatorSpectroscopy.Parameters(qubits=qubits_names, num_averages=200)
+        backend, QMResonatorSpectroscopy.Parameters(targets=qubits_names, num_averages=200)
     )
     rs.sweep_axes = rs.define_sweep()
     rs_prog, _ = rs.probe()
@@ -200,7 +200,7 @@ def test_probe_matches_direct_build(machine):
 def test_device_view_roundtrip(machine):
     """Neutral get/set maps onto QUAM; drive_freq shifts both f_01 and xy.RF_frequency."""
     backend = QMBackend(machine)
-    view = backend.device.qubit("q4")
+    view = backend.device.component("q4")
     q = machine.qubits["q4"]
 
     r0, d0, p0 = view.readout_freq, view.drive_freq, view.pi_amp
@@ -230,7 +230,23 @@ def test_device_view_roundtrip(machine):
 
         snap = backend.device.snapshot()
         assert set(snap["q4"]) == {"readout_freq", "drive_freq", "pi_amp", "readout_amp",
-                                   "readout_power_dbm"}
+                                   "readout_power_dbm", "readout_duration_s",
+                                   "readout_integration_s", "idle_flux_v"}
+        # the pair entries carry the two coupler knobs (pull-mode seed source)
+        for pair_name in backend.machine.qubit_pairs:
+            assert set(snap[pair_name]) == {"coupler_decouple_v", "coupler_interaction_v"}
+
+        # Window round-trip on the REAL QUAM pulse (reference semantics the stub
+        # tests only mimic) — only from the default-weights form, restored after.
+        pulse = q.resonator.operations["readout"]
+        length_ns = int(pulse.length)
+        if pulse.integration_weights == [(1, length_ns)]:
+            view.readout_integration_s = (length_ns // 2 // 4 * 4) * 1e-9
+            assert pulse.integration_weights[0][0] == 1.0
+            assert view.readout_integration_s == pytest.approx(
+                (length_ns // 2 // 4 * 4) * 1e-9)
+            view.readout_integration_s = length_ns * 1e-9  # restore the reference form
+            assert view.readout_integration_s == pytest.approx(length_ns * 1e-9)
     finally:
         # Restore the in-memory state (never saved); keep the loaded machine pristine.
         view.readout_freq = r0
@@ -246,7 +262,7 @@ def test_readout_power_dbm_roundtrip(machine):
     the SMALLEST grid full-scale keeping amp <= 0.5 — bidirectional (a lower target
     lowers full scale again, unlike the bare power_tools helper)."""
     backend = QMBackend(machine)
-    view = backend.device.qubit("q4")
+    view = backend.device.component("q4")
     q = machine.qubits["q4"]
     fs0 = q.resonator.opx_output.full_scale_power_dbm
     amp0 = q.resonator.operations["readout"].amplitude
@@ -280,7 +296,7 @@ def test_readout_power_dbm_undefined_on_zero_amp(machine):
     """Zero/unset readout amplitude -> the absolute power is UNDEFINED (ValueError),
     and snapshot() degrades that qubit's readout_power_dbm to None."""
     backend = QMBackend(machine)
-    view = backend.device.qubit("q4")
+    view = backend.device.component("q4")
     q = machine.qubits["q4"]
     amp0 = q.resonator.operations["readout"].amplitude
     try:
@@ -301,8 +317,15 @@ def test_power_context_matches_the_view(machine):
         float(q.resonator.operations["readout"].amplitude)
     )
     assert ctx["q4"]["readout_power_dbm"] == pytest.approx(
-        backend.device.qubit("q4").readout_power_dbm
+        backend.device.component("q4").readout_power_dbm
     )
+    # the readout LO the data was taken at — stamped only when the channel has
+    # one (MW-FEM upconverter; an LF-FEM resonator carries none)
+    expected_lo = getattr(q.resonator, "LO_frequency", None)
+    if expected_lo is not None:
+        assert ctx["q4"]["readout_lo_freq_hz"] == pytest.approx(float(expected_lo))
+    else:
+        assert "readout_lo_freq_hz" not in ctx["q4"]
     assert ctx["nonexistent"] == {}  # unknown qubit degrades, never raises
 
 
@@ -332,7 +355,7 @@ def test_absolute_punchout_probe_matches_direct_build(machine):
     exp = QMResonatorSpectroscopyPowerChain(
         backend,
         QMResonatorSpectroscopyPowerChain.Parameters(
-            qubits=qubits_names, max_power_dbm=-15.0, min_power_dbm=-45.0, num_averages=100
+            targets=qubits_names, max_power_dbm=-15.0, min_power_dbm=-45.0, num_averages=100
         ),
     )
     axes = exp.define_sweep()
@@ -380,7 +403,7 @@ def test_power_amp_probe_builds_with_new_loop_order(machine):
             ln for ln in generate_qua_script(prog, config).splitlines() if "generated at" not in ln
         )
 
-    base = dict(qubits=["q4"], num_power_points=5, num_freq_points=3, num_averages=10)
+    base = dict(targets=["q4"], num_power_points=5, num_freq_points=3, num_averages=10)
     default = script(base)
     overridden = script({**base, "resonator_relaxation_time_ns": 25000.0})
     assert default != overridden  # the relaxation override reaches the QUA program

@@ -34,7 +34,7 @@ class QMQubitSpectroscopyFlux(QubitSpectroscopyFlux):
         from customized.probes import qubit_spectroscopy_flux as flux_probe
 
         machine = self.backend.machine  # type: ignore[attr-defined]
-        qubits = select_qubits(machine, self.params.qubits, multiplexed=True)
+        qubits = select_qubits(machine, self.params.targets, multiplexed=True)
 
         prog, axes = flux_probe.build_program(
             machine,
@@ -45,7 +45,10 @@ class QMQubitSpectroscopyFlux(QubitSpectroscopyFlux):
             operation_len=None,  # use each qubit's own saturation-pulse length
             operation_amp=1.0,
             num_shots=self.params.num_averages,
-            z_source_qubit=None,  # None = every measured qubit fluxes its own z line
+            # None = every measured qubit fluxes its own z line; a QUBIT name is
+            # the assigned single source (scqo validated it — this probe plays z
+            # pulses, so a pair's coupler is not sweepable here).
+            z_source_qubit=self.params.flux_component,
             xy_source_qubit=None,  # None = every measured qubit drives its own xy line
         )
         # Canonical names in RAW nesting order (detuning outer, flux inner — see

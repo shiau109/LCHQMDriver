@@ -25,7 +25,7 @@ class QMQubitRelaxation(QubitRelaxation):
         from customized.probes import qubit_relaxation as t1_probe
 
         machine = self.backend.machine  # type: ignore[attr-defined]
-        qubits = select_qubits(machine, self.params.qubits, multiplexed=True)
+        qubits = select_qubits(machine, self.params.targets, multiplexed=True)
 
         wait_ns = self.sweep_axes["wait_time_ns"]
         wait_cycles = np.maximum(1, np.round(wait_ns / 4)).astype(int)

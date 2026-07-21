@@ -36,7 +36,7 @@ class QMResonatorSpectroscopyFlux(ResonatorSpectroscopyFlux):
         from customized.probes import resonator_spectroscopy_flux as flux_probe
 
         machine = self.backend.machine  # type: ignore[attr-defined]
-        qubits = select_qubits(machine, self.params.qubits, multiplexed=True)
+        qubits = select_qubits(machine, self.params.targets, multiplexed=True)
 
         prog, axes = flux_probe.build_program(
             machine,
@@ -44,7 +44,10 @@ class QMResonatorSpectroscopyFlux(ResonatorSpectroscopyFlux):
             dcs=self.sweep_axes["flux_bias_v"],
             dfs=self.sweep_axes["detuning_hz"],
             num_shots=self.params.num_averages,
-            z_source=None,  # None = every measured qubit fluxes its own z line
+            # None = every measured qubit fluxes its own z line; a component name
+            # (qubit -> its z, pair -> its tunable coupler) is the assigned
+            # single source (scqo validated it against the roster pre-probe).
+            z_source=self.params.flux_component,
         )
         # Canonical names in RAW nesting order (flux outer, detuning inner — see
         # module docstring); the DataArray values (incl. units attrs) are reused.

@@ -5,11 +5,11 @@ so that `import customized.scqo.backend` works without an instrument and pulls i
 qualang_tools only when data is actually acquired. This module is never imported by
 the qualibrate calibration nodes - it is the optional scqo integration.
 
-Neutral-name mapping (scqo QubitView -> QUAM qubit), confirmed by the LCHQM update
-modules in customized/node/LCH_*/update.py:
-    readout_freq  <-> q.resonator.RF_frequency
-    drive_freq    <-> q.f_01  (and q.xy.RF_frequency, shifted by the same delta)
-    pi_amp        <-> q.xy.operations['x180'].amplitude
+Neutral-name mapping: declared ONCE in ``customized/scqo/fieldmap.py`` (the
+catalog ``scqo state --fields`` renders; drift-tested against scqo's per-category
+pushed_fields). The executable conversions are ``QMReadableTransmon``'s
+properties below (via customized.quam_fields, shared with the qualibrate
+writebacks).
 """
 
 from __future__ import annotations
@@ -20,9 +20,11 @@ from typing import TYPE_CHECKING, Any
 
 import xarray as xr
 from scqo.backend import Backend
-from scqo.device import DeviceModel, QubitView
+from scqo.device import ComponentInfo, DeviceModel, make_view_base
+from scqo.fieldmap import Unrealized, VendorBinding, VendorOnly
 
 from customized import quam_fields
+from customized.scqo.fieldmap import FIELD_BINDINGS, UNREALIZED, VENDOR_ONLY
 
 #: MW-FEM full-scale grid (dBm): -11..+16 in 3 dB steps (power_tools validates the
 #: same values; its docstring's "[-41,10]" range is stale).
@@ -34,8 +36,8 @@ if TYPE_CHECKING:
     from scqo.experiment import Experiment
 
 
-class QMQubitView(QubitView):
-    """A scqo QubitView backed by a QUAM qubit object.
+class QMReadableTransmon(make_view_base("ReadableTransmon")):
+    """The scqo ReadableTransmon view backed by a QUAM qubit object.
 
     The neutral field <-> QUAM mapping lives in :mod:`customized.quam_fields`, shared with
     the qualibrate ``apply_update`` writebacks, so it is defined exactly once.
@@ -76,6 +78,22 @@ class QMQubitView(QubitView):
     @readout_amp.setter
     def readout_amp(self, value: float) -> None:
         quam_fields.set_readout_amp(self._q, value)
+
+    @property
+    def readout_duration_s(self) -> float:
+        return quam_fields.get_readout_duration(self._q)
+
+    @readout_duration_s.setter
+    def readout_duration_s(self, value: float) -> None:
+        quam_fields.set_readout_duration(self._q, value)
+
+    @property
+    def readout_integration_s(self) -> float:
+        return quam_fields.get_readout_integration(self._q)
+
+    @readout_integration_s.setter
+    def readout_integration_s(self, value: float) -> None:
+        quam_fields.set_readout_integration(self._q, value)
 
     # readout_power_dbm lives HERE (not in quam_fields): the chain solve needs
     # quam_builder.tools.power_tools, whose module top imports quam — quam_fields is
@@ -120,6 +138,43 @@ class QMQubitView(QubitView):
             full_scale_power_dbm=int(fs), max_amplitude=1,
         )
 
+    # idle_flux_v: the z-line offset SELECTED by z.flux_point (which named point
+    # is active stays vendor config). Fixed-frequency qubits have no z — the
+    # AttributeError surfaces as "unset" through _read_or_none / seeding, and a
+    # roster that declares flux_bias on such a chip is a roster error anyway.
+    @property
+    def idle_flux_v(self) -> float:
+        return quam_fields.get_idle_flux(self._q)
+
+    @idle_flux_v.setter
+    def idle_flux_v(self, value: float) -> None:
+        quam_fields.set_idle_flux(self._q, value)
+
+
+class QMTransmonPair(make_view_base("TransmonPair")):
+    """The scqo TransmonPair view backed by a QUAM qubit-pair object (QCQ
+    architecture): the coupler's standing offsets are the pair's knobs."""
+
+    def __init__(self, pair: Any) -> None:
+        self.name = pair.name if isinstance(getattr(pair, "name", None), str) else str(pair.id)
+        self._qp = pair
+
+    @property
+    def coupler_decouple_v(self) -> float:
+        return float(self._qp.coupler.decouple_offset)
+
+    @coupler_decouple_v.setter
+    def coupler_decouple_v(self, value: float) -> None:
+        self._qp.coupler.decouple_offset = float(value)
+
+    @property
+    def coupler_interaction_v(self) -> float:
+        return float(self._qp.coupler.interaction_offset)
+
+    @coupler_interaction_v.setter
+    def coupler_interaction_v(self, value: float) -> None:
+        self._qp.coupler.interaction_offset = float(value)
+
 
 class QMDeviceModel(DeviceModel):
     """Wraps a QUAM machine (`Quam`).
@@ -134,8 +189,27 @@ class QMDeviceModel(DeviceModel):
         self._machine = machine
         self._state_dir = state_dir
 
-    def qubit(self, name: str) -> QMQubitView:
-        return QMQubitView(self._machine.qubits[name])
+    def component(self, name: str) -> "QMReadableTransmon | QMTransmonPair":
+        if name in self._machine.qubits:
+            return QMReadableTransmon(self._machine.qubits[name])
+        pairs = getattr(self._machine, "qubit_pairs", {}) or {}
+        if name in pairs:
+            return QMTransmonPair(pairs[name])
+        raise KeyError(name)
+
+    def components(self) -> dict[str, ComponentInfo]:
+        # Derived inventory (doctor's witness): every QUAM qubit is a
+        # ReadableTransmon; every QUAM qubit_pair a TransmonPair whose derived
+        # operations are the coupler line + its declared gate macros.
+        out = {
+            name: ComponentInfo("ReadableTransmon", operations=("rx", "readout"))
+            for name in self._machine.qubits
+        }
+        for name, qp in (getattr(self._machine, "qubit_pairs", {}) or {}).items():
+            macros = tuple(getattr(qp, "macros", {}) or {})
+            out[name] = ComponentInfo("TransmonPair",
+                                      operations=("coupler_bias", *macros))
+        return out
 
     def save(self) -> None:
         if self._state_dir is not None:
@@ -148,16 +222,23 @@ class QMDeviceModel(DeviceModel):
         # (an unset QUAM field such as f_01=None yields None rather than crashing).
         state: dict[str, dict] = {}
         for name in self._machine.qubits:
-            view = self.qubit(name)
+            view = self.component(name)
             state[name] = {
                 field: _read_or_none(view, field)
                 for field in ("readout_freq", "drive_freq", "pi_amp", "readout_amp",
-                              "readout_power_dbm")
+                              "readout_power_dbm", "readout_duration_s",
+                              "readout_integration_s", "idle_flux_v")
+            }
+        for name in (getattr(self._machine, "qubit_pairs", {}) or {}):
+            view = self.component(name)
+            state[name] = {
+                field: _read_or_none(view, field)
+                for field in ("coupler_decouple_v", "coupler_interaction_v")
             }
         return state
 
 
-def _read_or_none(view: QubitView, field: str) -> float | None:
+def _read_or_none(view: QMReadableTransmon, field: str) -> float | None:
     """Read a neutral field, returning None if the underlying QUAM value is unset.
 
     ValueError covers readout_power_dbm on a zero/unset readout amplitude (the
@@ -197,6 +278,20 @@ class QMBackend(Backend):
         """The underlying QUAM machine (read by the QM experiment probes)."""
         return self._machine
 
+    def field_bindings(self) -> dict[str, dict[str, VendorBinding]]:
+        """The declared per-category neutral-field catalog (customized.scqo.fieldmap)
+        — the conversion CODE is QMReadableTransmon/QMTransmonPair above; this is
+        its description."""
+        return {cat: dict(fields) for cat, fields in FIELD_BINDINGS.items()}
+
+    def unrealized(self) -> dict[str, dict[str, Unrealized]]:
+        """Pushed fields this backend declares it cannot realize (see fieldmap)."""
+        return {cat: dict(fields) for cat, fields in UNREALIZED.items()}
+
+    def vendor_only(self) -> dict[str, VendorOnly]:
+        """QM-unique calibration knobs, vendor-owned (see fieldmap)."""
+        return dict(VENDOR_ONLY)
+
     def power_context(self, qubits: list[str]) -> dict:
         """Raw readout output-chain values per qubit (run-record provenance only)."""
         from quam_builder.tools.power_tools import get_output_power_mw_channel
@@ -213,6 +308,13 @@ class QMBackend(Backend):
                         get_output_power_mw_channel(q.resonator, quam_fields.READOUT_OPERATION)
                     ),
                 }
+                # The readout LO the data was taken at (QUAM resolves LO_frequency
+                # to the port's upconverter_frequency): a hand-edited LO is
+                # otherwise invisible in provenance. Only when the channel has one
+                # (an LF-FEM resonator does not).
+                lo = getattr(q.resonator, "LO_frequency", None)
+                if lo is not None:
+                    out[name]["readout_lo_freq_hz"] = float(lo)
             except Exception:  # provenance must never fail a run
                 out[name] = {}
         return out
@@ -232,6 +334,12 @@ class QMBackend(Backend):
             num_shots=shots,
             timeout=self._timeout,
         )
+        # Optional per-experiment raw reduction (e.g. joint two-qubit state
+        # populations -> the pair experiment's canonical `signal` variable),
+        # applied BEFORE canonicalization so the contract sees final variables.
+        reduce = getattr(experiment, "reduce_raw", None)
+        if reduce is not None:
+            raw = reduce(raw)
         return self._to_canonical(raw, experiment)
 
     @staticmethod
@@ -263,14 +371,21 @@ class QMBackend(Backend):
         before the datastore ever sees the dataset).
         """
         target = list(experiment.sweep_axes.keys())
-        if "qubit" not in raw.dims:
+        # The raw target axis may be named per the probe family (single-qubit
+        # probes: "qubit"; pair probes: "qubit_pair"); canonical is "target".
+        raw_target = next((d for d in ("target", "qubit", "qubit_pair")
+                           if d in raw.dims), None)
+        if raw_target is None:
             raise ValueError(
-                f"raw dataset has no 'qubit' dimension (dims={dict(raw.sizes)}, "
+                f"raw dataset has no target axis (expected one of "
+                f"'qubit'/'qubit_pair'/'target'; dims={dict(raw.sizes)}, "
                 f"data_vars={list(raw.data_vars)}); {_dump_raw(raw)}"
             )
+        if raw_target != "target":
+            raw = raw.rename({raw_target: "target"})
         # Axis order from an actual data variable (Dataset.dims is unordered).
         ref_var = "I" if "I" in raw.data_vars else next(iter(raw.data_vars))
-        raw_axes = [d for d in raw[ref_var].dims if d != "qubit"]
+        raw_axes = [d for d in raw[ref_var].dims if d != "target"]
         if len(raw_axes) != len(target):
             raise NotImplementedError(
                 f"sweep-axis count mismatch: raw {raw_axes} vs scqo {target}, "

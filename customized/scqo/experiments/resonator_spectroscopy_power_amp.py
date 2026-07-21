@@ -37,7 +37,7 @@ class QMResonatorSpectroscopyPowerAmp(ResonatorSpectroscopyPowerAmp):
         from customized.probes import resonator_spectroscopy_power as power_probe
 
         machine = self.backend.machine  # type: ignore[attr-defined]
-        qubits = select_qubits(machine, self.params.qubits, multiplexed=True)
+        qubits = select_qubits(machine, self.params.targets, multiplexed=True)
 
         power_dbm = np.asarray(self.sweep_axes["power_dbm"])
         # prefactors relative to the window top run() solved the chain for

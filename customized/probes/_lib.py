@@ -28,6 +28,22 @@ def select_qubits(machine, names: Optional[List[str]] = None, *, multiplexed: bo
     return BatchableList(qubits, batched_groups)
 
 
+def select_qubit_pairs(machine, names: Optional[List[str]] = None, *,
+                       multiplexed: bool = False) -> BatchableList:
+    """Node-free replacement for `qualibration_libs.parameters.get_qubit_pairs(node)`:
+    selects pairs from the machine by name (or `machine.active_qubit_pairs` when
+    `names` is None/empty) and wraps them in the same `BatchableList`."""
+    if not names:
+        pairs = machine.active_qubit_pairs
+    else:
+        pairs = [machine.qubit_pairs[p] for p in names]
+    if multiplexed:
+        batched_groups = [list(range(len(pairs)))]
+    else:
+        batched_groups = [[i] for i in range(len(pairs))]
+    return BatchableList(pairs, batched_groups)
+
+
 def acquire(
     machine,
     prog,
