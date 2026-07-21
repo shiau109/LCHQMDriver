@@ -131,7 +131,7 @@ def build_program(
                                 q_name = qubit_names[i_q]
                                 q_cfg = qubit_configs.get(q_name, {})
                                 init_st = q_cfg.get("init_state", "0")
-                                tgt_gt = q_cfg.get("target_gate", "I")
+                                tgt_gt = q_cfg.get("target_gate", "X180")
 
                                 qubit.align()
                                 play_init_state(qubit, init_st)
