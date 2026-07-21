@@ -16,5 +16,13 @@ from . import resonator_spectroscopy_flux  # noqa: F401  (import side effect: @r
 from . import resonator_spectroscopy_power_chain  # noqa: F401  (import side effect: @register)
 from . import resonator_spectroscopy_power_amp  # noqa: F401  (import side effect: @register)
 from . import single_shot_readout  # noqa: F401  (import side effect: @register)
+from . import qubit_tomography  # noqa: F401  (import side effect: @register)
+from . import qubit_sqrb  # noqa: F401  (import side effect: @register)
+from . import qubit_relaxation_flux  # noqa: F401  (import side effect: @register)
+from . import qubit_echo_flux  # noqa: F401  (import side effect: @register)
+from . import qubit_drag_equator  # noqa: F401  (import side effect: @register)
+from . import qubit_drag_alternating  # noqa: F401  (import side effect: @register)
+from . import qubit_pi_pulse_error  # noqa: F401  (import side effect: @register)
 
-__all__ = ["qubit_ramsey", "qubit_spectroscopy", "qubit_power_rabi", "resonator_spectroscopy"]
+__all__ = ["qubit_ramsey", "qubit_spectroscopy", "qubit_power_rabi", "resonator_spectroscopy", "qubit_tomography", "qubit_sqrb", "qubit_relaxation_flux", "qubit_echo_flux", "qubit_drag_equator", "qubit_drag_alternating", "qubit_pi_pulse_error"]
+

@@ -46,6 +46,10 @@ def acquire(
     pre-built one (e.g. a baked config carrying baking ops the fresh config lacks).
     """
     qmm = machine.connect()
+    try:
+        qmm.close_all_quantum_machines()
+    except Exception:
+        pass
     config = config if config is not None else machine.generate_config()
     # Execute the QUA program only if the quantum machine is available (this is to avoid interrupting running jobs).
     with qm_session(qmm, config, timeout=timeout) as qm:
@@ -59,5 +63,9 @@ def acquire(
             )
         # Expose possible runtime errors
         if log:
-            log(job.execution_report())
+            rep = getattr(job, "execution_report", None)
+            if callable(rep):
+                log(rep())
+            elif rep is not None:
+                log(rep)
     return dataset

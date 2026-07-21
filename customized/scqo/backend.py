@@ -70,6 +70,14 @@ class QMQubitView(QubitView):
         quam_fields.set_pi_amp(self._q, value)
 
     @property
+    def drag_beta(self) -> float:
+        return quam_fields.get_drag_beta(self._q)
+
+    @drag_beta.setter
+    def drag_beta(self, value: float) -> None:
+        quam_fields.set_drag_beta(self._q, value)
+
+    @property
     def readout_amp(self) -> float:
         return quam_fields.get_readout_amp(self._q)
 
@@ -151,7 +159,7 @@ class QMDeviceModel(DeviceModel):
             view = self.qubit(name)
             state[name] = {
                 field: _read_or_none(view, field)
-                for field in ("readout_freq", "drive_freq", "pi_amp", "readout_amp",
+                for field in ("readout_freq", "drive_freq", "pi_amp", "drag_beta", "readout_amp",
                               "readout_power_dbm")
             }
         return state
@@ -218,14 +226,26 @@ class QMBackend(Backend):
         return out
 
     def acquire(self, experiment: "Experiment") -> xr.Dataset:
+        import xarray as xr
         from customized.probes._lib import acquire as run_acquire
 
-        program, sweep_axes = experiment.probe()  # QM probe returns (program, sweep_axes)
-        # Progress denominator: per-shot experiments (single_shot_readout) declare
-        # `num_shots` instead of the averaging mixin's `num_averages`.
+        res = experiment.probe()
+
+        # Probe may return a ready-made xr.Dataset (e.g. when it calls acquire()
+        # internally to forward a pre-built config); in that case skip re-acquisition.
+        if isinstance(res, xr.Dataset):
+            return self._to_canonical(res, experiment)
+
+        if isinstance(res, tuple) and len(res) == 3:
+            program, sweep_axes, probe_module = res
+            acquire_fn = getattr(probe_module, "acquire", run_acquire)
+        else:
+            program, sweep_axes = res
+            acquire_fn = run_acquire
+
         params = experiment.params
         shots = getattr(params, "num_averages", None) or getattr(params, "num_shots", 1)
-        raw = run_acquire(
+        raw = acquire_fn(
             self._machine,
             program,
             sweep_axes,
@@ -234,34 +254,15 @@ class QMBackend(Backend):
         )
         return self._to_canonical(raw, experiment)
 
+
     @staticmethod
     def _to_canonical(raw: xr.Dataset, experiment: "Experiment") -> xr.Dataset:
-        """Relabel the raw probe dataset into scqo's convention: dims (qubit, *sweeps),
-        vars I/Q. The probe already emits I/Q with a qubit dim.
+        try:
+            experiment.Contract.validate(raw)
+            return raw
+        except Exception:
+            pass
 
-        Two mapping modes for the sweep axes:
-
-        1. Name-based (preferred, order-independent): when the raw non-qubit dim
-           NAMES already equal the scqo `define_sweep` names as a set, nothing is
-           renamed — only per-name sizes are asserted. This is how probes whose raw
-           nesting order differs from the scqo declaration order stay correct: the
-           QUA stream nesting fixes the raw dim order (e.g. flux spectroscopy is
-           (detuning, flux) on the wire while scqo declares (flux, detuning));
-           downstream code transposes by NAME, so order does not matter, but a
-           positional rename would silently swap equal-sized axes. Wrappers opt in
-           by returning `sweep_axes` keyed with the canonical names in raw nesting
-           order (readout_fidelity's probe already is canonical).
-
-        2. Positional fallback: axes are renamed positionally to the scqo names
-           (e.g. idle_time -> idle_time_ns, (detuning, power) -> (detuning_hz,
-           power_dbm)) — the fetcher preserves the probe's sweep_axes order, and the
-           wrapper guarantees that order matches `define_sweep`; sizes are asserted
-           per axis.
-
-        On a structure mismatch the raw dataset is pickled for offline inspection —
-        a bring-up run against the real QOP is never wasted (a raise here happens
-        before the datastore ever sees the dataset).
-        """
         target = list(experiment.sweep_axes.keys())
         if "qubit" not in raw.dims:
             raise ValueError(

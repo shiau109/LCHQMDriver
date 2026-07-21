@@ -94,10 +94,116 @@ def get_pi_amp(qubit: Any, operation: str = PI_OPERATION) -> float:
     return float(qubit.xy.operations[operation].amplitude)
 
 
-def set_pi_amp(qubit: Any, value: float, *, operation: str = PI_OPERATION, lock_x90: bool = False) -> None:
-    """Write the operation's amplitude; when ``operation`` is ``x180`` and ``lock_x90`` is
-    set, lock ``x90`` to half the pi-pulse amplitude."""
-    value = float(value)
-    qubit.xy.operations[operation].amplitude = value
-    if lock_x90 and operation == "x180":
-        qubit.xy.operations["x90"].amplitude = value / 2
+def set_pi_amp(qubit: Any, value: float, *, operation: str = PI_OPERATION, lock_x90: bool = True) -> None:
+    """Write the pi-pulse amplitude.
+
+    QUAM structure (state.json):
+      - x180_DragCosine: the real pi-pulse storage node.
+      - x90_DragCosine:  the real pi/2-pulse storage node.
+      - x180, y180 etc.: QUAM reference aliases → follow x180_DragCosine automatically.
+      - -x90, y90, -y90: QUAM reference aliases → follow x90_DragCosine automatically.
+
+    So we only need to write x180_DragCosine and (when lock_x90=True) x90_DragCosine.
+    """
+    val = float(value)
+    if not (hasattr(qubit, "xy") and hasattr(qubit.xy, "operations")):
+        return
+    ops = qubit.xy.operations
+
+    # --- pi pulse: update the real storage node (x180_DragCosine) directly ---
+    # Also try "x180" in case the setup uses a plain SquarePulse alias.
+    _set_op_amp(ops, "x180_DragCosine", val)
+    _set_op_amp(ops, "x180", val)
+
+    # --- pi/2 pulse: update x90_DragCosine (and plain x90 alias if present) ---
+    if lock_x90:
+        half_val = val / 2.0
+        _set_op_amp(ops, "x90_DragCosine", half_val)
+        _set_op_amp(ops, "x90", half_val)
+
+
+def _set_op_amp(ops: Any, name: str, value: float) -> None:
+    """Set ops[name].amplitude = value, but only when ops[name] is a real
+    pulse object (not a plain QUAM string-reference alias)."""
+    try:
+        op = ops[name]
+    except (KeyError, TypeError):
+        return
+    # If QUAM resolved the reference to a string it means this entry is itself
+    # a string-reference (e.g. '"#./x180_DragCosine"') — skip it so we don't
+    # overwrite the actual storage node twice or corrupt the reference.
+    if isinstance(op, str):
+        return
+    if hasattr(op, "amplitude"):
+        op.amplitude = value
+
+
+# ------------------------------------------------------------------------- DRAG beta / alpha
+def get_drag_beta(qubit: Any, operation: str = PI_OPERATION) -> float:
+    """Return the DRAG alpha, reading from x180_DragCosine (the storage node) first.
+
+    QUAM reference entries like "x180: #./x180_DragCosine" can throw KeyError
+    during resolution; we guard each access individually so a single bad reference
+    does not abort the entire search.
+    """
+    if not (hasattr(qubit, "xy") and hasattr(qubit.xy, "operations")):
+        return 0.0
+    ops = qubit.xy.operations
+
+    # 1) Try the canonical DragCosine storage node first (avoids reference resolution).
+    for name in ("x180_DragCosine", operation):
+        try:
+            op = ops[name]
+            if isinstance(op, str):
+                continue  # it IS a reference alias — its alpha is on the target
+            alpha = op.alpha
+            if alpha is not None:
+                return float(alpha)
+        except Exception:
+            continue
+
+    # 2) Fallback: iterate all operations, guarding each individually.
+    for name in list(ops):
+        try:
+            op = ops[name]
+            if isinstance(op, str):
+                continue
+            alpha = op.alpha
+            if alpha is not None:
+                return float(alpha)
+        except Exception:
+            continue
+
+    return 0.0
+
+
+def set_drag_beta(qubit: Any, value: float, *, operation: str = PI_OPERATION, lock_x90: bool = True) -> None:
+    val = float(value)
+    if not (hasattr(qubit, "xy") and hasattr(qubit.xy, "operations")):
+        return
+    ops = qubit.xy.operations
+    _set_op_alpha(ops, "x180_DragCosine", val)
+    _set_op_alpha(ops, operation, val)
+    if lock_x90:
+        _set_op_alpha(ops, "x90_DragCosine", val)
+        _set_op_alpha(ops, "x90", val)
+
+
+def _set_op_alpha(ops: Any, name: str, value: float) -> None:
+    try:
+        op = ops[name]
+    except (KeyError, TypeError):
+        return
+    if isinstance(op, str):
+        return
+    try:
+        raw_alpha = op.__quam__.get("alpha") if hasattr(op, "__quam__") else None
+        if isinstance(raw_alpha, str) and raw_alpha.startswith("#"):
+            return
+    except Exception:
+        pass
+    if hasattr(op, "alpha"):
+        op.alpha = value
+
+
+
