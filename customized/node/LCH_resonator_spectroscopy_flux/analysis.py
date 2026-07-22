@@ -1,12 +1,13 @@
 """Analysis wrappers for the LCH_resonator_spectroscopy_flux node.
 
 These thin wrappers delegate the actual fitting to the scqat
-``ResonatorSpectroscopyVsFluxEstimator``, which collapses the 2-D
+``resonator_spectroscopy_flux`` stage helpers: ``track_dips`` collapses the 2-D
 ``(flux_bias, detuning)`` map into a 1-D ``center_frequency(flux)`` trace by
-fitting the resonator dip flux-by-flux (single inverted Lorentzian per slice).
+fitting the resonator dip flux-by-flux (single inverted Lorentzian per slice),
+and ``fit_flux_trace`` fits that trace's flux dependence.
 
-What to do with that trace (sweet-spot / idle-offset / phi0 extraction) is
-deliberately deferred — see the node's ``update_state`` (currently a no-op).
+What to do with that trace (sweet-spot / idle-offset / phi0
+extraction) is deliberately deferred — see the node's ``update_state`` (a no-op).
 
 scqat is imported lazily (only inside the fit/plot calls) so the node still
 imports without scqat installed; the official nodes never need it.
@@ -47,7 +48,7 @@ def process_raw_dataset(ds: xr.Dataset, node: QualibrationNode) -> xr.Dataset:
 
 def fit_raw_data(ds: xr.Dataset, node: QualibrationNode) -> Tuple[Dict, Dict]:
     """Fit the resonator dip flux-by-flux for every qubit with the scqat
-    ``ResonatorSpectroscopyVsFluxEstimator``.
+    ``track_dips`` stage helper.
 
     Returns
     -------
@@ -59,16 +60,15 @@ def fit_raw_data(ds: xr.Dataset, node: QualibrationNode) -> Tuple[Dict, Dict]:
         of fitted flux points, centre-frequency span) used for logging / outcomes.
     """
     from scqat.parsers import repetition_data
-    from scqat.estimators.resonator_spectroscopy_vs_flux import ResonatorSpectroscopyVsFluxEstimator
+    from scqat.estimators.resonator_spectroscopy_flux import track_dips
 
-    estimator = ResonatorSpectroscopyVsFluxEstimator()
     sep_results: Dict = {}
     fit_results: Dict = {}
     n_sigma = float(getattr(node.parameters, "outlier_n_sigma", 3.0))
 
     for sq in repetition_data(ds, repetition_dim="qubit"):
         qubit_name = sq["qubit"].values.item()
-        results = estimator.analyze(sq, output_dir=None, skip_figures=True, n_sigma=n_sigma)[0]
+        results = track_dips(sq, n_sigma=n_sigma)
         sep_results[qubit_name] = (sq, results)
 
         # Centre-frequency span computed over the kept (good) points only.
@@ -107,7 +107,7 @@ def log_fitted_results(fit_results: Dict, log_callable=None) -> None:
 
 def fit_flux_dependence(sep_results: Dict, node: QualibrationNode) -> Tuple[Dict, Dict]:
     """Fit each qubit's ``center_frequency(flux)`` trace with the scqat
-    ``ResonatorFluxDispersionEstimator`` (full-transmon dispersive model).
+    ``fit_flux_trace`` stage helper (full-transmon dispersive model).
 
     Consumes the per-qubit ``(slice_ds, vs_flux_results)`` pairs from
     ``fit_raw_data`` and runs the dispersion fit on the extracted centre trace.
@@ -116,13 +116,13 @@ def fit_flux_dependence(sep_results: Dict, node: QualibrationNode) -> Tuple[Dict
     -------
     (dispersion_sep, dispersion_results)
         ``dispersion_sep[qubit] = (trace_ds, estimator_results)`` kept for redraw;
-        ``dispersion_results[qubit]`` is a compact scalar summary (sweet spot,
-        period dv_phi0, f_r0, conditional g, ...). ``g`` is conditional on the
-        assumed ``f_q_max`` until a spectroscopy prior is wired in.
+        ``dispersion_results[qubit]`` is a compact scalar summary
+        (sweet-spot flux, period dv_phi0, f_r0, conditional g, ...).
+        ``g`` is conditional on the assumed ``f_q_max`` until a spectroscopy prior
+        is wired in.
     """
-    from scqat.estimators.resonator_flux_dispersion import ResonatorFluxDispersionEstimator
+    from scqat.estimators.resonator_spectroscopy_flux import fit_flux_trace
 
-    estimator = ResonatorFluxDispersionEstimator()
     dispersion_sep: Dict = {}
     dispersion_results: Dict = {}
 
@@ -139,18 +139,15 @@ def fit_flux_dependence(sep_results: Dict, node: QualibrationNode) -> Tuple[Dict
         )
         # NOTE: an f_q_max prior (from qubit spectroscopy / the QUAM state) could
         # be passed here to make g physical; deferred for now (g stays conditional).
-        res = estimator.analyze(trace, output_dir=None, skip_figures=True)[0]
+        res = fit_flux_trace(trace)
         dispersion_sep[qubit_name] = (trace, res)
 
         # Instrument/state-level conversions (kept out of the physics estimator):
-        # the minimum-frequency flux point sits half a period from the sweet spot
-        # (toward 0, clamped to the line range), and the flux quantum in current.
-        sweet = float(res["sweet_spot_flux"])
+        # the minimum-frequency flux point is the estimator's lower sweet spot
+        # (already mapped into the swept range), and the flux quantum in current.
+        max_flux = float(res["sweet_spot_flux"])
         dv = float(res["dv_phi0"])
-        min_offset = float("nan")
-        if np.isfinite(sweet) and np.isfinite(dv) and dv > 0:
-            direction = 0.5 if sweet < 0 else -0.5
-            min_offset = float(np.clip(sweet + direction * dv, -0.5, 0.5))
+        min_offset = float(res["sweet_spot_low_flux"])
         phi0_current = float("nan")
         if node is not None and np.isfinite(dv):
             attenuation_factor = 10 ** (-node.parameters.line_attenuation_in_db / 20)
@@ -158,8 +155,8 @@ def fit_flux_dependence(sep_results: Dict, node: QualibrationNode) -> Tuple[Dict
 
         dispersion_results[qubit_name] = {
             "success": bool(res["success"]),
-            "sweet_spot_flux": sweet,
-            "sweet_spot_freq": float(res["sweet_spot_freq"]),
+            "sweet_spot_flux": max_flux,
+            "sweet_spot_res": float(res["sweet_spot_res"]),
             "min_offset": min_offset,
             "dv_phi0": dv,
             "phi0_current": phi0_current,
@@ -181,7 +178,7 @@ def log_dispersion_results(dispersion_results: Dict, log_callable=None) -> None:
         cond = " (g conditional on assumed f_q_max)" if r["f_q_max_fixed"] else ""
         s = (
             f"Flux dispersion {q}: "
-            f"sweet spot @ {r['sweet_spot_flux'] * 1e3:.1f} mV, {1e-9 * r['sweet_spot_freq']:.4f} GHz | "
+            f"sweet spot @ {r['sweet_spot_flux'] * 1e3:.1f} mV, {1e-9 * r['sweet_spot_res']:.4f} GHz | "
             f"min offset @ {r['min_offset'] * 1e3:.1f} mV | "
             f"dv_phi0 = {r['dv_phi0']:.4f} V | f_r0 = {1e-9 * r['f_r0']:.4f} GHz | "
             f"g = {1e-6 * r['g']:.1f} MHz{cond} | "

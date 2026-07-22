@@ -32,7 +32,7 @@ def plot_combined(
         the 2-D amplitude map, the per-flux centres and the good/outlier masks.
     dispersion_sep : dict
         ``{qubit: (trace_ds, dispersion_results)}`` from ``fit_flux_dependence`` —
-        carries the dispersive fit curve and the sweet spot.
+        carries the dispersive fit curve and the sweet-spot point.
     flux_offsets : dict, optional
         ``{qubit_name: offset_in_volts}`` — when given, a vertical line is drawn at
         ``offset_in_volts`` on that qubit's map (the flux source's operating point).
@@ -82,7 +82,7 @@ def plot_combined(
             ax.plot(flux[outlier], centers[outlier], "x", color="red", ms=7, mew=1.5,
                     label="rejected")
 
-        # (3) Dispersive fit curve + sweet spot.
+        # (3) Dispersive fit curve + sweet-spot point.
         disp_entry = dispersion_sep.get(qubit_name)
         if disp_entry is not None:
             _, disp = disp_entry
@@ -93,10 +93,10 @@ def plot_combined(
                 ax.plot(fit_flux, fit_freq / scale, "-", color="white", lw=3.0)
                 ax.plot(fit_flux, fit_freq / scale, "-", color="C1", lw=1.5,
                         label="dispersive fit")
-            ss_flux = float(disp.get("sweet_spot_flux", np.nan))
-            ss_freq = float(disp.get("sweet_spot_freq", np.nan))
-            if np.isfinite(ss_flux) and np.isfinite(ss_freq):
-                ax.plot([ss_flux], [ss_freq / scale], "*", color="yellow", ms=15,
+            mf_flux = float(disp.get("sweet_spot_flux", np.nan))
+            mf_freq = float(disp.get("sweet_spot_res", np.nan))
+            if np.isfinite(mf_flux) and np.isfinite(mf_freq):
+                ax.plot([mf_flux], [mf_freq / scale], "*", color="yellow", ms=15,
                         mec="black", mew=0.6, label="sweet spot")
 
         # (4) Vertical line at the flux source's operating (idle) offset.

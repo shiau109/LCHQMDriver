@@ -35,11 +35,11 @@ adds a `z_source` parameter naming the single flux source that drives the sweep 
   * a qubit-pair name -> that pair's tunable coupler drives the flux;
   * None              -> behaviour identical to 02c (each qubit fluxes itself).
 
-Analysis is done by the scqat ResonatorSpectroscopyVsFluxEstimator, which fits the resonator dip
+Analysis is done by the scqat resonator_spectroscopy_flux stage helpers (track_dips), fitting the resonator dip
 flux-by-flux (single inverted Lorentzian per slice) to reduce the 2-D (flux, detuning) map to a 1-D
 centre-frequency(flux) trace. For a qubit/None source a second-stage full-transmon dispersive fit
-extracts the sweet spot / idle offset / phi0 and writes them back. For a coupler source that dispersive
-model does not apply, so it is skipped and no state is written back.
+extracts the sweet-spot flux / idle offset / phi0 and writes them back. For a coupler
+source that dispersive model does not apply, so it is skipped and no state is written back.
 
 Prerequisites:
     - Having calibrated the resonator frequency (nodes 02a, 02b and/or 02c).
@@ -175,7 +175,7 @@ def analyse_data(node: QualibrationNode[Parameters, Quam]):
         return
 
     # Second stage: fit the centre-frequency(flux) trace with the full-transmon
-    # dispersive model (sweet spot, dv_phi0, f_r0; g is conditional for now).
+    # dispersive model (sweet-spot flux, dv_phi0, f_r0; g is conditional for now).
     dispersion_sep, dispersion_results = fit_flux_dependence(sep_results, node)
     node.namespace["dispersion_sep"] = dispersion_sep
     node.results["dispersion_results"] = dispersion_results
@@ -259,8 +259,8 @@ def plot_data(node: QualibrationNode[Parameters, Quam]):
 @node.run_action(skip_if=node.parameters.simulate)
 def update_state(node: QualibrationNode[Parameters, Quam]):
     """Write the robust dispersive-fit outputs to the QUAM state: the idle
-    (sweet-spot) flux offset, the minimum-frequency flux point, the resonator
-    readout frequency at the sweet spot, and the flux period (phi0).
+    (sweet-spot) flux offset, the minimum-frequency flux point, the
+    resonator readout frequency at that point, and the flux period (phi0).
 
     Only the degeneracy-independent quantities are written; g / f_q_max stay out
     of the state (they are conditional until a spectroscopy prior is supplied).
@@ -289,17 +289,17 @@ def update_state(node: QualibrationNode[Parameters, Quam]):
 
     #         disp = node.results["dispersion_results"][q.name]
 
-    #         # Idle (sweet-spot) flux offset — the flux of maximum resonator frequency.
+    #         # Idle flux offset — the flux of maximum qubit (and resonator) frequency.
     #         if q.z.flux_point == "independent":
     #             q.z.independent_offset = disp["sweet_spot_flux"]
     #         else:
     #             q.z.joint_offset = disp["sweet_spot_flux"]
-    #         # Minimum-frequency flux point (half a period from the sweet spot).
+    #         # Minimum-frequency flux point (half a period from the sweet-spot flux).
     #         if node.parameters.update_flux_min:
     #             q.z.min_offset = disp["min_offset"]
     #         # Resonator readout frequency at the sweet spot (absolute).
-    #         q.resonator.f_01 = disp["sweet_spot_freq"]
-    #         q.resonator.RF_frequency = disp["sweet_spot_freq"]
+    #         q.resonator.f_01 = disp["sweet_spot_res"]
+    #         q.resonator.RF_frequency = disp["sweet_spot_res"]
     #         # Flux quantum in voltage / current.
     #         q.phi0_voltage = disp["dv_phi0"]
     #         q.phi0_current = disp["phi0_current"]
