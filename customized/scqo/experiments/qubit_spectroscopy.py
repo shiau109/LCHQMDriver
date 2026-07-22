@@ -4,6 +4,12 @@ Parameters, peak fitting and the drive_freq writeback are inherited from
 ``scqo.experiments.QubitSpectroscopy``. scqo sweeps ``detuning_hz``; the LCHQM probe
 builds the same sweep on coord ``detuning``, which the backend's ``_to_canonical``
 renames back.
+
+Drive power contract: the core ``run()`` already solved the drive chain for
+``drive_power_dbm`` (recorded set -> acquire -> revert), parking the exact
+amplitude on the saturation op — so the probe plays it at ``amplitude_scale=1.0``
+(exact in QUA fixed point). The shared probe keeps its ``operation_amp`` argument
+for the qualibrate node, a separate consumer with its own explicit amps.
 """
 
 from __future__ import annotations
@@ -31,7 +37,7 @@ class QMQubitSpectroscopy(QubitSpectroscopy):
             dfs=self.sweep_axes["detuning_hz"],
             operation="saturation",
             operation_len=int(self.params.drive_len_ns) if self.params.drive_len_ns else None,
-            operation_amp=self.params.drive_amp,
+            operation_amp=1.0,  # run() parked the exact amplitude on the saturation op
             num_shots=self.params.num_averages,
             reset_type="thermal",
         )

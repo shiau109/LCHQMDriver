@@ -15,6 +15,7 @@ Neutral field -> QUAM path
     readout_freq          <-> q.resonator.RF_frequency  (and q.resonator.f_01 when present)
     drive_freq            <-> q.f_01                     (and q.xy.RF_frequency, kept in step)
     pi_amp                <-> q.xy.operations['x180'].amplitude
+    drive_amp             <-> q.xy.operations['saturation'].amplitude
     readout_duration_s    <-> q.resonator.operations['readout'].length (s <-> ns)
     readout_integration_s <-> ...operations['readout'].integration_weights
                               (window w -> [(1, w), (0, length - w)]; default ref when w == length)
@@ -260,6 +261,23 @@ def _set_op_amp(ops: Any, name: str, value: float) -> None:
         return
     if hasattr(op, "amplitude"):
         op.amplitude = value
+
+
+# ------------------------------------------------------------------ saturation (spec) drive
+#: The operation whose amplitude is the neutral ``drive_amp`` (the saturation /
+#: spec drive played by qubit_spectroscopy; drive_power_dbm anchors to it).
+SATURATION_OPERATION = "saturation"
+
+
+def get_saturation_amp(qubit: Any, operation: str = SATURATION_OPERATION) -> float:
+    return float(qubit.xy.operations[operation].amplitude)
+
+
+def set_saturation_amp(qubit: Any, value: float, *, operation: str = SATURATION_OPERATION) -> None:
+    """Write the saturation-pulse amplitude (within the current drive-chain
+    config; the chain solve for an absolute power lives with drive_power_dbm in
+    the scqo backend, next to the readout one)."""
+    qubit.xy.operations[operation].amplitude = float(value)
 
 
 # ------------------------------------------------------------------ DRAG coefficient

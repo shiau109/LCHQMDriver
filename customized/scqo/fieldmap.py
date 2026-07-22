@@ -33,6 +33,22 @@ FIELD_BINDINGS: dict[str, dict[str, VendorBinding]] = {
             convert="QM stores DRAG as DragCosinePulse.alpha; written on the "
                     "x180_DragCosine storage node (reference aliases follow)",
             note="calibrated by qubit_drag_equator / qubit_drag_alternating"),
+        "drive_amp": VendorBinding(
+            path="q.xy.operations['saturation'].amplitude", unit="",
+            note="the saturation (spec) drive amplitude — the drive_power_dbm "
+                 "chain solve's residual"),
+        "drive_power_dbm": VendorBinding(
+            path="q.xy.opx_output.full_scale_power_dbm "
+                 "+ q.xy.operations['saturation'].amplitude",
+            unit="dBm + amp",
+            convert="solve the DRIVE chain (power_tools): SMALLEST full_scale_power_dbm "
+                    "on the -11..+16 dBm grid (3 dB steps) keeping the saturation "
+                    "amplitude <= 0.5; the amplitude carries the exact residual",
+            coupled=("drive_amp",),
+            note="the xy full scale is PORT-level and shared by every xy operation: "
+                 "while it is off its standing value the stored pi_amp means a "
+                 "different power (qubit_spectroscopy sets it and reverts exactly)",
+        ),
         "readout_amp": VendorBinding(
             path="q.resonator.operations['readout'].amplitude", unit=""),
         "readout_power_dbm": VendorBinding(
@@ -157,12 +173,14 @@ VENDOR_ONLY: dict[str, VendorOnly] = {
             "de-calibrates the absolute power, and any later readout_power_dbm "
             "write re-solves and overwrites a forced value"),
     "drive_full_scale_power_dbm": VendorOnly(
-        path="q.xy.opx_output.full_scale_power_dbm", unit="dBm", kind="vendor",
-        doc="the untracked DRIVE-chain scale that makes pi_amp portable=False "
-            "(chipA: +13 dBm) - no neutral drive_power_dbm twin exists "
-            "(optional future engineering). Changing it silently re-scales "
-            "what every stored pi_amp means. Qblox counterpart: drive-port "
-            "output_att"),
+        path="q.xy.opx_output.full_scale_power_dbm", unit="dBm", kind="realizer",
+        doc="the coarse DRIVE power knob (grid -11..+16 in 3 dB steps, "
+            "PORT-level - shared by every xy operation) - it REALIZES the "
+            "tracked drive_power_dbm (binding above). Change power with "
+            "`scqo set QUBIT.drive_power_dbm=...` (solves the chain, keeps "
+            "drive_amp coupled, recorded); a direct edit silently re-scales "
+            "what every stored pi_amp AND the absolute drive power mean. "
+            "Qblox counterpart: drive-port output_att"),
     "x180_length": VendorOnly(
         path="q.xy.operations['x180'].length", unit="ns", kind="candidate",
         doc="pi/x180 pulse length - neutral pi_duration_s candidate (seconds; "

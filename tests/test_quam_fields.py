@@ -86,6 +86,24 @@ def test_set_pi_amp_other_operation_never_touches_x90():
     assert q.xy.operations["x90"].amplitude == pytest.approx(0.1)  # untouched
 
 
+# --------------------------------------------------------- saturation (spec) drive
+def test_saturation_amp_roundtrip():
+    q = _qubit()
+    q.xy.operations["saturation"] = SimpleNamespace(amplitude=0.25)
+    assert quam_fields.get_saturation_amp(q) == pytest.approx(0.25)
+    quam_fields.set_saturation_amp(q, 0.125)
+    assert q.xy.operations["saturation"].amplitude == pytest.approx(0.125)
+    assert isinstance(q.xy.operations["saturation"].amplitude, float)
+
+
+def test_saturation_amp_missing_operation_raises_keyerror():
+    """A qubit without a saturation op surfaces as unknown (KeyError is what the
+    scqo backend's _read_or_none catches)."""
+    q = _qubit()
+    with pytest.raises(KeyError):
+        quam_fields.get_saturation_amp(q)
+
+
 # ------------------------------------------------------- readout duration / window
 class _ReadoutPulse:
     """QUAM ReadoutPulse stand-in with REAL reference semantics: attribute reads

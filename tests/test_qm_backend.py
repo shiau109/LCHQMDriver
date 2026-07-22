@@ -230,6 +230,7 @@ def test_device_view_roundtrip(machine):
 
         snap = backend.device.snapshot()
         assert set(snap["q4"]) == {"readout_freq", "drive_freq", "pi_amp", "drag_beta",
+                                   "drive_amp", "drive_power_dbm",
                                    "readout_amp", "readout_power_dbm", "readout_duration_s",
                                    "readout_integration_s", "idle_flux_v"}
         # the pair entries carry the two coupler knobs (pull-mode seed source)
@@ -306,6 +307,47 @@ def test_readout_power_dbm_undefined_on_zero_amp(machine):
         assert backend.device.snapshot()["q4"]["readout_power_dbm"] is None
     finally:
         q.resonator.operations["readout"].amplitude = amp0
+
+
+def test_drive_power_dbm_roundtrip(machine):
+    """v0.11 drive twin: same bidirectional grid solve as readout, on the xy
+    channel + the saturation op; drive_amp is the coupled residual."""
+    backend = QMBackend(machine)
+    view = backend.device.component("q4")
+    q = machine.qubits["q4"]
+    if "saturation" not in q.xy.operations:
+        pytest.skip("loaded quam_state has no saturation op on q4")
+    fs0 = q.xy.opx_output.full_scale_power_dbm
+    amp0 = q.xy.operations["saturation"].amplitude
+    try:
+        view.drive_power_dbm = -21.0
+        assert view.drive_power_dbm == pytest.approx(-21.0, abs=1e-6)
+        assert q.xy.opx_output.full_scale_power_dbm == -11  # grid floor at weak drive
+        assert view.drive_amp == pytest.approx(10 ** ((-21.0 + 11) / 20.0))
+
+        view.drive_power_dbm = -2.0
+        assert view.drive_power_dbm == pytest.approx(-2.0, abs=1e-6)
+        assert q.xy.opx_output.full_scale_power_dbm == 7  # back UP: bidirectional
+        assert 0.354 < view.drive_amp <= 0.5
+    finally:
+        q.xy.opx_output.full_scale_power_dbm = fs0
+        q.xy.operations["saturation"].amplitude = amp0
+
+
+def test_drive_power_dbm_undefined_on_zero_amp(machine):
+    backend = QMBackend(machine)
+    view = backend.device.component("q4")
+    q = machine.qubits["q4"]
+    if "saturation" not in q.xy.operations:
+        pytest.skip("loaded quam_state has no saturation op on q4")
+    amp0 = q.xy.operations["saturation"].amplitude
+    try:
+        q.xy.operations["saturation"].amplitude = 0.0
+        with pytest.raises(ValueError, match="absolute power undefined"):
+            _ = view.drive_power_dbm
+        assert backend.device.snapshot()["q4"]["drive_power_dbm"] is None
+    finally:
+        q.xy.operations["saturation"].amplitude = amp0
 
 
 def test_power_context_matches_the_view(machine):

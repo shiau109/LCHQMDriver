@@ -29,8 +29,29 @@ from customized.scqo.fieldmap import FIELD_BINDINGS, UNREALIZED, VENDOR_ONLY
 #: MW-FEM full-scale grid (dBm): -11..+16 in 3 dB steps (power_tools validates the
 #: same values; its docstring's "[-41,10]" range is stale).
 _FS_GRID_MIN, _FS_GRID_MAX, _FS_GRID_STEP = -11, 16, 3
-#: The canonical digital operating point: keep the readout amplitude <= 0.5 full scale.
+#: The canonical digital operating point: keep the pulse amplitude <= 0.5 full scale
+#: (shared by the readout AND drive chain solves).
 _CANONICAL_MAX_AMP = 0.5
+
+
+def _solve_full_scale(name: str, target: float) -> int:
+    """Bidirectional full-scale selection for an absolute port power: the SMALLEST
+    grid value that keeps the amplitude <= 0.5 (it lands in (0.354, 0.5]). Chosen
+    here — not by the bare power_tools helper, whose internal loop only ever bumps
+    full-scale UP and would leave a tiny amplitude after a high-power era."""
+    headroom = 20.0 * math.log10(2.0)  # amp 0.5 -> -6.02 dB below full scale
+    fs = _FS_GRID_MIN + _FS_GRID_STEP * math.ceil(
+        (target + headroom - _FS_GRID_MIN) / _FS_GRID_STEP
+    )
+    fs = min(_FS_GRID_MAX, max(_FS_GRID_MIN, fs))
+    amp_needed = 10.0 ** ((target - fs) / 20.0)
+    if amp_needed > _CANONICAL_MAX_AMP:  # only when fs is pinned at the grid top
+        warnings.warn(
+            f"{name}: hitting {target} dBm at full scale {fs} dBm needs "
+            f"amplitude {amp_needed:.3f} > {_CANONICAL_MAX_AMP} — above the "
+            f"canonical operating point"
+        )
+    return int(fs)
 
 if TYPE_CHECKING:
     from scqo.experiment import Experiment
@@ -103,10 +124,11 @@ class QMReadableTransmon(make_view_base("ReadableTransmon")):
     def readout_integration_s(self, value: float) -> None:
         quam_fields.set_readout_integration(self._q, value)
 
-    # readout_power_dbm lives HERE (not in quam_fields): the chain solve needs
-    # quam_builder.tools.power_tools, whose module top imports quam — quam_fields is
-    # contractually pure (stub-testable without an instrument). backend.py already
-    # owns the lazy-vendor-import pattern, so the import stays inside the accessors.
+    # readout_power_dbm / drive_power_dbm live HERE (not in quam_fields): the chain
+    # solve needs quam_builder.tools.power_tools, whose module top imports quam —
+    # quam_fields is contractually pure (stub-testable without an instrument).
+    # backend.py already owns the lazy-vendor-import pattern, so the import stays
+    # inside the accessors.
     @property
     def readout_power_dbm(self) -> float:
         from quam_builder.tools.power_tools import get_output_power_mw_channel
@@ -123,27 +145,45 @@ class QMReadableTransmon(make_view_base("ReadableTransmon")):
         from quam_builder.tools.power_tools import set_output_power_mw_channel
 
         target = float(value)
-        # Bidirectional full-scale selection: the SMALLEST grid value that keeps the
-        # amplitude <= 0.5 (it lands in (0.354, 0.5]). Chosen here — not by the bare
-        # helper, whose internal loop only ever bumps full-scale UP and would leave a
-        # tiny amplitude after a high-power era.
-        headroom = 20.0 * math.log10(2.0)  # amp 0.5 -> -6.02 dB below full scale
-        fs = _FS_GRID_MIN + _FS_GRID_STEP * math.ceil(
-            (target + headroom - _FS_GRID_MIN) / _FS_GRID_STEP
-        )
-        fs = min(_FS_GRID_MAX, max(_FS_GRID_MIN, fs))
-        amp_needed = 10.0 ** ((target - fs) / 20.0)
-        if amp_needed > _CANONICAL_MAX_AMP:  # only when fs is pinned at the grid top
-            warnings.warn(
-                f"{self.name}: hitting {target} dBm at full scale {fs} dBm needs "
-                f"amplitude {amp_needed:.3f} > {_CANONICAL_MAX_AMP} — above the "
-                f"canonical operating point"
-            )
         # max_amplitude=1: the explicit full_scale_power_dbm already encodes the
         # <=0.5 policy; the helper then just sets fs + the exact amplitude.
         set_output_power_mw_channel(
             self._q.resonator, target, quam_fields.READOUT_OPERATION,
-            full_scale_power_dbm=int(fs), max_amplitude=1,
+            full_scale_power_dbm=_solve_full_scale(self.name, target), max_amplitude=1,
+        )
+
+    # The drive twin, anchored to the SATURATION (spec) operation. The xy
+    # full_scale_power_dbm is PORT-level and shared by every xy operation:
+    # while it is off its standing value the stored pi_amp means a different
+    # power (qubit_spectroscopy's run() sets and exactly reverts it; the
+    # discrete grid + verbatim amplitude restore make the revert lossless).
+    @property
+    def drive_amp(self) -> float:
+        return quam_fields.get_saturation_amp(self._q)
+
+    @drive_amp.setter
+    def drive_amp(self, value: float) -> None:
+        quam_fields.set_saturation_amp(self._q, value)
+
+    @property
+    def drive_power_dbm(self) -> float:
+        from quam_builder.tools.power_tools import get_output_power_mw_channel
+
+        amp = self._q.xy.operations[quam_fields.SATURATION_OPERATION].amplitude
+        if not amp:  # None or 0 -> log10 domain error / -inf must never reach the config
+            raise ValueError(
+                f"{self.name}: saturation amplitude is unset/zero — absolute power undefined"
+            )
+        return float(get_output_power_mw_channel(self._q.xy, quam_fields.SATURATION_OPERATION))
+
+    @drive_power_dbm.setter
+    def drive_power_dbm(self, value: float) -> None:
+        from quam_builder.tools.power_tools import set_output_power_mw_channel
+
+        target = float(value)
+        set_output_power_mw_channel(
+            self._q.xy, target, quam_fields.SATURATION_OPERATION,
+            full_scale_power_dbm=_solve_full_scale(self.name, target), max_amplitude=1,
         )
 
     # idle_flux_v: the z-line offset SELECTED by z.flux_point (which named point
@@ -234,6 +274,7 @@ class QMDeviceModel(DeviceModel):
             state[name] = {
                 field: _read_or_none(view, field)
                 for field in ("readout_freq", "drive_freq", "pi_amp", "drag_beta",
+                              "drive_amp", "drive_power_dbm",
                               "readout_amp", "readout_power_dbm", "readout_duration_s",
                               "readout_integration_s", "idle_flux_v")
             }
@@ -301,7 +342,7 @@ class QMBackend(Backend):
         return dict(VENDOR_ONLY)
 
     def power_context(self, qubits: list[str]) -> dict:
-        """Raw readout output-chain values per qubit (run-record provenance only)."""
+        """Raw readout + drive chain values per qubit (run-record provenance only)."""
         from quam_builder.tools.power_tools import get_output_power_mw_channel
 
         out: dict = {}
@@ -325,6 +366,24 @@ class QMBackend(Backend):
                     out[name]["readout_lo_freq_hz"] = float(lo)
             except Exception:  # provenance must never fail a run
                 out[name] = {}
+            # The drive chain behind drive_power_dbm — same never-fail rule, and
+            # independent of the readout block (a qubit without a saturation op
+            # still reports its readout chain).
+            try:
+                q = self._machine.qubits[name]
+                sat = q.xy.operations[quam_fields.SATURATION_OPERATION]
+                out[name].update({
+                    "drive_full_scale_power_dbm": q.xy.opx_output.full_scale_power_dbm,
+                    "saturation_amp": float(sat.amplitude),
+                    "drive_power_dbm": float(
+                        get_output_power_mw_channel(q.xy, quam_fields.SATURATION_OPERATION)
+                    ),
+                })
+                lo = getattr(q.xy, "LO_frequency", None)
+                if lo is not None:
+                    out[name]["drive_lo_freq_hz"] = float(lo)
+            except Exception:  # provenance must never fail a run
+                pass
         return out
 
     def acquire(self, experiment: "Experiment") -> xr.Dataset:
