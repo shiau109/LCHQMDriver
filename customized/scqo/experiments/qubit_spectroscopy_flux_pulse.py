@@ -1,10 +1,18 @@
-"""QM qubit spectroscopy vs flux for scqo - supplies only ``probe()``.
+"""QM qubit spectroscopy vs PULSED flux for scqo - supplies only ``probe()``.
 
 Parameters, the transmon-arch fit and reporting are inherited from
-``scqo.experiments.QubitSpectroscopyFlux``. scqo sweeps ``(flux_bias_v,
+``scqo.experiments.QubitSpectroscopyFluxPulse``. scqo sweeps ``(flux_bias_v,
 detuning_hz)``; the LCHQM probe sweeps ``dcs`` (flux, V) and ``dfs`` (drive
 detuning, Hz) with each qubit fluxing/driving its OWN lines (z/xy source = None,
 as in the official 03b node).
+
+PULSE CONTRACT: this probe conforms to the ``_pulse`` name by construction — the
+flux is a z PULSE played only alongside the saturation drive
+(``customized/probes/qubit_spectroscopy_flux.py``: ``qubit.z.play(...,
+duration=operation_duration)`` then ``align()`` then ``measure``), so every
+readout happens at idle flux and the neutral ``estimate()`` reduces the map
+against ONE global IQ reference. The probe MODULE keeps its historical name (it
+is shared with the qualibrate shell path).
 
 AXIS-ORDER NOTE (do not "fix" the order below): the probe's QUA loops nest df
 (outer) over dc (inner) and its streams are ``buffer(len(dcs)).buffer(len(dfs))``,
@@ -22,12 +30,12 @@ from __future__ import annotations
 from typing import Any
 
 from scqo import register
-from scqo.experiments import QubitSpectroscopyFlux
+from scqo.experiments import QubitSpectroscopyFluxPulse
 
 
 @register
-class QMQubitSpectroscopyFlux(QubitSpectroscopyFlux):
-    """Build a multiplexed 2D (flux x detuning) spectroscopy QUA program on the QM OPX."""
+class QMQubitSpectroscopyFluxPulse(QubitSpectroscopyFluxPulse):
+    """Build a multiplexed 2D (pulsed-flux x detuning) spectroscopy QUA program on the QM OPX."""
 
     def probe(self) -> Any:
         from customized.probes._lib import select_qubits

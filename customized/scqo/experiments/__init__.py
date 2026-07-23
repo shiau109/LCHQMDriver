@@ -16,7 +16,7 @@ from . import qubit_relaxation_flux  # noqa: F401  (import side effect: @registe
 from . import qubit_spectroscopy  # noqa: F401  (import side effect: @register)
 from . import qubit_sqrb  # noqa: F401  (import side effect: @register)
 from . import qubit_tomography  # noqa: F401  (import side effect: @register)
-from . import qubit_spectroscopy_flux  # noqa: F401  (import side effect: @register)
+from . import qubit_spectroscopy_flux_pulse  # noqa: F401  (import side effect: @register)
 from . import readout_frequency  # noqa: F401  (import side effect: @register)
 from . import readout_power  # noqa: F401  (import side effect: @register)
 from . import resonator_spectroscopy  # noqa: F401  (import side effect: @register)
