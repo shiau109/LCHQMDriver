@@ -32,6 +32,6 @@ class QMQubitPowerRabi(QubitPowerRabi):
             operation="x180",
             num_shots=self.params.num_averages,
             reset_type="thermal",
-            use_state_discrimination=False,
+            use_state_discrimination=bool(self.params.use_state_discrimination),
             drive_qubit=None,
         )

@@ -36,4 +36,5 @@ class QMQubitRelaxation(QubitRelaxation):
             wait_times_cycles=wait_cycles,
             num_shots=self.params.num_averages,
             reset_type="thermal",
+            use_state_discrimination=bool(self.params.use_state_discrimination),
         )
