@@ -30,10 +30,12 @@ class QMQubitRelaxation(QubitRelaxation):
         wait_ns = self.sweep_axes["wait_time_ns"]
         wait_cycles = np.maximum(1, np.round(wait_ns / 4)).astype(int)
 
+        use_hw_disc = getattr(self.params, "readout_mode", "raw_iq") == "hardware_state"
         return t1_probe.build_program(
             machine,
             qubits,
             wait_times_cycles=wait_cycles,
             num_shots=self.params.num_averages,
             reset_type="thermal",
+            use_state_discrimination=use_hw_disc,
         )

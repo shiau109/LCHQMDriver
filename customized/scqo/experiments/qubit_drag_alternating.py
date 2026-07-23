@@ -26,11 +26,12 @@ class QMQubitDragAlternating(QubitDragAlternating):
         beta_array = list(sweeps["beta"])
         nb_pulses_array = [int(x) for x in sweeps["nb_of_pulses"]]
 
+        use_hw_disc = getattr(self.params, "readout_mode", "raw_iq") == "hardware_state"
         return alternating_probe.build_program(
             machine,
             qubits,
             num_shots=int(self.params.num_averages),
             beta_array=beta_array,
             nb_pulses_array=nb_pulses_array,
-            use_state_discrimination=False,
+            use_state_discrimination=use_hw_disc,
         )

@@ -86,7 +86,9 @@ def build_program(
             n_st.save("n")
             for i_q in range(num_qubits):
                 if use_state_discrimination:
-                    state_st[i_q].buffer(len(beta_array)).buffer(len(nb_pulses_array)).average().save(f"state{i_q + 1}")
+                    # state is int (0/1); save into I slot; Q slot is dummy for dataset contract
+                    state_st[i_q].buffer(len(beta_array)).buffer(len(nb_pulses_array)).average().save(f"I{i_q + 1}")
+                    state_st[i_q].buffer(len(beta_array)).buffer(len(nb_pulses_array)).average().save(f"Q{i_q + 1}")
                 else:
                     I_st[i_q].buffer(len(beta_array)).buffer(len(nb_pulses_array)).average().save(f"I{i_q + 1}")
                     Q_st[i_q].buffer(len(beta_array)).buffer(len(nb_pulses_array)).average().save(f"Q{i_q + 1}")

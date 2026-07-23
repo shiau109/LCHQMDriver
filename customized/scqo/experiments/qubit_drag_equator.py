@@ -25,17 +25,14 @@ class QMQubitDragEquator(QubitDragEquator):
         sweeps = self.define_sweep()
         beta_array = list(sweeps["beta"])
 
-        # build_program temporarily sets QUAM alpha = ref_alpha and generates the QM
-        # config while that modified alpha is active (so the waveform baked into the
-        # hardware config encodes the correct DRAG Q amplitude for fixed-point scaling).
-        # It then restores the original alpha and returns (prog, sweep_axes, config).
+        use_hw_disc = getattr(self.params, "readout_mode", "raw_iq") == "hardware_state"
         prog, sweep_axes, config = equator_probe.build_program(
             machine,
             qubits,
             num_shots=int(self.params.num_averages),
             beta_array=beta_array,
             pulse_repetitions=int(self.params.pulse_repetitions),
-            use_state_discrimination=False,
+            use_state_discrimination=use_hw_disc,
         )
 
         params = self.params

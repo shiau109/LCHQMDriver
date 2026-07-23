@@ -24,12 +24,16 @@ class QMQubitSQRB(QubitSQRB):
 
         depths = self.params.get_depths()
 
+        use_hw_disc = (
+            getattr(self.params, "readout_mode", "raw_iq") == "hardware_state"
+            or bool(self.params.use_state_discrimination)
+        )
         return sqrb_probe.build_program(
             machine,
             qubits,
             depths=depths,
             num_sequences=int(self.params.num_random_sequences),
             num_shots=int(self.params.num_averages),
-            use_state_discrimination=bool(self.params.use_state_discrimination),
+            use_state_discrimination=use_hw_disc,
             seed=self.params.seed,
         )

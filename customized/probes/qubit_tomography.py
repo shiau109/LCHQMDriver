@@ -58,7 +58,7 @@ def build_program(
     gate_counts: List[int],
     num_shots: int,
     num_training_shots: int = 2000,
-    symmetrized_readout: bool = True,
+    symmetrized_readout: bool = False,
     reset_type: str = "thermal",
     simulate: bool = False,
     log: Optional[Callable] = None,

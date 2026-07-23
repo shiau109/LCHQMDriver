@@ -120,10 +120,34 @@ def build_program(
         "depth": xr.DataArray(depth_arr, attrs={"long_name": "Clifford depth"}),
     }
 
+    # Pre-calculate 2D discrimination parameters from gef_centers
+    disc_params = {}
+    for i_q, q_name in enumerate(qubits.get_names()):
+        q_obj = machine.qubits[q_name]
+        gef_centers = getattr(q_obj.resonator, "gef_centers", None)
+        if gef_centers is not None and len(gef_centers) >= 2:
+            Ig, Qg = gef_centers[0]
+            Ie, Qe = gef_centers[1]
+            dI = float(Ie - Ig)
+            dQ = float(Qe - Qg)
+            norm = float(np.hypot(dI, dQ))
+            if norm > 1e-12:
+                alpha_I = dI / norm
+                alpha_Q = dQ / norm
+                I_mid = float(Ig + Ie) / 2.0
+                Q_mid = float(Qg + Qe) / 2.0
+                threshold_norm = I_mid * alpha_I + Q_mid * alpha_Q
+                disc_params[i_q] = (alpha_I, alpha_Q, threshold_norm)
+            else:
+                disc_params[i_q] = None
+        else:
+            disc_params[i_q] = None
+
     with program() as prog:
         I, I_st, Q, Q_st, n, n_st = machine.declare_qua_variables()
         state = [declare(int) for _ in range(num_qubits)]
         state_st = [declare_stream() for _ in range(num_qubits)]
+        proj_var = declare(fixed)
         depth_var = declare(int)
         saved_gate = declare(int)
         m = declare(int)

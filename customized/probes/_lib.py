@@ -53,6 +53,7 @@ def acquire(
     timeout: float,
     log: Optional[Callable] = None,
     config: Optional[dict] = None,
+    qm=None,
 ) -> xr.Dataset:
     """Connect to the QOP, execute the program and fetch the raw xr.Dataset.
 
@@ -60,12 +61,30 @@ def acquire(
     probes share this one implementation. `config` defaults to
     `machine.generate_config()`; pass an explicit config when the program needs a
     pre-built one (e.g. a baked config carrying baking ops the fresh config lacks).
+    If `qm` is provided, uses the active qm session instead of creating a new one.
     """
+    if qm is not None:
+        job = qm.execute(prog)
+        data_fetcher = XarrayDataFetcher(job, sweep_axes)
+        for dataset in data_fetcher:
+            progress_counter(
+                data_fetcher.get("n", 0),
+                num_shots,
+                start_time=data_fetcher.t_start,
+            )
+        if log:
+            rep = getattr(job, "execution_report", None)
+            if callable(rep):
+                log(rep())
+            elif rep is not None:
+                log(rep)
+        return dataset
+
     qmm = machine.connect()
     config = config if config is not None else machine.generate_config()
     # Execute the QUA program only if the quantum machine is available (this is to avoid interrupting running jobs).
-    with qm_session(qmm, config, timeout=timeout) as qm:
-        job = qm.execute(prog)
+    with qm_session(qmm, config, timeout=timeout) as qm_ctx:
+        job = qm_ctx.execute(prog)
         data_fetcher = XarrayDataFetcher(job, sweep_axes)
         for dataset in data_fetcher:
             progress_counter(

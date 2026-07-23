@@ -46,6 +46,29 @@ def build_program(
         orig_alphas[q_name] = quam_fields.get_drag_beta(q_obj)
         quam_fields.set_drag_beta(q_obj, ref_alpha)
 
+    # Pre-calculate 2D discrimination parameters (alpha_I, alpha_Q, threshold_norm) per qubit from gef_centers
+    disc_params = {}
+    for i_q, q_name in enumerate(qubits.get_names()):
+        q_obj = machine.qubits[q_name]
+        gef_centers = getattr(q_obj.resonator, "gef_centers", None)
+        if gef_centers is not None and len(gef_centers) >= 2:
+            Ig, Qg = gef_centers[0]
+            Ie, Qe = gef_centers[1]
+            dI = float(Ie - Ig)
+            dQ = float(Qe - Qg)
+            norm = float(np.hypot(dI, dQ))
+            if norm > 1e-12:
+                alpha_I = dI / norm
+                alpha_Q = dQ / norm
+                I_mid = float(Ig + Ie) / 2.0
+                Q_mid = float(Qg + Qe) / 2.0
+                threshold_norm = I_mid * alpha_I + Q_mid * alpha_Q
+                disc_params[i_q] = (alpha_I, alpha_Q, threshold_norm)
+            else:
+                disc_params[i_q] = None
+        else:
+            disc_params[i_q] = None
+
     sweep_axes = {
         "qubit": xr.DataArray(qubits.get_names()),
         "seq_idx": xr.DataArray([0, 1], attrs={"long_name": "sequence index"}),
@@ -60,6 +83,7 @@ def build_program(
         if use_state_discrimination:
             state = [declare(int) for _ in range(num_qubits)]
             state_st = [declare_stream() for _ in range(num_qubits)]
+            proj_var = declare(fixed)
 
         for multiplexed_qubits in qubits.batch():
             for qubit in multiplexed_qubits.values():
@@ -92,7 +116,15 @@ def build_program(
                         # Measurement
                         for i_q, qubit in multiplexed_qubits.items():
                             if use_state_discrimination:
-                                qubit.readout_state(state[i_q])
+                                p = disc_params.get(i_q)
+                                if p is not None:
+                                    alpha_I, alpha_Q, threshold_norm = p
+                                    qubit.resonator.measure("readout", qua_vars=(I[i_q], Q[i_q]))
+                                    assign(proj_var, I[i_q] * alpha_I + Q[i_q] * alpha_Q)
+                                    assign(state[i_q], Cast.to_int(proj_var > threshold_norm))
+                                    wait(qubit.resonator.depletion_time // 4, qubit.resonator.name)
+                                else:
+                                    qubit.readout_state(state[i_q])
                                 save(state[i_q], state_st[i_q])
                             else:
                                 qubit.resonator.measure("readout", qua_vars=(I[i_q], Q[i_q]))
@@ -104,8 +136,9 @@ def build_program(
             n_st.save("n")
             for i_q in range(num_qubits):
                 if use_state_discrimination:
-                    # state is int (0/1); save into I slot; Q slot is unused but must exist
+                    # state is int (0/1); save into I slot; Q slot is dummy 0 for dataset contract
                     state_st[i_q].buffer(len(beta_array)).buffer(2).average().save(f"I{i_q + 1}")
+                    state_st[i_q].buffer(len(beta_array)).buffer(2).average().save(f"Q{i_q + 1}")
                 else:
                     I_st[i_q].buffer(len(beta_array)).buffer(2).average().save(f"I{i_q + 1}")
                     Q_st[i_q].buffer(len(beta_array)).buffer(2).average().save(f"Q{i_q + 1}")
@@ -131,4 +164,7 @@ def acquire(
     log: Optional[Callable] = None,
     config=None,
 ) -> xr.Dataset:
-    return _acquire(machine, prog, sweep_axes, num_shots=num_shots, timeout=timeout, log=log, config=config)
+    ds = _acquire(machine, prog, sweep_axes, num_shots=num_shots, timeout=timeout, log=log, config=config)
+    if "Q" not in ds.data_vars and "I" in ds.data_vars:
+        ds["Q"] = xr.zeros_like(ds["I"])
+    return ds
