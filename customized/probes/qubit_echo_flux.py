@@ -27,7 +27,7 @@ def build_program(
 
     sweep_axes = {
         "qubit": xr.DataArray(qubits.get_names()),
-        "flux_amp": xr.DataArray(flux_amps_v, attrs={"long_name": "flux pulse amplitude", "units": "V"}),
+        "flux_bias_v": xr.DataArray(flux_amps_v, attrs={"long_name": "flux pulse amplitude", "units": "V"}),
         "wait_time_ns": xr.DataArray(4 * wait_times_cycles, attrs={"long_name": "total wait time", "units": "ns"}),
     }
 

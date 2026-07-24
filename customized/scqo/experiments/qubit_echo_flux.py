@@ -25,7 +25,7 @@ class QMQubitEchoFlux(QubitEchoFlux):
         qubits = select_qubits(machine, self.params.targets, multiplexed=True)
 
         sweeps = self.define_sweep()
-        flux_amp = list(sweeps["flux_amp"])
+        flux_bias = list(sweeps["flux_bias_v"])
         wait_ns = sweeps["wait_time_ns"]
         wait_cycles = np.maximum(1, np.round((wait_ns / 2) / 4)).astype(int)
 
@@ -33,7 +33,8 @@ class QMQubitEchoFlux(QubitEchoFlux):
             machine,
             qubits,
             wait_times_cycles=wait_cycles,
-            flux_amps_v=flux_amp,
+            flux_amps_v=flux_bias,
             num_shots=int(self.params.num_averages),
             reset_type="thermal",
+            use_state_discrimination=bool(self.params.use_state_discrimination),
         )
