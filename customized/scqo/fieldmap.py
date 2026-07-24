@@ -79,6 +79,29 @@ FIELD_BINDINGS: dict[str, dict[str, VendorBinding]] = {
                  "pulse); multiples of 4 ns. Qblox counterpart: "
                  "measure.integration_time (s)",
         ),
+        "readout_rotation_rad": VendorBinding(
+            path="q.resonator.operations['readout'].integration_weights_angle",
+            unit="rad",
+            convert="the ABSOLUTE demod rotation (single_shot_readout proposes "
+                    "current - measured delta); a direct edit silently de-calibrates "
+                    "it - governed write: scqo set QUBIT.readout_rotation_rad=... . "
+                    "Qblox counterpart: acq_rotation (DEGREES)",
+            note="acquisition IQ frame, chain-dependent (invalidated by an "
+                 "input-chain change such as mw_input gain_db); non-portable",
+        ),
+        "readout_threshold": VendorBinding(
+            path="q.resonator.operations['readout'].threshold", unit="",
+            convert="g/e discrimination threshold on the rotated I, in raw demod "
+                    "units (NO volts conversion on the scqo path); Qblox counterpart: "
+                    "acq_threshold (normalized frame)",
+            note="acquisition-frame, chain-dependent; the threshold "
+                 "use_state_discrimination applies on the FPGA",
+        ),
+        "readout_rus_threshold": VendorBinding(
+            path="q.resonator.operations['readout'].rus_exit_threshold", unit="",
+            note="repeat-until-success (active-reset) exit threshold on the rotated "
+                 "I, raw demod units; no Qblox counterpart (Unrealized there)",
+        ),
         "idle_flux_v": VendorBinding(
             path="q.z.<flux_point>_offset", unit="V",
             convert="the offset SELECTED by z.flux_point (joint/independent/min/"
@@ -193,29 +216,11 @@ VENDOR_ONLY: dict[str, VendorOnly] = {
             "governed write: scqo set QUBIT.drag_beta=...); the OTHER gates' "
             "alpha values remain vendor fine print edited directly. Qblox "
             "counterpart: rxy.beta (derivative scale, different math convention)"),
-    "integration_weights_angle": VendorOnly(
-        path="q.resonator.operations['readout'].integration_weights_angle",
-        unit="rad", kind="vendor",
-        doc="demodulation rotation before thresholding (RADIANS here; Qblox "
-            "acq_rotation is DEGREES) - acquisition IQ frame, NO declarable "
-            "reference plane, never a neutral field; invalidated by "
-            "input-chain changes (mw_input gain_db). Portable traces: "
-            "readout_fidelity + confusion entries"),
-    "readout_threshold": VendorOnly(
-        path="q.resonator.operations['readout'].threshold", unit="V", kind="vendor",
-        doc="single-shot g/e discrimination threshold in demodulated VOLTS - "
-            "acquisition-frame, chain-dependent (Qblox acq_threshold uses a "
-            "normalized frame instead); invalidated by input-chain changes"),
     "per_gate_detuning": VendorOnly(
         path="q.xy.operations['x90_DragCosine'].detuning", unit="Hz", kind="unique",
         doc="per-gate drive detuning (chipA: -300 kHz on x90 vs 0 on x180) - "
             "no Qblox counterpart (one shared rxy op set there): experiments "
             "depending on it run ONLY on QM"),
-    "rus_exit_threshold": VendorOnly(
-        path="q.resonator.operations['readout'].rus_exit_threshold", unit="V",
-        kind="unique",
-        doc="repeat-until-success exit threshold - no Qblox counterpart: "
-            "experiments touching it run ONLY on QM"),
     # ----------------------------------------------------------- qubit pairs (QCQ)
     "pair_detuning": VendorOnly(
         path="qp.detuning", unit="V", kind="candidate",

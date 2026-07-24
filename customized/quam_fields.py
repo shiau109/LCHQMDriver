@@ -19,6 +19,9 @@ Neutral field -> QUAM path
     readout_duration_s    <-> q.resonator.operations['readout'].length (s <-> ns)
     readout_integration_s <-> ...operations['readout'].integration_weights
                               (window w -> [(1, w), (0, length - w)]; default ref when w == length)
+    readout_rotation_rad  <-> ...operations['readout'].integration_weights_angle (rad, absolute)
+    readout_threshold     <-> ...operations['readout'].threshold
+    readout_rus_threshold <-> ...operations['readout'].rus_exit_threshold
 """
 
 from __future__ import annotations
@@ -189,6 +192,35 @@ def set_readout_integration(qubit: Any, value: float, *,
         _set_weights(pulse, DEFAULT_INTEGRATION_WEIGHTS_REF)
     else:
         _set_weights(pulse, [(1.0, window), (0.0, length_ns - window)])
+
+
+# -------------------------------------------------------------- readout discriminator
+# The single-shot discriminator settings — 1:1 with the readout operation's demod
+# knobs (no chain solve). integration_weights_angle is the ABSOLUTE demod rotation
+# (radians); single_shot_readout proposes a new absolute value (current - measured
+# delta) through the governed suggestion flow, never accumulating in place.
+def get_readout_rotation(qubit: Any, operation: str = READOUT_OPERATION) -> float:
+    return float(qubit.resonator.operations[operation].integration_weights_angle)
+
+
+def set_readout_rotation(qubit: Any, value: float, *, operation: str = READOUT_OPERATION) -> None:
+    qubit.resonator.operations[operation].integration_weights_angle = float(value)
+
+
+def get_readout_threshold(qubit: Any, operation: str = READOUT_OPERATION) -> float:
+    return float(qubit.resonator.operations[operation].threshold)
+
+
+def set_readout_threshold(qubit: Any, value: float, *, operation: str = READOUT_OPERATION) -> None:
+    qubit.resonator.operations[operation].threshold = float(value)
+
+
+def get_readout_rus_threshold(qubit: Any, operation: str = READOUT_OPERATION) -> float:
+    return float(qubit.resonator.operations[operation].rus_exit_threshold)
+
+
+def set_readout_rus_threshold(qubit: Any, value: float, *, operation: str = READOUT_OPERATION) -> None:
+    qubit.resonator.operations[operation].rus_exit_threshold = float(value)
 
 
 # ------------------------------------------------------------------------ idle flux

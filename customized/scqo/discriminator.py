@@ -2,8 +2,11 @@
 
 Mirrors the vendored qualibrate ``07_iq_blobs`` analysis
 (``calibration_utils/iq_blobs/analysis.py``) so a scqo ``single_shot_readout`` run can
-recalibrate the QM readout discriminator without the GUI. Kept dependency-free (no
-qualibrate/quam import) so it is unit-testable and stable against ``sync_official.py``.
+propose the QM readout discriminator without the GUI. Pure math — the wrapper turns
+these into GOVERNED suggestions on the neutral ``readout_rotation_rad`` /
+``readout_threshold`` / ``readout_rus_threshold`` fields (nothing is written to the
+vendor here). Kept dependency-free (no qualibrate/quam import) so it is unit-testable
+and stable against ``sync_official.py``.
 
 UNITS: everything here is in the ACQUISITION frame's native units — raw demod on the
 scqo path (the probe does NOT convert to Volts). The returned ``ge_threshold`` /
@@ -12,10 +15,10 @@ stores; the caller writes them as-is. Do NOT apply 07's ``* length / 2**12`` —
 factor inverts a Volt conversion that never happened on this path (double-division).
 
 ANGLE: a single final angle (with 07's ``+pi`` fix so the rotated excited blob sits
-above ground) drives BOTH the returned rotation and the threshold frame. The caller
-ACCUMULATES it: ``integration_weights_angle -= delta_angle_rad`` (07's semantics; 07's
-stored ``iw_angle`` is the post-fix angle — xarray ``assign`` aliases the mutated
-DataArray, verified).
+above ground) drives BOTH the returned rotation and the threshold frame. ``delta`` is
+RELATIVE to the current weights rotation, so the caller proposes the new ABSOLUTE
+rotation ``readout_rotation_rad = current - delta_angle_rad`` (07's accumulate
+semantics, expressed as a governed absolute field write).
 """
 
 from __future__ import annotations
@@ -45,8 +48,9 @@ def compute_qm_discriminator(mean_g, mean_e, shots_g, shots_e) -> dict:
     Returns
     -------
     dict with (all acquisition-frame / raw-demod units):
-        delta_angle_rad : the rotation putting the g->e axis on +I with Ie > Ig; the
-            caller does ``integration_weights_angle -= delta_angle_rad``.
+        delta_angle_rad : the rotation putting the g->e axis on +I with Ie > Ig,
+            relative to the current weights rotation; the caller proposes
+            ``readout_rotation_rad = current - delta_angle_rad``.
         ge_threshold : rotated-I decision threshold (false-detection minimum).
         rus_exit_threshold : rotated-I ground-blob mode (active-reset exit).
     """

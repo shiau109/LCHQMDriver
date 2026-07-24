@@ -124,6 +124,30 @@ class QMReadableTransmon(make_view_base("ReadableTransmon")):
     def readout_integration_s(self, value: float) -> None:
         quam_fields.set_readout_integration(self._q, value)
 
+    @property
+    def readout_rotation_rad(self) -> float:
+        return quam_fields.get_readout_rotation(self._q)
+
+    @readout_rotation_rad.setter
+    def readout_rotation_rad(self, value: float) -> None:
+        quam_fields.set_readout_rotation(self._q, value)
+
+    @property
+    def readout_threshold(self) -> float:
+        return quam_fields.get_readout_threshold(self._q)
+
+    @readout_threshold.setter
+    def readout_threshold(self, value: float) -> None:
+        quam_fields.set_readout_threshold(self._q, value)
+
+    @property
+    def readout_rus_threshold(self) -> float:
+        return quam_fields.get_readout_rus_threshold(self._q)
+
+    @readout_rus_threshold.setter
+    def readout_rus_threshold(self, value: float) -> None:
+        quam_fields.set_readout_rus_threshold(self._q, value)
+
     # readout_power_dbm / drive_power_dbm live HERE (not in quam_fields): the chain
     # solve needs quam_builder.tools.power_tools, whose module top imports quam —
     # quam_fields is contractually pure (stub-testable without an instrument).
@@ -276,7 +300,9 @@ class QMDeviceModel(DeviceModel):
                 for field in ("readout_freq", "drive_freq", "pi_amp", "drag_beta",
                               "drive_amp", "drive_power_dbm",
                               "readout_amp", "readout_power_dbm", "readout_duration_s",
-                              "readout_integration_s", "idle_flux_v")
+                              "readout_integration_s", "readout_rotation_rad",
+                              "readout_threshold", "readout_rus_threshold",
+                              "idle_flux_v")
             }
         for name in (getattr(self._machine, "qubit_pairs", {}) or {}):
             view = self.component(name)

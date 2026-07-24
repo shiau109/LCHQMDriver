@@ -27,7 +27,8 @@ from scqo.experiments import SingleShotReadout
 @register
 class QMSingleShotReadout(SingleShotReadout):
     """Build a multiplexed per-shot |g>/|e> readout QUA program on the QM OPX, and
-    (opt-in) recalibrate the QM readout discriminator from the measured blobs."""
+    propose the readout discriminator (rotation + thresholds) as governed
+    suggestions from the measured blobs."""
 
     def probe(self) -> Any:
         from customized.probes._lib import select_qubits
@@ -45,25 +46,27 @@ class QMSingleShotReadout(SingleShotReadout):
         )
 
     def update(self) -> None:
-        """Governed readout_fidelity write (inherited) + the OPT-IN vendor discriminator
-        calibration.
+        """Governed readout_fidelity + blob-center writes (inherited) plus the QM
+        readout DISCRIMINATOR as governed suggestions.
 
-        When ``calibrate_discriminator`` is set, this writes the QM readout operation's
-        ``integration_weights_angle`` / ``threshold`` / ``rus_exit_threshold`` and SAVES
-        the QUAM config IMMEDIATELY -- an out-of-band vendor calibration, like running
-        the qualibrate ``07_iq_blobs`` node, NOT a governed suggestion. It runs whenever
-        ``update()`` runs (i.e. under both update='suggest' and 'apply'); update='none'
-        skips it. ``self.device.save()`` only fires on apply/accept, so the driver calls
-        ``machine.save()`` itself to persist into the setup's ``backend_config/state.json``.
-        """
-        super().update()  # the governed readout_fidelity suggestion (through self.device)
+        For every SUCCESSFUL qubit this computes the demod rotation + thresholds from
+        the measured blobs (``discriminator.compute_qm_discriminator``) and PROPOSES
+        them through ``self.device`` as the neutral fields ``readout_rotation_rad`` /
+        ``readout_threshold`` / ``readout_rus_threshold`` — captured as pending
+        suggestions, decided with ``scqo accept`` and pushed to the QUAM readout
+        operation on accept, exactly like ``drive_freq`` / ``pi_amp``. The run itself
+        never touches the vendor config, so the figure always shows the data in the
+        frame it was measured in; to check a new rotation, accept it and re-run.
 
-        if not self.params.calibrate_discriminator or self.result is None or self.dataset is None:
+        The rotation field is ABSOLUTE: the measured ``delta`` is relative to the
+        current weights rotation, so the proposal is ``current - delta`` (the field's
+        current value seeded from the vendor in pull mode)."""
+        super().update()  # governed readout_fidelity + readout_pos_* (through self.device)
+
+        if self.result is None or self.dataset is None:
             return
         from customized.scqo.discriminator import compute_qm_discriminator
 
-        machine = self.backend.machine  # type: ignore[attr-defined]
-        wrote = False
         for qubit in self.params.targets:
             if self.result.outcomes.get(qubit) is not Outcome.SUCCESSFUL:
                 continue
@@ -71,7 +74,7 @@ class QMSingleShotReadout(SingleShotReadout):
             mean_g = (fit["mean_g_i"], fit["mean_g_q"])
             mean_e = (fit["mean_e_i"], fit["mean_e_q"])
             if not np.all(np.isfinite([*mean_g, *mean_e])):
-                print(f"[single_shot_readout] {qubit}: degenerate blobs; discriminator not calibrated")
+                print(f"[single_shot_readout] {qubit}: degenerate blobs; no discriminator proposal")
                 continue
 
             sq = self.dataset.sel(target=qubit)
@@ -79,18 +82,15 @@ class QMSingleShotReadout(SingleShotReadout):
             shots_e = (sq["I"].sel(prepared_state=1).values, sq["Q"].sel(prepared_state=1).values)
             d = compute_qm_discriminator(mean_g, mean_e, shots_g, shots_e)
 
-            op = machine.qubits[qubit].resonator.operations["readout"]
-            old_angle = float(op.integration_weights_angle)
-            op.integration_weights_angle = old_angle - d["delta_angle_rad"]  # 07's accumulate (-=)
-            op.threshold = d["ge_threshold"]
-            op.rus_exit_threshold = d["rus_exit_threshold"]
-            wrote = True
+            view = self.device.component(qubit)
+            current = float(view.readout_rotation_rad)
+            new_rotation = current - d["delta_angle_rad"]  # accumulate as an absolute proposal
+            view.readout_rotation_rad = new_rotation
+            view.readout_threshold = d["ge_threshold"]
+            view.readout_rus_threshold = d["rus_exit_threshold"]
             print(
-                f"[single_shot_readout] {qubit}: discriminator calibrated "
-                f"(integration_weights_angle {old_angle:.4f} -> "
-                f"{op.integration_weights_angle:.4f} rad, threshold {op.threshold:.4g})"
+                f"[single_shot_readout] {qubit}: discriminator PROPOSED "
+                f"(readout_rotation_rad {current:.4f} -> {new_rotation:.4f} rad, "
+                f"readout_threshold {d['ge_threshold']:.4g}) — review with scqo accept, "
+                f"then re-run to confirm"
             )
-
-        if wrote:
-            machine.save()  # persist the vendor calibration to backend_config/state.json
-            print("[single_shot_readout] saved QUAM discriminator calibration")
