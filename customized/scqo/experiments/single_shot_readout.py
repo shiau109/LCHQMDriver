@@ -46,22 +46,25 @@ class QMSingleShotReadout(SingleShotReadout):
         )
 
     def update(self) -> None:
-        """Governed readout_fidelity + blob-center writes (inherited) plus the QM
-        readout DISCRIMINATOR as governed suggestions.
+        """The inherited per-state fidelity + blob-center MONITOR writes
+        (``fidelity_g``/``fidelity_e``/``pos_*`` on the readout channel; the old
+        aggregate ``readout_fidelity`` is gone) plus the QM readout
+        DISCRIMINATOR as governed suggestions.
 
         For every SUCCESSFUL qubit this computes the demod rotation + thresholds from
         the measured blobs (``discriminator.compute_qm_discriminator``) and PROPOSES
         them through ``self.device`` as the neutral fields ``readout_rotation_rad`` /
-        ``readout_threshold`` / ``readout_rus_threshold`` — captured as pending
+        ``readout_threshold`` / ``readout_rus_threshold`` on the target's READOUT
+        channel (``self.device.channel(qubit, "readout")``) — captured as pending
         suggestions, decided with ``scqo accept`` and pushed to the QUAM readout
-        operation on accept, exactly like ``drive_freq`` / ``pi_amp``. The run itself
+        operation on accept, exactly like ``drive_freq_hz`` / ``pi_amp``. The run itself
         never touches the vendor config, so the figure always shows the data in the
         frame it was measured in; to check a new rotation, accept it and re-run.
 
         The rotation field is ABSOLUTE: the measured ``delta`` is relative to the
         current weights rotation, so the proposal is ``current - delta`` (the field's
         current value seeded from the vendor in pull mode)."""
-        super().update()  # governed readout_fidelity + readout_pos_* (through self.device)
+        super().update()  # fidelity_g/e + pos_* monitors (through self.device)
 
         if self.result is None or self.dataset is None:
             return
@@ -82,7 +85,10 @@ class QMSingleShotReadout(SingleShotReadout):
             shots_e = (sq["I"].sel(prepared_state=1).values, sq["Q"].sel(prepared_state=1).values)
             d = compute_qm_discriminator(mean_g, mean_e, shots_g, shots_e)
 
-            view = self.device.component(qubit)
+            # The discriminator trio lives on the READOUT channel entity
+            # (q1_ro), addressed by its target's default channel — the qubit
+            # MODE name carries no knobs since the greenfield split.
+            view = self.device.channel(qubit, "readout")
             current = float(view.readout_rotation_rad)
             new_rotation = current - d["delta_angle_rad"]  # accumulate as an absolute proposal
             view.readout_rotation_rad = new_rotation

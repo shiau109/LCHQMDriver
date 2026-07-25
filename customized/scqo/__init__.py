@@ -10,7 +10,18 @@ offline-friendly). It is NEVER imported by the qualibrate calibration nodes, whi
 keeps the qualibrate path independent of scqo.
 """
 
-from customized.scqo.backend import QMBackend, QMDeviceModel, QMReadableTransmon
+from customized.scqo.backend import (
+    QMBackend,
+    QMDeviceModel,
+    QMDriveChannel,
+    QMFluxChannel,
+    QMQubitPair,
+    QMReadoutChannel,
+)
 from customized.scqo import experiments  # noqa: F401  (import side effect: @register)
 
-__all__ = ["QMBackend", "QMDeviceModel", "QMReadableTransmon"]
+__all__ = [
+    "QMBackend", "QMDeviceModel",
+    # one view class per CHANNEL KIND + the composite (qubit_pair) surface
+    "QMDriveChannel", "QMReadoutChannel", "QMFluxChannel", "QMQubitPair",
+]

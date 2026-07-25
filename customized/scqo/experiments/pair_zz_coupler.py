@@ -1,8 +1,10 @@
 """QM residual-ZZ vs coupler bias for scqo - supplies ``probe()`` + the raw
 joint-state reduction.
 
-Parameters, the per-bias echo-fringe fit and the coupler_decouple_v/zz_hz
-writeback are inherited from ``scqo.experiments.PairZZCoupler``. scqo sweeps
+Parameters, the per-bias echo-fringe fit and the writeback (the decouple point
+as ``idle_flux`` on the COUPLER MODE's own flux channel, plus the residual
+``zz_hz`` fact on the pair) are inherited from
+``scqo.experiments.PairZZCoupler``. scqo sweeps
 ``(coupler_bias_v, idle_time_ns)``; the LCHQM probe sweeps ``amplitudes`` (V on
 the pair's tunable coupler) x ``durations`` (interaction time, clock cycles) with
 a Hahn echo + virtual detuning on ONE pair member and joint two-qubit state
@@ -28,23 +30,23 @@ class QMPairZZCoupler(PairZZCoupler):
     def _measure_side(self, machine: Any) -> str:
         """Map the neutral ``measure`` role (high/low) onto vendor control/target.
 
-        The roster's declared high/low members are the governed truth; without a
-        roster (standalone backend use) the live f_01s decide. The probe takes ONE
-        side for all pairs, so a mixed mapping across the selected pairs refuses."""
-        roster = getattr(self.device, "roster", None)
+        The roster's declared high/low ROLES are the governed truth and the only
+        source: high/low is design-nominal topology, while a live-f_01 ordering
+        legitimately crosses during tuning (greenfield schema section 4), so
+        there is nothing to fall back to. The probe takes ONE side for all pairs,
+        so a mixed mapping across the selected pairs refuses.
+
+        ``targets`` are ROSTER composite names; the QUAM pair behind one is
+        resolved by the backend (QM names its pairs after the coupler, so the
+        roster name rarely matches), never by indexing ``machine.qubit_pairs``
+        with the roster name."""
+        roster = self.device.roster
         sides: dict[str, str] = {}
         for pair_name in self.params.targets:
-            qp = machine.qubit_pairs[pair_name]
+            qp = self._vendor_pair(machine, pair_name)
             control = qp.qubit_control.name
             target = qp.qubit_target.name
-            if roster is not None:
-                measured = roster.members(pair_name)[self.params.measure]
-            else:  # standalone fallback: high = larger live f_01
-                f_c = float(qp.qubit_control.f_01 or 0)
-                f_t = float(qp.qubit_target.f_01 or 0)
-                high = control if f_c >= f_t else target
-                low = target if high == control else control
-                measured = high if self.params.measure == "high" else low
+            measured = self._role_member(roster, pair_name, self.params.measure)
             if measured == control:
                 sides[pair_name] = "control"
             elif measured == target:
@@ -61,12 +63,38 @@ class QMPairZZCoupler(PairZZCoupler):
                 f"per program - run these pairs in separate commands")
         return next(iter(sides.values()))
 
+    def _vendor_pair(self, machine: Any, name: str) -> Any:
+        """The QUAM qubit_pair behind a ROSTER composite name.
+
+        ``machine`` is accepted (and unused) so the call site reads like the
+        probe helpers around it; the resolution itself is the backend's, which
+        joins roster composite -> QUAM pair by MEMBERSHIP."""
+        from ._vendor import vendor_pair
+
+        return vendor_pair(self, name)
+
+    @staticmethod
+    def _role_member(roster: Any, pair: str, role: str) -> str:
+        """The ONE mode filling a pair's ``high``/``low`` role (roster truth)."""
+        members = roster.entities[pair].roles.get(role, ())
+        if len(members) != 1:
+            raise ValueError(
+                f"{pair}: role {role!r} has {len(members)} member(s) "
+                f"{list(members)} - the echoed qubit must be exactly one")
+        return members[0]
+
     def probe(self) -> Any:
         from customized.probes import pair_qcq_zz_coupler_freq as zz_probe
         from customized.probes._lib import select_qubit_pairs
 
+        from ._vendor import vendor_pair_name
+
         machine = self.backend.machine  # type: ignore[attr-defined]
-        pairs = select_qubit_pairs(machine, self.params.targets, multiplexed=True)
+        # targets are ROSTER composite names; the probe helper selects by QUAM
+        # pair key (QM names its pairs after the coupler), so translate first —
+        # order preserved, which is what the axis relabel below relies on.
+        vendor_names = [vendor_pair_name(self, p) for p in self.params.targets]
+        pairs = select_qubit_pairs(machine, vendor_names, multiplexed=True)
         self._side = self._measure_side(machine)
 
         # Canonical idle times (ns) -> clock cycles; the raw time axis is the
@@ -90,7 +118,11 @@ class QMPairZZCoupler(PairZZCoupler):
         # it so sizes and values match the raw data exactly.
         self.sweep_axes["idle_time_ns"] = axes["time"].values.astype(float)
         sweep_axes = {
-            "qubit_pair": axes["qubit_pair"],
+            # The probe labels its target axis with VENDOR pair keys; scqo's
+            # dataset (and estimate()) key on the ROSTER composite names the
+            # operator asked for. Same order by construction (vendor_names was
+            # built from targets), so relabel rather than rename downstream.
+            "qubit_pair": xr.DataArray(list(self.params.targets)),
             "coupler_bias_v": axes["amp"],
             "idle_time_ns": axes["time"],
         }

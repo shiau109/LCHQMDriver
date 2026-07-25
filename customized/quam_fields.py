@@ -5,16 +5,19 @@ Both call sites write through these primitives, so the
 ``f_01`` / ``resonator.RF_frequency`` / ``xy.operations['x180'].amplitude`` mapping is
 defined exactly once:
 
-* the scqo backend's ``QMQubitView`` (``customized/scqo/backend.py``) — neutral get/set;
+* the scqo backend's CHANNEL views (``customized/scqo/backend.py``:
+  ``QMDriveChannel`` / ``QMReadoutChannel`` / ``QMFluxChannel``) — neutral get/set;
 * the qualibrate ``apply_update`` writebacks (``customized/node/LCH_*/update.py``).
 
 Pure attribute access on a passed QUAM ``qubit``: no qm/quam import here, so this stays
 importable without an instrument (and unit-testable with a stub qubit).
 
-Neutral field -> QUAM path
-    readout_freq          <-> q.resonator.RF_frequency  (and q.resonator.f_01 when present)
-    drive_freq            <-> q.f_01                     (and q.xy.RF_frequency, kept in step)
+Neutral field -> QUAM path (the neutral names are the greenfield ones; which CHANNEL
+entity owns each is in customized/scqo/fieldmap.py, keyed by channel KIND)
+    readout_freq_hz       <-> q.resonator.RF_frequency  (and q.resonator.f_01 when present)
+    drive_freq_hz         <-> q.f_01                     (and q.xy.RF_frequency, kept in step)
     pi_amp                <-> q.xy.operations['x180'].amplitude
+    pi_duration_s         <-> q.xy.operations['x180'].length (s <-> ns, 4 ns grid)
     drive_amp             <-> q.xy.operations['saturation'].amplitude
     readout_duration_s    <-> q.resonator.operations['readout'].length (s <-> ns)
     readout_integration_s <-> ...operations['readout'].integration_weights
@@ -22,6 +25,9 @@ Neutral field -> QUAM path
     readout_rotation_rad  <-> ...operations['readout'].integration_weights_angle (rad, absolute)
     readout_threshold     <-> ...operations['readout'].threshold
     readout_rus_threshold <-> ...operations['readout'].rus_exit_threshold
+    idle_flux             <-> q.z.<flux_point>_offset       (qubit flux channel)
+                          <-> qp.coupler.<flux_point>_offset (COUPLER flux channel: the
+                              coupler mode's own q*_z entity, decouple/interaction/arbitrary)
 """
 
 from __future__ import annotations
@@ -245,6 +251,57 @@ def set_idle_flux(qubit: Any, value: float) -> None:
     setattr(z, f"{z.flux_point}_offset", float(value))
 
 
+# ------------------------------------------------------------- coupler idle flux
+#: TunableCoupler flux_point -> the offset attribute it selects. The coupler's
+#: named points are its OWN vocabulary (off/on/arbitrary/zero), not the qubit
+#: FluxLine's (joint/independent/min/...), so the two idle-flux accessors cannot
+#: share one getattr: this map IS the difference. ``zero`` reads 0 V and refuses
+#: writes, exactly like the qubit side.
+COUPLER_FLUX_POINTS = {
+    "off": "decouple_offset",          # the interaction-OFF standing bias
+    "on": "interaction_offset",        # the interaction-ON standing bias
+    "arbitrary": "arbitrary_offset",
+}
+
+
+def get_coupler_idle_flux(coupler: Any) -> float:
+    """Standing bias (V) of a QUAM ``TunableCoupler`` — the offset SELECTED by its
+    ``flux_point``.
+
+    Since the greenfield model a coupler is an ordinary roster MODE and its
+    standing bias is ``idle_flux`` on its own flux channel (the old pair-level
+    coupler_decouple_v / coupler_interaction_v pair is gone): WHICH named point is
+    active stays vendor config, and the neutral knob is the bias AT that point.
+    """
+    point = coupler.flux_point
+    if point == "zero":
+        return 0.0
+    attr = COUPLER_FLUX_POINTS.get(point)
+    if attr is None:
+        raise ValueError(
+            f"coupler flux_point={point!r} is not one of "
+            f"{sorted(COUPLER_FLUX_POINTS) + ['zero']} - the standing bias it "
+            f"selects is undefined")
+    return float(getattr(coupler, attr))
+
+
+def set_coupler_idle_flux(coupler: Any, value: float) -> None:
+    """Write the active coupler point's offset (V); ``zero`` is refused (the
+    point IS 0 V - switch flux_point in the vendor config first)."""
+    point = coupler.flux_point
+    if point == "zero":
+        raise ValueError(
+            "coupler flux_point='zero': the idle bias is fixed at 0 V - select "
+            "off/on/arbitrary in the vendor config first")
+    attr = COUPLER_FLUX_POINTS.get(point)
+    if attr is None:
+        raise ValueError(
+            f"coupler flux_point={point!r} is not one of "
+            f"{sorted(COUPLER_FLUX_POINTS) + ['zero']} - refusing to guess "
+            f"which offset to write")
+    setattr(coupler, attr, float(value))
+
+
 # ------------------------------------------------------------------------- pi amplitude
 def get_pi_amp(qubit: Any, operation: str = PI_OPERATION) -> float:
     return float(qubit.xy.operations[operation].amplitude)
@@ -280,6 +337,47 @@ def set_pi_amp(qubit: Any, value: float, *, operation: str = PI_OPERATION, lock_
         half_val = val / 2.0
         _set_op_amp(ops, "x90_DragCosine", half_val)
         _set_op_amp(ops, "x90", half_val)
+
+
+def get_pi_duration(qubit: Any, operation: str = PI_OPERATION) -> float:
+    """Calibrated pi-pulse length in SECONDS (QUAM stores ns).
+
+    / 1e9 (exact), never * 1e-9 - see get_readout_duration for why the division
+    keeps the stored float identical to the parsed literal on both backends."""
+    return float(qubit.xy.operations[operation].length) / 1e9
+
+
+def set_pi_duration(qubit: Any, value: float, *, operation: str = PI_OPERATION) -> None:
+    """Write the pi-pulse length (seconds, multiple of 4 ns).
+
+    Same storage-node discipline as :func:`set_pi_amp`: the ``x180_DragCosine``
+    node holds the real pulse and the plain ``x180`` entry is usually a reference
+    alias that follows it. The 4 ns grid is REFUSED rather than rounded - unlike
+    the Qblox side, where a pulse length is a plain seconds value, the QM pulse
+    grid genuinely cannot realize an off-grid length, and silent rounding would
+    de-calibrate the stored pi_amp against a pulse that is not the one measured.
+    x90's length is NOT locked to it (a per-gate vendor value; see the
+    x90_DragCosine fine print in the fieldmap)."""
+    ns = _grid_ns(value, "pi_duration_s")
+    if not (hasattr(qubit, "xy") and hasattr(qubit.xy, "operations")):
+        return
+    ops = qubit.xy.operations
+    if operation == "x180":
+        _set_op_length(ops, "x180_DragCosine", ns)
+    _set_op_length(ops, operation, ns)
+
+
+def _set_op_length(ops: Any, name: str, value: int) -> None:
+    """Set ops[name].length, skipping string-reference aliases (the alias's
+    target already carries the value)."""
+    try:
+        op = ops[name]
+    except (KeyError, TypeError):
+        return
+    if isinstance(op, str):
+        return
+    if hasattr(op, "length"):
+        op.length = int(value)
 
 
 def _set_op_amp(ops: Any, name: str, value: float) -> None:

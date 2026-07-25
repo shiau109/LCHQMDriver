@@ -6,20 +6,27 @@ folder is DERIVED from the keys and injected by ``load_cooldowns``):
 ``setup["instrument_config"]`` is the folder holding the QUAM files under
 canonical names — ``state.json`` + ``wiring.json``. That folder is the single
 QUAM-state authority for this device's setup (quam's own resolution via ~/.qualibrate
-or QUAM_STATE_PATH is deliberately bypassed). Vendor imports stay INSIDE the function
-so loading this module is cheap and vendor-free. (The virtual-twin ``qm_sim`` mode
-was retired with v0.5.0.)
+or QUAM_STATE_PATH is deliberately bypassed). It also receives the device's ROSTER,
+the authority on which entities exist: the driver serves views BY ENTITY NAME
+(``q1_xy`` -> its drive view over QUAM's ``q1.xy``, ``q1_q2_c_z`` -> the pair's
+TunableCoupler), so the roster is threaded into the backend and every name resolves
+through it. Vendor imports stay INSIDE the function so loading this module is cheap
+and vendor-free. (The virtual-twin ``qm_sim`` mode was retired with v0.5.0.)
 """
 
 from __future__ import annotations
 
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from scqo import LabConfig
 from scqo.backend import Backend
 
+if TYPE_CHECKING:
+    from scqo.roster import Roster
 
-def build_backend(cfg: LabConfig, setup: dict) -> Backend:
+
+def build_backend(cfg: LabConfig, setup: dict, roster: "Roster") -> Backend:
     if setup.get("backend") != "qm":
         raise SystemExit(f"the qm driver serves backend 'qm', got {setup.get('backend')!r}")
     # State-authority rule checked BEFORE loading QUAM: fail before any state file
@@ -39,4 +46,4 @@ def build_backend(cfg: LabConfig, setup: dict) -> Backend:
         )
     from customized.scqo.backend import QMBackend
 
-    return QMBackend.load(state_path=str(folder))
+    return QMBackend.load(state_path=str(folder), roster=roster)

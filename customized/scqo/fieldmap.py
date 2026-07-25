@@ -1,15 +1,31 @@
 """Declarative field catalog for the QM backend — PURE DATA, no vendor imports.
 
-Per INSTRUMENT category: one :class:`scqo.fieldmap.VendorBinding` per pushed
-neutral field this backend realizes (where it lives on the QUAM tree, in what
-unit, converted how — as a DESCRIPTION), one :class:`scqo.fieldmap.Unrealized`
-per pushed field it does NOT (declared, never silent), plus the
-:class:`scqo.fieldmap.VendorOnly` inventory of calibration-relevant knobs with no
-neutral counterpart yet. The EXECUTABLE conversions live in ``QMReadableTransmon``
-(backend.py, via customized.quam_fields + power_tools) — this module documents
-them and is pinned to the implementation by ``tests/test_scqo_glue.py``
-(per category: bindings | unrealized == scqo's pushed_fields; imports stay
-vendor-free).
+Keyed by CHANNEL KIND (``drive`` / ``readout`` / ``flux``) since the greenfield
+model: knobs live on channel entities (``q1_xy``, ``q1_ro``, ``q1_z``), not on a
+single per-qubit component. Per kind, one :class:`scqo.fieldmap.VendorBinding`
+per realized KNOB (where it lives on the QUAM tree, in what unit, converted how —
+as a DESCRIPTION), one :class:`scqo.fieldmap.Unrealized` per knob this backend
+cannot realize, plus the :class:`scqo.fieldmap.VendorOnly` inventory of
+calibration-relevant knobs with no neutral counterpart yet. The EXECUTABLE
+conversions live in the three channel views of ``backend.py``
+(``QMDriveChannel`` / ``QMReadoutChannel`` / ``QMFluxChannel``, via
+customized.quam_fields + power_tools) — this module documents them and is pinned
+to the implementation by ``tests/test_scqo_glue.py`` (per kind: bindings |
+unrealized == scqo's KNOB fields; imports stay vendor-free).
+
+COMPOSITES are separate: a ``qubit_pair``'s knobs are PER-OPERATION full names
+(``iswap_coupler_flux``) instantiated from ``scqo.catalog.OP_KNOBS`` by the
+operations the ROSTER declares, so they cannot be tabulated by a static field
+name. :data:`OP_KNOB_BINDINGS` / :data:`OP_KNOB_UNREALIZED` are therefore keyed
+by the OP_KNOBS SUFFIX (``coupler_flux``, ``vz_high_rad``, ...) and served
+through ``QMQubitPair.read_knob``/``write_knob``; ``FIELD_BINDINGS`` stays
+channel-kind-only so the per-kind drift alarm keeps its exact meaning.
+
+MONITORS are absent by construction: ``fidelity_g``/``fidelity_e``/``pos_*`` are
+measured performance OF the current knobs, never pushed, so they need no vendor
+binding and no Unrealized entry (the old ``readout_fidelity`` aggregate is gone;
+the per-state pair replaces it). Facts (``flux_offset``, ``flux_per_phi0``,
+``distortion_*``) live in physical.json and likewise bind nothing.
 
 Rendered by ``scqo state --fields``; strings reach lab consoles, keep them ASCII.
 """
@@ -19,23 +35,32 @@ from __future__ import annotations
 from scqo.fieldmap import Unrealized, VendorBinding, VendorOnly
 
 FIELD_BINDINGS: dict[str, dict[str, VendorBinding]] = {
-    "ReadableTransmon": {
-        "readout_freq": VendorBinding(
-            path="q.resonator.RF_frequency", unit="Hz"),
-        "drive_freq": VendorBinding(
+    "drive": {
+        "drive_freq_hz": VendorBinding(
             path="q.f_01", unit="Hz",
             convert="a write also shifts q.xy.RF_frequency by the same delta "
                     "(quam_fields.set_drive_freq keeps the drive line on the qubit)"),
         "pi_amp": VendorBinding(
-            path="q.xy.operations['x180'].amplitude", unit=""),
+            path="q.xy.operations['x180'].amplitude", unit="",
+            note="written on the x180_DragCosine storage node; the plain x180 "
+                 "entry is usually a QUAM reference alias and follows"),
         "drag_beta": VendorBinding(
             path="q.xy.operations['x180_DragCosine'].alpha", unit="",
             convert="QM stores DRAG as DragCosinePulse.alpha; written on the "
                     "x180_DragCosine storage node (reference aliases follow)",
             note="calibrated by qubit_drag_equator / qubit_drag_alternating"),
+        "pi_duration_s": VendorBinding(
+            path="q.xy.operations['x180'].length", unit="ns",
+            convert="seconds -> ns",
+            note="positive multiples of 4 ns only (REFUSED otherwise, no silent "
+                 "rounding: an off-grid length is unrealizable on QM and would "
+                 "de-calibrate the stored pi_amp against a pulse that is not the "
+                 "one measured). x90's length stays vendor fine print - it is a "
+                 "per-gate value, not the tracked pi length. Qblox counterpart: "
+                 "rxy.duration (s, no grid guard there)"),
         "drive_amp": VendorBinding(
             path="q.xy.operations['saturation'].amplitude", unit="",
-            note="the saturation (spec) drive amplitude — the drive_power_dbm "
+            note="the saturation (spec) drive amplitude - the drive_power_dbm "
                  "chain solve's residual"),
         "drive_power_dbm": VendorBinding(
             path="q.xy.opx_output.full_scale_power_dbm "
@@ -49,6 +74,11 @@ FIELD_BINDINGS: dict[str, dict[str, VendorBinding]] = {
                  "while it is off its standing value the stored pi_amp means a "
                  "different power (qubit_spectroscopy sets it and reverts exactly)",
         ),
+    },
+    "readout": {
+        "readout_freq_hz": VendorBinding(
+            path="q.resonator.RF_frequency", unit="Hz",
+            note="q.resonator.f_01 is kept equal when the resonator carries it"),
         "readout_amp": VendorBinding(
             path="q.resonator.operations['readout'].amplitude", unit=""),
         "readout_power_dbm": VendorBinding(
@@ -102,37 +132,110 @@ FIELD_BINDINGS: dict[str, dict[str, VendorBinding]] = {
             note="repeat-until-success (active-reset) exit threshold on the rotated "
                  "I, raw demod units; no Qblox counterpart (Unrealized there)",
         ),
-        "idle_flux_v": VendorBinding(
-            path="q.z.<flux_point>_offset", unit="V",
-            convert="the offset SELECTED by z.flux_point (joint/independent/min/"
-                    "arbitrary; 'zero' reads 0 V and REFUSES writes)",
-            note="which named flux point is active stays vendor config "
-                 "(z.flux_point, catalogued below); the write lands on hardware "
-                 "at the next initialize_qpu (every probe runs it). On a "
-                 "fixed-frequency machine the qubit has no z: the field reads "
-                 "unset and the roster should not declare flux_bias",
-        ),
     },
-    "TransmonPair": {
-        "coupler_decouple_v": VendorBinding(
-            path="qp.coupler.decouple_offset", unit="V",
-            note="the interaction-OFF standing bias (pair_zz_coupler's product "
-                 "- the ZZ zero crossing); applied when the coupler idles at "
-                 "flux_point='off'",
-        ),
-        "coupler_interaction_v": VendorBinding(
-            path="qp.coupler.interaction_offset", unit="V",
-            note="the interaction-ON standing bias (gate operating point); "
-                 "applied when the coupler idles at flux_point='on'",
+    "flux": {
+        "idle_flux": VendorBinding(
+            path="q.z.<flux_point>_offset  |  qp.coupler.<flux_point>_offset",
+            unit="V",
+            convert="the offset SELECTED by the line's flux_point. QUBIT flux "
+                    "channel (q1_z): z.flux_point in joint/independent/min/"
+                    "arbitrary ('zero' reads 0 V and REFUSES writes). COUPLER "
+                    "flux channel (the coupler MODE's own q1_q2_c_z): "
+                    "coupler.flux_point off -> decouple_offset, on -> "
+                    "interaction_offset, arbitrary -> arbitrary_offset, 'zero' "
+                    "likewise 0 V and read-only",
+            note="which named flux point is active stays vendor config "
+                 "(z.flux_point / coupler.flux_point, catalogued below); the "
+                 "write lands on hardware at the next initialize_qpu (every "
+                 "probe runs it). A coupler's standing/decouple bias IS this "
+                 "knob on its own flux channel - the old pair-level "
+                 "coupler_decouple_v / coupler_interaction_v are gone. On a "
+                 "fixed-frequency machine the qubit has no z, so the roster "
+                 "declares no flux rider for it and the channel does not exist",
         ),
     },
 }
 
-#: Pushed fields this backend declares it cannot realize (per category) — pushes
-#: are skipped with the reason visible to doctor and ``scqo state --fields``.
-#: (empty since idle_flux_v gained its real z-line realization at the pair
-#: cutover; fixed-frequency machines surface it as unset, not Unrealized.)
+#: Neutral KNOBS this backend cannot realize, per channel kind (declared, never
+#: silent). Empty: QM realizes every drive/readout/flux knob in the catalog —
+#: including the discriminator trio that is Unrealized on Qblox. Kept as an
+#: explicit empty map so the served-kind set stays visible in one place.
 UNREALIZED: dict[str, dict[str, Unrealized]] = {}
+
+# ------------------------------------------------------- composite (pair) knobs
+
+#: Per-OPERATION knob suffixes (``scqo.catalog.OP_KNOBS``) this backend realizes
+#: on a ``qubit_pair`` composite, keyed by SUFFIX: the full field name is
+#: ``<operation>_<suffix>`` for each operation the ROSTER declares on the pair
+#: (``iswap_coupler_flux``), which is why these cannot live in FIELD_BINDINGS
+#: (keyed by static catalog field name). The executable conversions are
+#: ``QMQubitPair.read_knob``/``write_knob``; ``<op>`` below is the QUAM macro
+#: whose name matches the declared operation (case-insensitively: QUAM spells
+#: the gate macro "CZ", the roster spells the operation "cz").
+OP_KNOB_BINDINGS: dict[str, VendorBinding] = {
+    "coupler_flux": VendorBinding(
+        path="qp.macros['<op>'].coupler_flux_pulse.amplitude", unit="V",
+        note="the flux-activated gate operating point ON THE COUPLER LINE - the "
+             "amplitude of the pulse the gate macro plays on qp.coupler while "
+             "the moving qubit's z pulse runs. Distinct from the coupler's "
+             "STANDING bias, which is idle_flux on the coupler mode's own flux "
+             "channel; a macro with coupler_flux_pulse = None (fixed coupler) "
+             "reads None and refuses writes",
+    ),
+    "vz_high_rad": VendorBinding(
+        path="qp.macros['<op>'].phase_shift_control|phase_shift_target", unit="turns",
+        convert="rad -> turns (QM frame_rotation_2pi units): turns = rad / 2pi",
+        note="which QM side carries it is resolved from the ROSTER roles: the "
+             "pair's high qubit is matched against qp.qubit_control/qubit_target "
+             "by NAME (control/target is vendor gate plumbing, never roster "
+             "topology). A pair whose QUAM members do not match its roster "
+             "high/low pair is refused rather than guessed",
+    ),
+    "vz_low_rad": VendorBinding(
+        path="qp.macros['<op>'].phase_shift_control|phase_shift_target", unit="turns",
+        convert="rad -> turns (QM frame_rotation_2pi units): turns = rad / 2pi",
+        note="the low qubit's side of the same pair of QUAM attributes; see "
+             "vz_high_rad for the role resolution",
+    ),
+}
+
+#: Per-operation knob suffixes with no QM realization yet (same shape as
+#: UNREALIZED; the dataclass attribute spelled ``category`` carries the
+#: COMPOSITE KIND). Reads and writes both raise with these reasons.
+OP_KNOB_UNREALIZED: dict[str, Unrealized] = {
+    "duration_s": Unrealized(
+        "qubit_pair", "duration_s",
+        "the gate length is carried by TWO simultaneous pulses (the moving "
+        "qubit's z pulse and the coupler pulse); writing one without the other "
+        "would desync them, and no scqo experiment calibrates a pair duration "
+        "yet (Phase 2b chevron/CZ). Promote to a coupled binding when one lands"),
+    "drive_freq_hz": Unrealized(
+        "qubit_pair", "drive_freq_hz",
+        "microwave-activated two-qubit gates are not wired here: the QM macros "
+        "in use (CZGate) are FLUX-activated, so there is no gate drive tone to "
+        "bind"),
+    "amp": Unrealized(
+        "qubit_pair", "amp",
+        "no overall gate-drive amplitude on a flux-activated macro - the "
+        "flux-plane counterpart is <op>_coupler_flux (bound above)"),
+    "amp_ratio": Unrealized(
+        "qubit_pair", "amp_ratio",
+        "two-emission-channel knob: no QM macro here drives a gate from two "
+        "channels whose ratio is calibrated"),
+    "rel_phase_rad": Unrealized(
+        "qubit_pair", "rel_phase_rad",
+        "two-emission-channel knob: see amp_ratio - nothing to bind on a "
+        "flux-activated macro"),
+    "waveform": Unrealized(
+        "qubit_pair", "waveform",
+        "optimized-pulse samples: QM stores the gate pulse as a typed Pulse "
+        "object (SquarePulse/FlatTopGaussian), not a sample array; binding an "
+        "arbitrary waveform means switching the macro's pulse class, which no "
+        "scqo experiment asks for yet"),
+    "waveform_dt_s": Unrealized(
+        "qubit_pair", "waveform_dt_s",
+        "the mandatory companion of <op>_waveform - Unrealized with it"),
+}
 
 #: Backend-unique calibration knobs, vendor-owned and untracked by SCQO (edit in
 #: the setup's state.json with QUAM tools). Each entry carries its placement-rule
@@ -171,7 +274,7 @@ VENDOR_ONLY: dict[str, VendorOnly] = {
         doc="readout LO - the MW-FEM upconverter, PORT-level (state.json "
             "ports.mw_outputs.<con>.<fem>.<port>) and shared by everything on "
             "that output; many LO/IF splits give the SAME RF, so SCQO owns only "
-            "the RF (readout_freq) and never moves the LO in a chain solve. "
+            "the RF (readout_freq_hz) and never moves the LO in a chain solve. "
             "Move it so IF = RF - LO stays in range, the port band must cover "
             "the target, and downconverter_frequency MUST move with it or "
             "demodulation breaks. Qblox counterpart: modulation_frequencies "
@@ -205,10 +308,19 @@ VENDOR_ONLY: dict[str, VendorOnly] = {
             "what every stored pi_amp AND the absolute drive power mean. "
             "Qblox counterpart: drive-port output_att"),
     "x180_length": VendorOnly(
-        path="q.xy.operations['x180'].length", unit="ns", kind="candidate",
-        doc="pi/x180 pulse length - neutral pi_duration_s candidate (seconds; "
-            "chipA: 32 ns here vs 200 ns on Qblox - genuinely per-chain "
-            "calibrated); multiple of 4 ns. Qblox counterpart: rxy.duration (s)"),
+        path="q.xy.operations['x180'].length", unit="ns", kind="realizer",
+        doc="pi/x180 pulse length - it REALIZES the tracked pi_duration_s "
+            "(promoted to a neutral drive knob in the greenfield catalog; "
+            "binding above). The governed write is scqo set "
+            "QUBIT.pi_duration_s=...; a direct edit silently de-calibrates the "
+            "stored pi_amp with it. Multiple of 4 ns (chipA: 32 ns here vs "
+            "200 ns on Qblox - genuinely per-chain calibrated)"),
+    "x90_length": VendorOnly(
+        path="q.xy.operations['x90_DragCosine'].length", unit="ns", kind="vendor",
+        doc="pi/2 pulse length - a PER-GATE vendor value, deliberately NOT "
+            "locked to the tracked pi_duration_s (the neutral knob is the pi "
+            "pulse's length only); edit it directly when a chip wants a "
+            "different x90 envelope"),
     "drag_alpha": VendorOnly(
         path="q.xy.operations['<gate>_DragCosine'].alpha", unit="", kind="realizer",
         doc="PER-GATE DRAG coefficient (chipA: x180 -0.94, x90 -0.50). The x180 "
@@ -221,41 +333,67 @@ VENDOR_ONLY: dict[str, VendorOnly] = {
         doc="per-gate drive detuning (chipA: -300 kHz on x90 vs 0 on x180) - "
             "no Qblox counterpart (one shared rxy op set there): experiments "
             "depending on it run ONLY on QM"),
-    # ----------------------------------------------------------- qubit pairs (QCQ)
-    "pair_detuning": VendorOnly(
-        path="qp.detuning", unit="V", kind="candidate",
-        doc="flux amplitude bringing the two qubits to equal energy (the gate "
-            "resonance condition) - neutral detuning_v candidate; promoted when "
-            "a scqo experiment (chevron) calibrates it"),
-    "pair_moving_qubit": VendorOnly(
-        path="qp.moving_qubit", unit="", kind="vendor",
-        doc="which vendor side (control/target) carries the flux pulse in 2Q "
-            "gates - a PER-OPERATION fact the driver reads; roster roles are "
-            "high/low and never store this (settled pair-role decision)"),
+    # ------------------------------------------------- flux points + couplers
+    "flux_point": VendorOnly(
+        path="q.z.flux_point", unit="", kind="vendor",
+        doc="which named qubit flux point idles (joint/independent/min/"
+            "arbitrary/zero) - SELECTS which offset the tracked idle_flux "
+            "reads and writes on q1_z. A mode switch, not a calibration "
+            "outcome; flipping it re-points idle_flux at a different stored "
+            "number, so re-seed after changing it"),
     "coupler_flux_point": VendorOnly(
         path="qp.coupler.flux_point", unit="", kind="vendor",
-        doc="which named coupler point idles (off/on/arbitrary/zero) - selects "
-            "WHICH offset coupler_decouple_v/coupler_interaction_v realize at "
-            "idle; a mode switch, not a calibration outcome"),
+        doc="which named coupler point idles (off/on/arbitrary/zero) - SELECTS "
+            "which offset the tracked idle_flux reads and writes on the "
+            "COUPLER mode's flux channel (q1_q2_c_z). A mode switch, not a "
+            "calibration outcome"),
+    "coupler_decouple_offset": VendorOnly(
+        path="qp.coupler.decouple_offset", unit="V", kind="realizer",
+        doc="the interaction-OFF coupler standing bias (pair_zz_coupler's "
+            "product - the ZZ zero crossing). It REALIZES the tracked "
+            "idle_flux of the coupler mode's flux channel while "
+            "coupler.flux_point == 'off' (the old pair-level coupler_decouple_v "
+            "neutral field is GONE - the governed write is now "
+            "scqo set <coupler>_z.idle_flux=...)"),
+    "coupler_interaction_offset": VendorOnly(
+        path="qp.coupler.interaction_offset", unit="V", kind="realizer",
+        doc="the interaction-ON coupler standing bias (gate operating point). "
+            "It REALIZES the tracked idle_flux of the coupler mode's flux "
+            "channel while coupler.flux_point == 'on'. A per-GATE operating "
+            "point is NOT this: that is the composite knob "
+            "<operation>_coupler_flux (bound above)"),
     "coupler_arbitrary_offset": VendorOnly(
-        path="qp.coupler.arbitrary_offset", unit="V", kind="vendor",
-        doc="free-form coupler bias for exploratory work - not a governed "
-            "operating point (those are decouple/interaction)"),
+        path="qp.coupler.arbitrary_offset", unit="V", kind="realizer",
+        doc="free-form coupler bias for exploratory work - realizes idle_flux "
+            "while coupler.flux_point == 'arbitrary'"),
     "coupler_settle_time": VendorOnly(
         path="qp.coupler.settle_time", unit="ns", kind="vendor",
         doc="coupler flux settle wait - an instrument-response policy value, "
             "not a calibration outcome"),
+    # ----------------------------------------------------------- qubit pairs (QCQ)
+    "pair_detuning": VendorOnly(
+        path="qp.detuning", unit="V", kind="candidate",
+        doc="flux amplitude bringing the two qubits to equal energy (the gate "
+            "resonance condition) - neutral candidate for a per-operation "
+            "composite knob; promoted when a scqo experiment (chevron) "
+            "calibrates it"),
+    "pair_moving_qubit": VendorOnly(
+        path="qp.moving_qubit", unit="", kind="vendor",
+        doc="which vendor side (control/target) carries the flux pulse in 2Q "
+            "gates - a PER-OPERATION fact the driver reads; roster roles are "
+            "high/low and never store this (settled pair-role decision). The "
+            "composite view maps high/low onto control/target by NAME"),
     "pair_mutual_flux_bias": VendorOnly(
         path="qp.mutual_flux_bias", unit="V", kind="vendor",
         doc="two-element per-qubit z biases for the pair's mutual idle "
             "(to_mutual_idle); vendor-owned gate plumbing"),
-    "iswap_macro": VendorOnly(
-        path="qp.macros['iswap'] (flux_pulse, phase_shift_control/target)", unit="",
-        kind="vendor",
-        doc="the iswap gate macro: flux_pulse names a coupler+control-z pulse "
-            "op; the phase shifts are currently DEAD (commented out in "
-            "apply()). Gate-pulse amplitudes/lengths become neutral fields "
-            "only when a scqo experiment calibrates them (chevron/CZ - Phase 2b)"),
+    "pair_macro_flux_pulse": VendorOnly(
+        path="qp.macros['<op>'].flux_pulse_qubit", unit="", kind="candidate",
+        doc="the MOVING qubit's z pulse for a gate macro (name or Pulse; the "
+            "coupler's twin, coupler_flux_pulse.amplitude, is the bound "
+            "<op>_coupler_flux). Its amplitude/length become neutral "
+            "per-operation knobs when a scqo chevron/CZ experiment calibrates "
+            "them - Phase 2b"),
     "pair_confusion": VendorOnly(
         path="qp.confusion", unit="", kind="vendor",
         doc="4x4 two-qubit assignment confusion matrix - a stored measured "

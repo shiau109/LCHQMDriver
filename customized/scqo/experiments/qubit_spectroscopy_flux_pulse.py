@@ -41,8 +41,17 @@ class QMQubitSpectroscopyFluxPulse(QubitSpectroscopyFluxPulse):
         from customized.probes._lib import select_qubits
         from customized.probes import qubit_spectroscopy_flux as flux_probe
 
+        from ._vendor import flux_source_name
+
         machine = self.backend.machine  # type: ignore[attr-defined]
         qubits = select_qubits(machine, self.params.targets, multiplexed=True)
+
+        # A foreign flux source is a ROSTER entity; this probe plays the flux as
+        # a z PULSE on a QUAM qubit, so _vendor refuses a coupler here with the
+        # reason (qubit_only) instead of failing inside the QUA build.
+        z_source = (None if self.params.flux_component is None
+                    else flux_source_name(self, self.params.flux_component,
+                                          qubit_only=True))
 
         prog, axes = flux_probe.build_program(
             machine,
@@ -53,10 +62,7 @@ class QMQubitSpectroscopyFluxPulse(QubitSpectroscopyFluxPulse):
             operation_len=None,  # use each qubit's own saturation-pulse length
             operation_amp=1.0,
             num_shots=self.params.num_averages,
-            # None = every measured qubit fluxes its own z line; a QUBIT name is
-            # the assigned single source (scqo validated it — this probe plays z
-            # pulses, so a pair's coupler is not sweepable here).
-            z_source_qubit=self.params.flux_component,
+            z_source_qubit=z_source,
             xy_source_qubit=None,  # None = every measured qubit drives its own xy line
         )
         # Canonical names in RAW nesting order (detuning outer, flux inner — see

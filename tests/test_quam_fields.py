@@ -212,31 +212,63 @@ def test_window_getter_reads_float_sample_weights():
     assert quam_fields.get_readout_integration(q) == pytest.approx(5.0e-7)
 
 
-def test_qm_view_uses_the_shared_mapping():
-    """The scqo QMReadableTransmon and quam_fields produce identical QUAM writes (the dedup)."""
-    from customized.scqo.backend import QMReadableTransmon
+def test_qm_channel_views_use_the_shared_mapping():
+    """The scqo CHANNEL views and quam_fields produce identical QUAM writes (the
+    dedup). Since the greenfield split there is one view per channel KIND over
+    the SAME QUAM qubit — the drive knobs on q.xy, the readout knobs on
+    q.resonator, the standing bias on q.z — so each is constructed with its own
+    entity name and subtree, exactly as component() does."""
+    from customized.scqo.backend import (
+        QMDriveChannel, QMFluxChannel, QMReadoutChannel,
+    )
 
     q = _qubit(f_01=5.0e9, xy_rf=5.1e9)
     q.name = "q0"
-    view = QMReadableTransmon(q)
+    q.z = SimpleNamespace(flux_point="joint", joint_offset=0.0)
 
-    view.drive_freq = 5.002e9
+    drive = QMDriveChannel("q0_xy", q)
+    drive.drive_freq_hz = 5.002e9
     assert q.f_01 == pytest.approx(5.002e9)
     assert q.xy.RF_frequency == pytest.approx(5.102e9)
 
-    view.pi_amp = 0.3
+    drive.pi_amp = 0.3
     assert q.xy.operations["x180"].amplitude == pytest.approx(0.3)
 
-    view.readout_freq = 6.4e9
+    readout = QMReadoutChannel("q0_ro", q)
+    readout.readout_freq_hz = 6.4e9
     assert q.resonator.RF_frequency == pytest.approx(6.4e9)
     assert q.resonator.f_01 == pytest.approx(6.4e9)
 
     q.resonator.operations = {"readout": _ReadoutPulse(length=2000, angle=6.13)}
-    view.readout_duration_s = 4.0e-6
+    readout.readout_duration_s = 4.0e-6
     assert q.resonator.operations["readout"].length == 4000
-    view.readout_integration_s = 2.0e-6
+    readout.readout_integration_s = 2.0e-6
     assert q.resonator.operations["readout"]._raw_weights == [(1.0, 2000), (0.0, 2000)]
-    assert view.readout_integration_s == pytest.approx(2.0e-6)
+    assert readout.readout_integration_s == pytest.approx(2.0e-6)
+
+    # the flux view's single knob lands on the offset z.flux_point SELECTS
+    flux = QMFluxChannel("q0_z", q)
+    flux.idle_flux = -0.031
+    assert q.z.joint_offset == pytest.approx(-0.031)
+    assert flux.idle_flux == pytest.approx(-0.031)
+
+
+def test_qm_flux_view_serves_a_coupler_without_a_qubit():
+    """The SECOND vendor shape behind one neutral knob: a coupler's flux channel
+    has no QUAM qubit at all — the view is built on the TunableCoupler directly
+    and idle_flux follows its own flux-point vocabulary (off -> decouple_offset)."""
+    from customized.scqo.backend import QMFluxChannel
+
+    coupler = SimpleNamespace(id="coupler_q1_q2", flux_point="off",
+                              decouple_offset=0.0, interaction_offset=0.2)
+    view = QMFluxChannel("q1_q2_c_z", None, coupler)
+    assert view.qubit is None and view.vendor is coupler
+
+    view.idle_flux = 0.07
+    assert coupler.decouple_offset == pytest.approx(0.07)
+    assert coupler.interaction_offset == pytest.approx(0.2)  # the OFF point only
+    coupler.flux_point = "on"
+    assert view.idle_flux == pytest.approx(0.2)  # the point selects the offset
 
 
 def test_drag_beta_writes_dragcosine_and_skips_alias():

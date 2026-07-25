@@ -1,6 +1,6 @@
 """QM readout-frequency (fidelity vs readout detuning) for scqo - supplies only ``probe()``.
 
-Parameters, the per-frequency two-Gaussian-mixture fit and the ``readout_freq``
+Parameters, the per-frequency two-Gaussian-mixture fit and the ``readout_freq_hz``
 writeback are inherited from ``scqo.experiments.ReadoutFrequency``. PER-SHOT
 contract: every readout shot's I/Q point is recorded individually — the probe's
 streams are ``buffer(2).buffer(len(dfs)).buffer(num_shots)`` with NO
