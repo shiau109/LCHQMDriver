@@ -35,8 +35,18 @@ class QMResonatorSpectroscopyFlux(ResonatorSpectroscopyFlux):
         from customized.probes._lib import select_qubits
         from customized.probes import resonator_spectroscopy_flux as flux_probe
 
+        from ._vendor import flux_source_name
+
         machine = self.backend.machine  # type: ignore[attr-defined]
         qubits = select_qubits(machine, self.params.targets, multiplexed=True)
+
+        # None = every measured qubit fluxes its own z line. A foreign source is
+        # a ROSTER entity (a qubit, a tracked coupler mode like q1_q2_c); the
+        # probe's z_source is a VENDOR name (machine.qubits[...] for a qubit's
+        # own z, machine.qubit_pairs[...].coupler for a coupler), so the two
+        # namespaces are joined through the roster in _vendor.
+        z_source = (None if self.params.flux_component is None
+                    else flux_source_name(self, self.params.flux_component))
 
         prog, axes = flux_probe.build_program(
             machine,
@@ -44,10 +54,7 @@ class QMResonatorSpectroscopyFlux(ResonatorSpectroscopyFlux):
             dcs=self.sweep_axes["flux_bias_v"],
             dfs=self.sweep_axes["detuning_hz"],
             num_shots=self.params.num_averages,
-            # None = every measured qubit fluxes its own z line; a component name
-            # (qubit -> its z, pair -> its tunable coupler) is the assigned
-            # single source (scqo validated it against the roster pre-probe).
-            z_source=self.params.flux_component,
+            z_source=z_source,
         )
         # Canonical names in RAW nesting order (flux outer, detuning inner — see
         # module docstring); the DataArray values (incl. units attrs) are reused.

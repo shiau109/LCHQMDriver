@@ -3,7 +3,7 @@
 Parameters, the per-point chain-stepping run lifecycle (python loop: re-solve
 full_scale_power_dbm + amplitude per power point, one 1D acquisition each,
 boundary-recorded set/revert), the punchout analysis and the
-readout_power_dbm/readout_freq proposals are inherited from
+readout_power_dbm/readout_freq_hz proposals are inherited from
 ``scqo.experiments.ResonatorSpectroscopyPowerChain``.
 
 By the time ``probe()`` runs, the core loop has already pushed THIS point's chain

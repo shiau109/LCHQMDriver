@@ -90,10 +90,14 @@ directory in `.venv-qm`, selecting a sample and setup with
 `scqo user --device <name> [--setup <name>]` (written to `~/.scqo/user.toml`); `scqo run <name>` is
 the one way to run an experiment (never add per-command wrappers or launcher stubs). This repo
 contributes `customized/scqo/backend_factory.py`, registered under the `scqo.backends` entry-point
-group (name `qm`): `build_backend(cfg, setup)` fires the `state_sync="pull"` guard BEFORE any QUAM
-state is touched, then loads the setup's vendor folder (`setup["instrument_config"]`, injected by
+group (name `qm`): `build_backend(cfg, setup, roster)` fires the `state_sync="pull"` guard BEFORE any
+QUAM state is touched, then loads the setup's vendor folder (`setup["instrument_config"]`, injected by
 scqo from the registry keys; canonical names `state.json` +
-`wiring.json` — the single QUAM-state authority; loud SystemExit when missing). `simulated` is the
+`wiring.json` — the single QUAM-state authority; loud SystemExit when missing) and threads the device
+ROSTER into the backend — the driver serves a view per CHANNEL ENTITY (`q1_xy` → QUAM `q1.xy`,
+`q1_ro` → `q1.resonator`, `q1_z` → `q1.z`, a coupler mode's `*_z` → the pair's `TunableCoupler`) plus
+a composite view over the QUAM `qubit_pair` for the per-operation gate knobs, so every name resolves
+through the roster and never by string arithmetic. `simulated` is the
 practice mode. Only migrated experiments run under scqo here; all other calibrations still run
 through the qualibrate GUI (legacy, frozen; do not merge).
 
@@ -120,7 +124,15 @@ root).
   - `qm.bat` (Windows) / `qm.command` (macOS/Linux) → wrappers that activate the env and run `qualibrate start` (launches the GUI server). These replaced the old Windows-only `start_server.bat` / `setup_qualibrate_config.bat`.
   - `setup-qualibrate-config` → one-time qualibrate config setup.
 - **Packaging:** `pyproject.toml` — Python `>=3.10,<3.13`, black `line-length = 120`. Wheel packages: `calibrations`, `calibration_utils`, `quam_config`, `customized`.
-- **Tests:** the scqo-glue tests live in `tests/test_scqo_glue.py`; run the suite with `pytest`.
+- **Tests:** `tests/conftest.py` holds the shared fixture chip — a schema-3 `ROSTER_TOML` (q1/q2
+  flux-tunable, fixed-frequency q3, the coupler mode `q1_q2_c` with its own flux wire, one
+  multiplexed feedline) plus a stub QUAM tree whose names deliberately disagree with it
+  (`coupler_q1_q2` vs `q1_q2`/`q1_q2_c`), so every resolution has to go through the roster.
+  `tests/test_scqo_glue.py` (scqo↔backend glue, the per-kind + per-operation fieldmap drift alarms,
+  the `components()` witness), `tests/test_qm_backend.py` (entity surface on the stub; probe
+  equivalence + the absolute-power chain on the LIVE quam_state, skipped when the root-class toggle
+  does not match), `tests/test_experiment_surface.py` (`customized/scqo/experiments/_vendor.py`, the
+  probes' one door out of the neutral surface). Run the suite with `pytest`.
 - **External analysis dependency.** LCH analysis nodes lazily import `scqat` (`D:\github\scqat`, the lab's analysis tool that **replaced** the older `qcat`/`D:\github\QCAT`), installed editable. It is **not declared in `pyproject.toml`** and must be installed in the runtime env — now present (editable) in both `LCHQM` and `LCHQM_test` (the launcher env; verified 2026-06-07) — or those nodes raise `ImportError` at plot time. Official (non-`LCH_`) nodes do not depend on it and run regardless. The qcat→scqat migration of the active `LCH_*` nodes is complete (`calibrations/exclude/` still references qcat); see `ANALYSIS_MIGRATION.md`.
 
 - **Placement rule** (`scqo state --rule`; SCQO TUTORIAL §9): QUAM-tree copies of physics that the

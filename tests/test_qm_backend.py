@@ -1,8 +1,14 @@
 """Tests for the scqo QM backend (customized.scqo).
 
-`_to_canonical` and catalog registration are pure (no instrument, no QUAM). The
-probe-equivalence and device-round-trip tests load a QUAM machine (no hardware
-connection) and are skipped if quam_config / qm is unavailable.
+Three tiers:
+
+* ``_to_canonical`` and catalog registration are pure (no instrument, no QUAM).
+* The greenfield ENTITY surface (component resolution, the per-kind channel
+  views, the composite pair knobs, snapshot/power_context) runs against the stub
+  QUAM tree from ``conftest.py`` — always, on every machine.
+* Probe equivalence and the absolute-power chain solve load the LIVE
+  ``quam_state/`` and skip when it does not match the root class currently
+  toggled in ``quam_config/my_quam.py``.
 """
 
 import numpy as np
@@ -123,6 +129,285 @@ def test_catalog_registers_qm_experiments():
     assert {"qubit_ramsey", "qubit_power_rabi", "resonator_spectroscopy"} <= names
 
 
+# ------------------------------------------------ entity surface (stub QUAM tree)
+
+def test_component_resolves_channel_entities_per_kind(backend, stub_machine):
+    """One view class per CHANNEL KIND over the SAME QUAM qubit: the three names
+    a qubit's channels carry land on q.xy / q.resonator / q.z, and each view's
+    ``.name`` is the ENTITY name while the vendor object is the subtree."""
+    q1 = stub_machine.qubits["q1"]
+
+    xy = backend.device.component("q1_xy")
+    ro = backend.device.component("q1_ro")
+    z = backend.device.component("q1_z")
+
+    assert (xy.kind, ro.kind, z.kind) == ("drive", "readout", "flux")
+    assert (xy.name, ro.name, z.name) == ("q1_xy", "q1_ro", "q1_z")
+    assert xy.vendor is q1.xy and ro.vendor is q1.resonator and z.vendor is q1.z
+    assert xy.qubit is q1 and ro.qubit is q1 and z.qubit is q1
+
+
+def test_component_refuses_everything_that_carries_no_knobs(backend):
+    """The contract scqo degrades gracefully against: a KeyError, naming what to
+    address instead, for an unknown name, a MODE, a LINE, and a resonator mode
+    (knobs live on channels since the greenfield split)."""
+    with pytest.raises(KeyError, match="not in this device's roster"):
+        backend.device.component("nope")
+    with pytest.raises(KeyError, match="q1_ro"):
+        backend.device.component("q1")       # a mode: address its channels
+    with pytest.raises(KeyError, match="q1_z"):
+        backend.device.component("q1")
+    with pytest.raises(KeyError):
+        backend.device.component("fl")       # a line
+    with pytest.raises(KeyError):
+        backend.device.component("q1_res")   # the minted resonator mode
+
+
+def test_component_names_the_missing_subtree_on_a_fixed_frequency_qubit(backend,
+                                                                        roster):
+    """q3 is a fixed ``transmon``: the roster declares no flux rider for it, so
+    no q3_z exists at all — and if one were declared the vendor hop would fail
+    naming the absent subtree rather than returning a half-wired view."""
+    assert ("q3", "flux") not in roster.defaults
+    assert backend.device.component("q3_ro").kind == "readout"
+
+
+def test_flux_channel_serves_both_vendor_shapes(backend, stub_machine):
+    """``idle_flux`` over a qubit's FluxLine AND over the pair's TunableCoupler —
+    the coupler's STANDING bias is an ordinary knob on the COUPLER MODE's own
+    flux channel (the pair-level coupler_decouple_v field is gone)."""
+    q1_z = backend.device.component("q1_z")
+    q1_z.idle_flux = -0.042
+    assert stub_machine.qubits["q1"].z.joint_offset == pytest.approx(-0.042)
+
+    coupler_z = backend.device.component("q1_q2_c_z")
+    assert coupler_z.qubit is None                      # not a QUAM qubit at all
+    assert coupler_z.vendor is stub_machine.qubit_pairs["coupler_q1_q2"].coupler
+    coupler_z.idle_flux = 0.031                         # flux_point 'off'
+    assert coupler_z.vendor.decouple_offset == pytest.approx(0.031)
+
+
+def test_channel_views_round_trip_the_neutral_knobs(backend, stub_machine):
+    """Neutral get/set maps onto QUAM through customized.quam_fields; a
+    drive_freq_hz write shifts both f_01 and xy.RF_frequency."""
+    q2 = stub_machine.qubits["q2"]
+    xy = backend.device.component("q2_xy")
+    ro = backend.device.component("q2_ro")
+
+    rf0 = float(q2.xy.RF_frequency)
+    xy.drive_freq_hz = 5.102e9
+    assert float(q2.f_01) == pytest.approx(5.102e9)
+    assert float(q2.xy.RF_frequency) == pytest.approx(rf0 + 2e6)
+
+    xy.pi_amp = 0.123
+    assert xy.pi_amp == pytest.approx(0.123)
+    xy.pi_duration_s = 4.0e-8
+    assert q2.xy.operations["x180"].length == 40
+    with pytest.raises(ValueError, match="multiple of 4 ns"):
+        xy.pi_duration_s = 4.2e-8  # the QM pulse grid REFUSES, never rounds
+
+    ro.readout_freq_hz = 6.25e9
+    assert float(q2.resonator.RF_frequency) == pytest.approx(6.25e9)
+    assert float(q2.resonator.f_01) == pytest.approx(6.25e9)
+    ro.readout_amp = 0.111
+    assert float(q2.resonator.operations["readout"].amplitude) == pytest.approx(0.111)
+    ro.readout_threshold = -1.5e-4
+    assert q2.resonator.operations["readout"].threshold == pytest.approx(-1.5e-4)
+
+
+def test_snapshot_reports_the_bound_knobs_per_entity(backend):
+    """The pull-mode seed source: every realized channel reports exactly the
+    knobs the fieldmap BINDS for its kind, and the composite reports the
+    per-operation knobs the ROSTER compiled for it."""
+    from customized.scqo.fieldmap import FIELD_BINDINGS
+
+    snap = backend.device.snapshot()
+    assert set(snap["q1_xy"]) == set(FIELD_BINDINGS["drive"])
+    assert set(snap["q1_ro"]) == set(FIELD_BINDINGS["readout"])
+    assert set(snap["q1_z"]) == {"idle_flux"}
+    # the composite's names are per-OPERATION, instantiated from the roster
+    assert "cz_coupler_flux" in snap["q1_q2"]
+    assert snap["q1_q2"]["cz_coupler_flux"] == pytest.approx(-0.125)
+    # an Unrealized composite knob degrades to None instead of crashing the seed
+    assert snap["q1_q2"]["cz_duration_s"] is None
+
+
+def test_composite_view_reads_and_writes_the_gate_knobs(backend, stub_machine):
+    """The QM pair surface Qblox has no counterpart for: per-operation knobs by
+    full field name, resolved against the roster's DECLARED operations and the
+    QUAM gate macro (matched case-insensitively — QUAM spells it "CZ")."""
+    macro = stub_machine.qubit_pairs["coupler_q1_q2"].macros["CZ"]
+    pair = backend.device.component("q1_q2")
+
+    assert pair.read_knob("cz_coupler_flux") == pytest.approx(-0.125)
+    pair.write_knob("cz_coupler_flux", -0.2)
+    assert macro.coupler_flux_pulse.amplitude == pytest.approx(-0.2)
+
+    # virtual Z: rad <-> turns, and the roster's high role (q2) is the QUAM
+    # pair's TARGET here — resolved by name, never guessed
+    pair.write_knob("cz_vz_high_rad", np.pi)
+    assert macro.phase_shift_target == pytest.approx(0.5)
+    assert macro.phase_shift_control == pytest.approx(0.0)
+    pair.write_knob("cz_vz_low_rad", -np.pi / 2)
+    assert macro.phase_shift_control == pytest.approx(-0.25)
+    assert pair.read_knob("cz_vz_low_rad") == pytest.approx(-np.pi / 2)
+
+
+def test_composite_view_refuses_undeclared_and_unrealized_knobs(backend):
+    """Exact-cause errors: an undeclared operation names the declared set, a
+    non-knob name names the legal suffixes, and a suffix QM cannot realize
+    raises NotImplementedError with its reason (never a silent no-op)."""
+    pair = backend.device.component("q1_q2")
+
+    with pytest.raises(KeyError, match="not declared on this composite"):
+        pair.read_knob("iswap_coupler_flux")
+    with pytest.raises(KeyError, match="not a per-operation knob"):
+        pair.read_knob("coupler_flux")
+    with pytest.raises(NotImplementedError, match="FLUX-activated"):
+        pair.read_knob("cz_drive_freq_hz")
+    with pytest.raises(NotImplementedError):
+        pair.write_knob("cz_duration_s", 40e-9)
+
+
+def test_power_context_matches_the_views(backend, stub_machine):
+    """Run-record provenance, addressed by MODE name: each target's readout and
+    drive chains resolved through the roster's DEFAULT channels, never failing."""
+    ctx = backend.power_context(["q1", "nonexistent"])
+    q1 = stub_machine.qubits["q1"]
+
+    assert ctx["q1"]["full_scale_power_dbm"] == q1.resonator.opx_output.full_scale_power_dbm
+    assert ctx["q1"]["readout_amplitude"] == pytest.approx(
+        float(q1.resonator.operations["readout"].amplitude))
+    assert ctx["q1"]["readout_power_dbm"] == pytest.approx(
+        backend.device.component("q1_ro").readout_power_dbm)
+    assert ctx["q1"]["drive_power_dbm"] == pytest.approx(
+        backend.device.component("q1_xy").drive_power_dbm)
+    assert ctx["q1"]["readout_lo_freq_hz"] == pytest.approx(
+        float(q1.resonator.LO_frequency))
+    assert ctx["nonexistent"] == {}  # unknown target degrades, never raises
+
+
+def test_readout_power_dbm_solves_the_chain_bidirectionally(backend, stub_machine):
+    """Absolute power: the setter re-solves (full_scale_power_dbm, amplitude) with
+    the SMALLEST grid full-scale keeping amp <= 0.5 — bidirectional (a lower target
+    lowers full scale again, unlike the bare power_tools helper)."""
+    view = backend.device.component("q1_ro")
+    res = stub_machine.qubits["q1"].resonator
+
+    view.readout_power_dbm = -2.0
+    assert view.readout_power_dbm == pytest.approx(-2.0, abs=1e-6)
+    assert res.opx_output.full_scale_power_dbm == 7  # smallest grid value >= -2+6.02
+    assert 0.354 < float(res.operations["readout"].amplitude) <= 0.5
+
+    view.readout_power_dbm = -24.3
+    assert res.opx_output.full_scale_power_dbm == -11  # back DOWN to the grid floor
+    assert float(res.operations["readout"].amplitude) == pytest.approx(
+        10 ** ((-24.3 + 11) / 20.0))
+
+    with pytest.warns(UserWarning, match="canonical operating point"):
+        view.readout_power_dbm = 10.0
+    assert res.opx_output.full_scale_power_dbm == 16
+
+    # zero amplitude -> the absolute power is UNDEFINED, and snapshot degrades it
+    res.operations["readout"].amplitude = 0.0
+    with pytest.raises(ValueError, match="absolute power undefined"):
+        _ = view.readout_power_dbm
+    assert backend.device.snapshot()["q1_ro"]["readout_power_dbm"] is None
+
+
+def test_drive_power_dbm_solves_the_same_chain_on_xy(backend, stub_machine):
+    """The drive twin: same grid solve on the xy channel + the saturation op;
+    drive_amp is the coupled residual."""
+    view = backend.device.component("q1_xy")
+    xy = stub_machine.qubits["q1"].xy
+
+    view.drive_power_dbm = -21.0
+    assert xy.opx_output.full_scale_power_dbm == -11  # grid floor at weak drive
+    assert view.drive_amp == pytest.approx(10 ** ((-21.0 + 11) / 20.0))
+
+    view.drive_power_dbm = -2.0
+    assert xy.opx_output.full_scale_power_dbm == 7  # back UP: bidirectional
+    assert 0.354 < view.drive_amp <= 0.5
+
+    xy.operations["saturation"].amplitude = 0.0
+    with pytest.raises(ValueError, match="absolute power undefined"):
+        _ = view.drive_power_dbm
+    assert backend.device.snapshot()["q1_xy"]["drive_power_dbm"] is None
+
+
+def test_recording_device_seeds_and_pushes_through_the_channel_entities(backend,
+                                                                        roster):
+    """End to end the way a Session drives it: RecordingDevice seeds its runtime
+    config from the vendor (pull) and a neutral write lands on QUAM."""
+    from conftest import recording_device
+
+    device = recording_device(backend, roster)
+    assert device.channel("q1", "readout").readout_freq_hz == pytest.approx(6.10e9)
+    assert device.channel("q1_q2_c", "flux").idle_flux == pytest.approx(0.0)
+
+    device.channel("q1", "drive").pi_amp = 0.31
+    assert backend.device.component("q1_xy").pi_amp == pytest.approx(0.31)
+
+
+def roster_toml_for(machine) -> str:
+    """A schema-3 roster describing whatever QUAM tree is passed in.
+
+    The roster describes the SAMPLE, so a fixture for a LIVE vendor state has to
+    be generated from it: one mode per QUAM qubit (``flux_transmon`` when it
+    carries a z subtree, else a fixed ``transmon`` — a flux rider on a fixed
+    transmon is a load error, which is exactly the capability-by-construction
+    rule), one multiplexed readout feedline, a drive wire each, a flux wire for
+    every z-capable mode INCLUDING the couplers, and one composite per QUAM
+    qubit_pair named ``<low>_<high>`` — so the backend has to make the
+    membership join that QM's coupler-named pairs require.
+    """
+    modes, composites, lines, flux_riders = [], [], [], []
+    lines.append("[lines.fl]\nreadout = ["
+                 + ", ".join(f'"{n}"' for n in machine.qubits) + "]")
+    for name, q in machine.qubits.items():
+        has_z = getattr(q, "z", None) is not None
+        kind = "flux_transmon" if has_z else "transmon"
+        modes.append(f'[modes.{name}]\nkind = "{kind}"')
+        lines.append(f'[lines.xy_{name}]\ndrive = ["{name}"]')
+        if has_z:
+            flux_riders.append(name)
+    for key, qp in (getattr(machine, "qubit_pairs", {}) or {}).items():
+        low, high = qp.qubit_control.name, qp.qubit_target.name
+        block = [f"[composites.{low}_{high}]", 'kind = "qubit_pair"',
+                 f'high = "{high}"', f'low = "{low}"']
+        if getattr(qp, "coupler", None) is not None:
+            modes.append(f'[modes.{key}]\nkind = "flux_transmon"')  # QM names
+            flux_riders.append(key)                                 # it after
+            block.append(f'coupler = "{key}"')                      # the pair
+        composites.append("\n".join(block))
+    lines += [f'[lines.z_{t}]\nflux = ["{t}"]' for t in flux_riders]
+    return "\n\n".join(["schema = 3", *modes, *composites, *lines]) + "\n"
+
+
+def test_roster_toml_for_a_quam_tree_parses(stub_machine):
+    """The live-state roster generator above is only exercised when the toggle
+    matches, so pin it here against the stub tree: fixed-frequency qubits get no
+    flux rider, the coupler becomes an ordinary mode with its own flux wire, and
+    the pair composite carries the coupler role."""
+    from scqo.roster import parse_components
+
+    generated = parse_components(roster_toml_for(stub_machine))
+    assert generated.entities["q3"].kind == "transmon"
+    assert ("q3", "flux") not in generated.defaults      # no flux on a fixed one
+    assert ("coupler_q1_q2", "flux") in generated.defaults
+    pair = generated.entities["q1_q2"]
+    assert pair.roles["high"] == ("q2",) and pair.roles["low"] == ("q1",)
+    assert pair.roles["coupler"] == ("coupler_q1_q2",)
+
+    # ...and every name it declares resolves through the backend against the
+    # same tree — which is what the skipped live-machine tests below rely on
+    generated_backend = QMBackend(stub_machine, roster=generated)
+    assert set(generated_backend.device.components()) == (
+        set(generated.channels()) | set(generated.composites()))
+    assert generated_backend.device.component(
+        generated.default_channel("q1", "readout")).kind == "readout"
+
+
 # ------------------------------------------------------------------ requires QUAM
 
 quam_config = pytest.importorskip("quam_config")
@@ -142,7 +427,15 @@ def machine():
         pytest.skip(f"default QUAM state does not match the toggled my_quam root class: {err}")
 
 
-def test_probe_matches_direct_build(machine):
+@pytest.fixture(scope="module")
+def live_roster(machine):
+    """A schema-3 roster mirroring whatever the loaded quam_state holds."""
+    from scqo.roster import parse_components
+
+    return parse_components(roster_toml_for(machine))
+
+
+def test_probe_matches_direct_build(machine, live_roster):
     """QMQubitRamsey/QMQubitPowerRabi.probe() must produce the same QUA program as calling the
     LCHQM build_program directly with the mapped kwargs (proves the param mapping)."""
     from qm import generate_qua_script
@@ -158,7 +451,7 @@ def test_probe_matches_direct_build(machine):
     from customized.scqo.experiments.qubit_power_rabi import QMQubitPowerRabi
     from customized.scqo.experiments.resonator_spectroscopy import QMResonatorSpectroscopy
 
-    backend = QMBackend(machine)
+    backend = QMBackend(machine, roster=live_roster)
     config = machine.generate_config()
     qubits_names = ["q4", "q5"]
     qubits = select_qubits(machine, qubits_names, multiplexed=True)
@@ -197,183 +490,25 @@ def test_probe_matches_direct_build(machine):
     assert script(rs_prog) == script(rs_direct)
 
 
-def test_device_view_roundtrip(machine):
-    """Neutral get/set maps onto QUAM; drive_freq shifts both f_01 and xy.RF_frequency."""
-    backend = QMBackend(machine)
-    view = backend.device.component("q4")
-    q = machine.qubits["q4"]
-
-    r0, d0, p0 = view.readout_freq, view.drive_freq, view.pi_amp
-    rf0 = float(q.xy.RF_frequency)
-    res_has_f01 = hasattr(q.resonator, "f_01")
-    res_f01_0 = q.resonator.f_01 if res_has_f01 else None  # may be None when uncalibrated
+def test_live_readout_window_round_trip(machine, live_roster):
+    """The window accessors against a REAL QUAM ReadoutPulse (its default-weights
+    reference semantics are what the stub only mimics) — restored afterwards."""
+    backend = QMBackend(machine, roster=live_roster)
+    view = backend.device.component(live_roster.default_channel("q4", "readout"))
+    pulse = machine.qubits["q4"].resonator.operations["readout"]
+    length_ns = int(pulse.length)
+    if pulse.integration_weights != [(1, length_ns)]:
+        pytest.skip("q4's readout weights are not in the default-reference form")
+    half = (length_ns // 2 // 4 * 4) * 1e-9
     try:
-        view.readout_freq = r0 + 1e6
-        assert view.readout_freq == pytest.approx(r0 + 1e6)
-        assert float(q.resonator.RF_frequency) == pytest.approx(r0 + 1e6)
-        if res_has_f01:  # readout_freq setter writes resonator.f_01 too (even if it was None)
-            assert float(q.resonator.f_01) == pytest.approx(r0 + 1e6)
-
-        view.drive_freq = d0 + 2e6
-        assert view.drive_freq == pytest.approx(d0 + 2e6)
-        assert float(q.f_01) == pytest.approx(d0 + 2e6)
-        assert float(q.xy.RF_frequency) == pytest.approx(rf0 + 2e6)  # shifted by same delta
-
-        view.pi_amp = 0.123
-        assert view.pi_amp == pytest.approx(0.123)
-
-        a0 = view.readout_amp
-        view.readout_amp = 0.111
-        assert view.readout_amp == pytest.approx(0.111)
-        assert float(q.resonator.operations["readout"].amplitude) == pytest.approx(0.111)
-        view.readout_amp = a0
-
-        snap = backend.device.snapshot()
-        assert set(snap["q4"]) == {"readout_freq", "drive_freq", "pi_amp", "drag_beta",
-                                   "drive_amp", "drive_power_dbm",
-                                   "readout_amp", "readout_power_dbm", "readout_duration_s",
-                                   "readout_integration_s", "readout_rotation_rad",
-                                   "readout_threshold", "readout_rus_threshold",
-                                   "idle_flux_v"}
-        # the pair entries carry the two coupler knobs (pull-mode seed source)
-        for pair_name in backend.machine.qubit_pairs:
-            assert set(snap[pair_name]) == {"coupler_decouple_v", "coupler_interaction_v"}
-
-        # Window round-trip on the REAL QUAM pulse (reference semantics the stub
-        # tests only mimic) — only from the default-weights form, restored after.
-        pulse = q.resonator.operations["readout"]
-        length_ns = int(pulse.length)
-        if pulse.integration_weights == [(1, length_ns)]:
-            view.readout_integration_s = (length_ns // 2 // 4 * 4) * 1e-9
-            assert pulse.integration_weights[0][0] == 1.0
-            assert view.readout_integration_s == pytest.approx(
-                (length_ns // 2 // 4 * 4) * 1e-9)
-            view.readout_integration_s = length_ns * 1e-9  # restore the reference form
-            assert view.readout_integration_s == pytest.approx(length_ns * 1e-9)
+        view.readout_integration_s = half
+        assert pulse.integration_weights[0][0] == 1.0
+        assert view.readout_integration_s == pytest.approx(half)
     finally:
-        # Restore the in-memory state (never saved); keep the loaded machine pristine.
-        view.readout_freq = r0
-        if res_has_f01:
-            q.resonator.f_01 = res_f01_0
-        q.f_01 = d0
-        q.xy.RF_frequency = rf0
-        view.pi_amp = p0
+        view.readout_integration_s = length_ns * 1e-9  # restore the reference form
 
 
-def test_readout_power_dbm_roundtrip(machine):
-    """v0.8 absolute power: the setter re-solves (full_scale_power_dbm, amplitude) with
-    the SMALLEST grid full-scale keeping amp <= 0.5 — bidirectional (a lower target
-    lowers full scale again, unlike the bare power_tools helper)."""
-    backend = QMBackend(machine)
-    view = backend.device.component("q4")
-    q = machine.qubits["q4"]
-    fs0 = q.resonator.opx_output.full_scale_power_dbm
-    amp0 = q.resonator.operations["readout"].amplitude
-    try:
-        # mid-range target: unclamped grid solve -> amp lands in (0.354, 0.5]
-        view.readout_power_dbm = -2.0
-        assert view.readout_power_dbm == pytest.approx(-2.0, abs=1e-6)
-        assert q.resonator.opx_output.full_scale_power_dbm == 7  # smallest grid value >= -2+6.02
-        amp = float(q.resonator.operations["readout"].amplitude)
-        assert 0.354 < amp <= 0.5
-
-        # low target: full scale goes back DOWN (grid floor -11), amp is the exact residual
-        view.readout_power_dbm = -24.3
-        assert view.readout_power_dbm == pytest.approx(-24.3, abs=1e-6)
-        assert q.resonator.opx_output.full_scale_power_dbm == -11  # grid floor
-        assert float(q.resonator.operations["readout"].amplitude) == pytest.approx(
-            10 ** ((-24.3 + 11) / 20.0)
-        )
-
-        # ceiling: +10 dBm pins full scale at 16 and needs amp just above 0.5 -> warns
-        with pytest.warns(UserWarning, match="canonical operating point"):
-            view.readout_power_dbm = 10.0
-        assert view.readout_power_dbm == pytest.approx(10.0, abs=1e-6)
-        assert q.resonator.opx_output.full_scale_power_dbm == 16
-    finally:
-        q.resonator.opx_output.full_scale_power_dbm = fs0
-        q.resonator.operations["readout"].amplitude = amp0
-
-
-def test_readout_power_dbm_undefined_on_zero_amp(machine):
-    """Zero/unset readout amplitude -> the absolute power is UNDEFINED (ValueError),
-    and snapshot() degrades that qubit's readout_power_dbm to None."""
-    backend = QMBackend(machine)
-    view = backend.device.component("q4")
-    q = machine.qubits["q4"]
-    amp0 = q.resonator.operations["readout"].amplitude
-    try:
-        q.resonator.operations["readout"].amplitude = 0.0
-        with pytest.raises(ValueError, match="absolute power undefined"):
-            _ = view.readout_power_dbm
-        assert backend.device.snapshot()["q4"]["readout_power_dbm"] is None
-    finally:
-        q.resonator.operations["readout"].amplitude = amp0
-
-
-def test_drive_power_dbm_roundtrip(machine):
-    """v0.11 drive twin: same bidirectional grid solve as readout, on the xy
-    channel + the saturation op; drive_amp is the coupled residual."""
-    backend = QMBackend(machine)
-    view = backend.device.component("q4")
-    q = machine.qubits["q4"]
-    if "saturation" not in q.xy.operations:
-        pytest.skip("loaded quam_state has no saturation op on q4")
-    fs0 = q.xy.opx_output.full_scale_power_dbm
-    amp0 = q.xy.operations["saturation"].amplitude
-    try:
-        view.drive_power_dbm = -21.0
-        assert view.drive_power_dbm == pytest.approx(-21.0, abs=1e-6)
-        assert q.xy.opx_output.full_scale_power_dbm == -11  # grid floor at weak drive
-        assert view.drive_amp == pytest.approx(10 ** ((-21.0 + 11) / 20.0))
-
-        view.drive_power_dbm = -2.0
-        assert view.drive_power_dbm == pytest.approx(-2.0, abs=1e-6)
-        assert q.xy.opx_output.full_scale_power_dbm == 7  # back UP: bidirectional
-        assert 0.354 < view.drive_amp <= 0.5
-    finally:
-        q.xy.opx_output.full_scale_power_dbm = fs0
-        q.xy.operations["saturation"].amplitude = amp0
-
-
-def test_drive_power_dbm_undefined_on_zero_amp(machine):
-    backend = QMBackend(machine)
-    view = backend.device.component("q4")
-    q = machine.qubits["q4"]
-    if "saturation" not in q.xy.operations:
-        pytest.skip("loaded quam_state has no saturation op on q4")
-    amp0 = q.xy.operations["saturation"].amplitude
-    try:
-        q.xy.operations["saturation"].amplitude = 0.0
-        with pytest.raises(ValueError, match="absolute power undefined"):
-            _ = view.drive_power_dbm
-        assert backend.device.snapshot()["q4"]["drive_power_dbm"] is None
-    finally:
-        q.xy.operations["saturation"].amplitude = amp0
-
-
-def test_power_context_matches_the_view(machine):
-    backend = QMBackend(machine)
-    ctx = backend.power_context(["q4", "nonexistent"])
-    q = machine.qubits["q4"]
-    assert ctx["q4"]["full_scale_power_dbm"] == q.resonator.opx_output.full_scale_power_dbm
-    assert ctx["q4"]["readout_amplitude"] == pytest.approx(
-        float(q.resonator.operations["readout"].amplitude)
-    )
-    assert ctx["q4"]["readout_power_dbm"] == pytest.approx(
-        backend.device.component("q4").readout_power_dbm
-    )
-    # the readout LO the data was taken at — stamped only when the channel has
-    # one (MW-FEM upconverter; an LF-FEM resonator carries none)
-    expected_lo = getattr(q.resonator, "LO_frequency", None)
-    if expected_lo is not None:
-        assert ctx["q4"]["readout_lo_freq_hz"] == pytest.approx(float(expected_lo))
-    else:
-        assert "readout_lo_freq_hz" not in ctx["q4"]
-    assert ctx["nonexistent"] == {}  # unknown qubit degrades, never raises
-
-
-def test_absolute_punchout_probe_matches_direct_build(machine):
+def test_absolute_punchout_probe_matches_direct_build(machine, live_roster):
     """Chain-stepped contract: QMResonatorSpectroscopyPowerChain.probe() builds
     the plain 1D resonator-spectroscopy program at the current device state — the
     core run() loop solves the chain per point and swaps in the 1D detuning axis."""
@@ -385,7 +520,7 @@ def test_absolute_punchout_probe_matches_direct_build(machine):
         QMResonatorSpectroscopyPowerChain,
     )
 
-    backend = QMBackend(machine)
+    backend = QMBackend(machine, roster=live_roster)
     config = machine.generate_config()
 
     def script(prog):
@@ -417,7 +552,7 @@ def test_absolute_punchout_probe_matches_direct_build(machine):
     assert script(prog) == script(direct)
 
 
-def test_power_amp_probe_builds_with_new_loop_order(machine):
+def test_power_amp_probe_builds_with_new_loop_order(machine, live_roster):
     """The fast absolute punchout (amp -> averages -> freq loop order, middle-axis
     stream averaging) compiles to a QUA program: prefactors 10**((P - max)/20)
     relative to the window top the core run() solved the chain for (top exactly
@@ -430,7 +565,7 @@ def test_power_amp_probe_builds_with_new_loop_order(machine):
         QMResonatorSpectroscopyPowerAmp,
     )
 
-    backend = QMBackend(machine)
+    backend = QMBackend(machine, roster=live_roster)
     config = machine.generate_config()
 
     def script(params):

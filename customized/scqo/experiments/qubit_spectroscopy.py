@@ -1,6 +1,6 @@
 """QM qubit spectroscopy for scqo - supplies only ``probe()``.
 
-Parameters, peak fitting and the drive_freq writeback are inherited from
+Parameters, peak fitting and the drive_freq_hz writeback are inherited from
 ``scqo.experiments.QubitSpectroscopy``. scqo sweeps ``detuning_hz``; the LCHQM probe
 builds the same sweep on coord ``detuning``, which the backend's ``_to_canonical``
 renames back.
