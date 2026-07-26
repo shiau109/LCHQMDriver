@@ -147,7 +147,7 @@ root).
 deliberate choice, so this repo still works for qualibrate users with no scqo installed. But
 `uv run` **syncs the env to declared deps by default**, and extras are not declared, so a bare
 `uv run pytest` silently **uninstalls the editable `scqo` + `scqat`** from `.venv`. The symptom
-is `tests/test_discriminator.py` and `tests/test_qm_backend.py` failing collection with
+is `tests/test_experiment_surface.py` and `tests/test_qm_backend.py` failing collection with
 `ModuleNotFoundError: No module named 'scqo'`. Repair:
 
 ```
@@ -157,8 +157,8 @@ uv pip install -e D:\github\SCQO -e D:\github\scqat
 (LCHQBDriver has no such trap — it declares `scqo` as a hard dependency, so plain `uv run` is
 safe there. Do not copy its command over here.)
 
-**Then just run the whole suite: 105 tests, ~27 s.** At this size a per-file selection map would
-cost more attention than it saves — unlike SCQO (473 tests) and scqat (283 / 102 s), the full
+**Then just run the whole suite: 93 tests, ~36 s.** At this size a per-file selection map would
+cost more attention than it saves — unlike SCQO (473 tests) and scqat (~300 / 102 s), the full
 suite IS the targeted run. Run it before every commit.
 
 The narrowing worth knowing: most of this suite is **pure unit tests needing no QM/QUAM/hardware**,
@@ -167,7 +167,6 @@ so they are instant — loop on those while iterating, and take the full suite b
 | File | Covers | Needs QM stack? |
 |---|---|---|
 | `test_quam_fields.py` | the single neutral-field ↔ QUAM mapping (stub qubit) | no |
-| `test_discriminator.py` | readout-discriminator math vs `07_iq_blobs` semantics | no (pure numpy) |
 | `test_qc_populations.py` | shared swap-reset population helpers | no |
 | `test_power_rabi_update.py`, `test_ramsey_update.py`, `test_readout_frequency_update.py` | the pure `update()` decisions of the matching `LCH_*` node | no |
 | `test_experiment_surface.py` | `customized/scqo/experiments/_vendor.py` — the probes' one door out of the neutral surface | yes |

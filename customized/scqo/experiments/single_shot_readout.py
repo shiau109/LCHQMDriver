@@ -52,7 +52,8 @@ class QMSingleShotReadout(SingleShotReadout):
         DISCRIMINATOR as governed suggestions.
 
         For every SUCCESSFUL qubit this computes the demod rotation + thresholds from
-        the measured blobs (``discriminator.compute_qm_discriminator``) and PROPOSES
+        the measured blobs (``scqat.tools.compute_ge_discriminator`` — the solve is
+        shared with the Qblox backend, which realizes the same two knobs) and PROPOSES
         them through ``self.device`` as the neutral fields ``readout_rotation_rad`` /
         ``readout_threshold`` / ``readout_rus_threshold`` on the target's READOUT
         channel (``self.device.channel(qubit, "readout")``) — captured as pending
@@ -68,7 +69,7 @@ class QMSingleShotReadout(SingleShotReadout):
 
         if self.result is None or self.dataset is None:
             return
-        from customized.scqo.discriminator import compute_qm_discriminator
+        from scqat.tools import compute_ge_discriminator
 
         for qubit in self.params.targets:
             if self.result.outcomes.get(qubit) is not Outcome.SUCCESSFUL:
@@ -83,7 +84,7 @@ class QMSingleShotReadout(SingleShotReadout):
             sq = self.dataset.sel(target=qubit)
             shots_g = (sq["I"].sel(prepared_state=0).values, sq["Q"].sel(prepared_state=0).values)
             shots_e = (sq["I"].sel(prepared_state=1).values, sq["Q"].sel(prepared_state=1).values)
-            d = compute_qm_discriminator(mean_g, mean_e, shots_g, shots_e)
+            d = compute_ge_discriminator(mean_g, mean_e, shots_g, shots_e)
 
             # The discriminator trio lives on the READOUT channel entity
             # (q1_ro), addressed by its target's default channel — the qubit
