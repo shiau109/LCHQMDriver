@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import math
 import warnings
+from contextlib import contextmanager
 from typing import TYPE_CHECKING, Any
 
 import xarray as xr
@@ -260,6 +261,17 @@ class QMDriveChannel(_QMChannelView, make_view_base("drive")):
     @drag_beta.setter
     def drag_beta(self, value: float) -> None:
         quam_fields.set_drag_beta(self._q, value)
+
+    # Lives on the QUBIT, not on q.xy: the wait is the qubit's own relaxation,
+    # and QUAM hangs thermalization off the transmon. The drive channel is the
+    # neutral home because scqo knobs live on channels, never on modes.
+    @property
+    def thermalization_time_s(self) -> float:
+        return quam_fields.get_thermalization_time(self._q)
+
+    @thermalization_time_s.setter
+    def thermalization_time_s(self, value: float) -> None:
+        quam_fields.set_thermalization_time(self._q, value)
 
     # The drive twin of the readout power, anchored to the SATURATION (spec)
     # operation. The xy full_scale_power_dbm is PORT-level and shared by every xy
@@ -791,6 +803,65 @@ class QMBackend(Backend):
         """QM-unique calibration knobs, vendor-owned (see fieldmap)."""
         return dict(VENDOR_ONLY)
 
+    def _drive_views(self, targets: list[str]) -> dict[str, EntityView]:
+        """Every run target's DEFAULT drive view, keyed by channel name.
+
+        A composite target (a pair) has no drive channel of its own, so it
+        expands to its MEMBER modes' drive channels — the entities the reset
+        actually happens on. Roster-resolved throughout; never string
+        arithmetic on names."""
+        views: dict[str, EntityView] = {}
+        for target in targets:
+            entity = self._roster.entities.get(target)
+            modes = [target]
+            if isinstance(entity, Composite):
+                modes = [m for names in entity.roles.values() for m in names]
+            for mode in modes:
+                try:
+                    name = self._roster.default_channel(mode, "drive")
+                except Exception:
+                    continue
+                if name not in views:
+                    views[name] = self._device.component(name)
+        return views
+
+    @contextmanager
+    def _thermalization_override(self, experiment: "Experiment"):
+        """Per-run override of the thermal-reset wait: recorded set -> build ->
+        exact revert, the punchout/drive-power discipline.
+
+        The STANDING wait already lives in QUAM (scqo pushes the neutral
+        ``thermalization_time_s`` knob), so ``qubit.reset("thermal")`` needs no
+        argument and none of the 16 probes changes. Only an explicit per-run
+        override has anything to do, and because ``reset_qubit_thermal`` reads
+        ``thermalization_time`` while the QUA program is being BUILT, bracketing
+        the build is enough — the wait is baked into the compiled program.
+
+        Writes go straight to the QUAM tree, NOT through the recording device:
+        a per-run override must leave no ChangeRecord and no store row."""
+        override_ns = getattr(experiment.params, "thermalization_time_ns", None)
+        if override_ns is None:
+            yield
+            return
+        views = self._drive_views(list(experiment.params.targets))
+        if not views:
+            raise RuntimeError(
+                f"thermalization_time_ns={override_ns} was set but no drive "
+                f"channel resolved for targets {list(experiment.params.targets)} "
+                f"— refusing to run with the override silently ignored")
+        previous = {n: v.thermalization_time_s for n, v in views.items()}
+        for view in views.values():
+            view.thermalization_time_s = float(override_ns) / 1e9
+        try:
+            yield
+        finally:
+            for name, view in views.items():
+                before = previous[name]
+                if before is not None:
+                    view.thermalization_time_s = before
+                else:  # never calibrated: restore "unset", not a fabricated value
+                    view._q.thermalization_time_ns = None
+
     def _default_view(self, target: str, kind: str) -> EntityView | None:
         """The target's DEFAULT channel view of one kind, or None when the roster
         or the QUAM tree cannot serve it (provenance must never fail a run)."""
@@ -862,7 +933,8 @@ class QMBackend(Backend):
         #  - (program, sweep_axes, probe_module): the module's own acquire() fetches
         #    (tomography builds a heterogeneous-dims dataset per-shot);
         #  - (program, sweep_axes): the shared _lib.acquire fetches (the common path).
-        res = experiment.probe()
+        with self._thermalization_override(experiment):
+            res = experiment.probe()
         if isinstance(res, xr.Dataset):
             raw = res
         else:

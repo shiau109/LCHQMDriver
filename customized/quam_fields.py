@@ -339,6 +339,39 @@ def set_pi_amp(qubit: Any, value: float, *, operation: str = PI_OPERATION, lock_
         _set_op_amp(ops, "x90", half_val)
 
 
+def get_thermalization_time(qubit: Any) -> float:
+    """Passive-reset wait in SECONDS (QUAM stores ns).
+
+    Reads the ABSOLUTE stored value, never the derived ``thermalization_time``
+    property: the property falls back to ``factor * T1`` when nothing has been
+    calibrated, and reporting that as scqo state would invent a knob value the
+    loop never set. None (nothing stored) is scqo's "not seeded yet"."""
+    ns = getattr(qubit, "thermalization_time_ns", None)
+    return None if ns is None else float(ns) / 1e9
+
+
+def set_thermalization_time(qubit: Any, value: float) -> None:
+    """Write the passive-reset wait (seconds -> ns, rounded to the 4 ns grid).
+
+    Rounded, NOT refused like :func:`set_pi_duration`: this is a policy wait
+    (~10 x T1), not a calibrated pulse, so a sub-cycle difference changes
+    nothing measurable and a T1-derived value is never on the grid by luck.
+    Requires a thermalizing transmon class (``customized.quam_builder...
+    thermalizing_transmon``) — QUAM's stock ``thermalization_time`` is a
+    read-only ``factor * T1`` property with nowhere to store an absolute wait."""
+    if not hasattr(qubit, "thermalization_time_ns"):
+        raise NotImplementedError(
+            f"{getattr(qubit, 'name', qubit)}: this qubit's QUAM class has no "
+            f"thermalization_time_ns — its state.json __class__ must name a "
+            f"Thermalizing*Transmon (stock QUAM derives the wait as "
+            f"thermalization_time_factor * T1 and cannot store an absolute one)")
+    ns = float(value) * 1e9
+    if ns <= 0:
+        raise ValueError(
+            f"thermalization_time_s={value!r} s: must be positive")
+    qubit.thermalization_time_ns = int(ns / 4) * 4
+
+
 def get_pi_duration(qubit: Any, operation: str = PI_OPERATION) -> float:
     """Calibrated pi-pulse length in SECONDS (QUAM stores ns).
 

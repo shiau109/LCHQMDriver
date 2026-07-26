@@ -58,6 +58,19 @@ FIELD_BINDINGS: dict[str, dict[str, VendorBinding]] = {
                  "one measured). x90's length stays vendor fine print - it is a "
                  "per-gate value, not the tracked pi length. Qblox counterpart: "
                  "rxy.duration (s, no grid guard there)"),
+        "thermalization_time_s": VendorBinding(
+            path="q.thermalization_time_ns", unit="ns",
+            convert="seconds -> ns, ROUNDED to the 4 ns QUA wait grid (a policy "
+                    "wait, not a calibrated pulse - unlike pi_duration_s, which "
+                    "refuses off-grid)",
+            note="on the QUBIT, not q.xy. Overrides QUAM's derived "
+                 "thermalization_time (= thermalization_time_factor * T1), which "
+                 "is a read-only property with nowhere to store an absolute "
+                 "wait; a qubit scqo has never calibrated falls back to it. "
+                 "REQUIRES the qubit's state.json __class__ to name a "
+                 "Thermalizing*Transmon. Calibrated by qubit_relaxation "
+                 "(thermalization_factor x T1). Qblox counterpart: "
+                 "element.reset.duration (s, absolute)"),
         "drive_amp": VendorBinding(
             path="q.xy.operations['saturation'].amplitude", unit="",
             note="the saturation (spec) drive amplitude - the drive_power_dbm "

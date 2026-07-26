@@ -215,6 +215,81 @@ def test_channel_views_round_trip_the_neutral_knobs(backend, stub_machine):
     assert q2.resonator.operations["readout"].threshold == pytest.approx(-1.5e-4)
 
 
+def test_thermalization_time_round_trips_on_the_qubit(backend, stub_machine):
+    """The reset wait is a DRIVE-channel knob neutrally, but it lives on the
+    QUAM qubit (not q.xy) — and it is rounded to the 4 ns QUA wait grid rather
+    than refused like pi_duration_s, because it is a policy wait, not a
+    calibrated pulse."""
+    q2 = stub_machine.qubits["q2"]
+    xy = backend.device.component("q2_xy")
+
+    assert xy.thermalization_time_s is None  # never calibrated == unset
+    xy.thermalization_time_s = 3.715492e-4
+    assert q2.thermalization_time_ns == 371548  # floor to the 4 ns grid
+    assert xy.thermalization_time_s == pytest.approx(3.71548e-4)
+
+    with pytest.raises(ValueError, match="must be positive"):
+        xy.thermalization_time_s = 0.0
+
+
+def test_thermalization_time_refuses_a_stock_quam_class(backend, stub_machine):
+    """Stock QUAM derives the wait as factor x T1 through a READ-ONLY property,
+    so there is nowhere to store an absolute one. The refusal must name the fix
+    (the qubit's state.json __class__) instead of silently doing nothing."""
+    del stub_machine.qubits["q2"].thermalization_time_ns  # a stock transmon
+    xy = backend.device.component("q2_xy")
+
+    assert xy.thermalization_time_s is None
+    with pytest.raises(NotImplementedError, match="Thermalizing"):
+        xy.thermalization_time_s = 2e-4
+
+
+def test_per_run_override_sets_and_reverts_exactly(backend, stub_machine, roster):
+    """The per-run override is baked into the compiled program, so bracketing
+    the BUILD is enough — and the revert must be exact, including restoring
+    "never calibrated" rather than fabricating a value."""
+    from scqo.experiments import get
+
+    from conftest import make_experiment
+
+    cls = get("qubit_relaxation")
+    q1, q2 = stub_machine.qubits["q1"], stub_machine.qubits["q2"]
+    q1.thermalization_time_ns = 100_000  # q1 calibrated, q2 never touched
+
+    seen = {}
+    exp = make_experiment(cls, backend, roster,
+                          cls.Parameters(targets=["q1", "q2"],
+                                         thermalization_time_ns=8_000.0))
+    with backend._thermalization_override(exp):
+        seen = {"q1": q1.thermalization_time_ns, "q2": q2.thermalization_time_ns}
+    assert seen == {"q1": 8_000, "q2": 8_000}
+    assert q1.thermalization_time_ns == 100_000  # exact revert
+    assert q2.thermalization_time_ns is None     # restored to unset, not 0
+
+    # no override -> the standing QUAM values are left completely alone
+    plain = make_experiment(cls, backend, roster, cls.Parameters(targets=["q1"]))
+    with backend._thermalization_override(plain):
+        assert q1.thermalization_time_ns == 100_000
+
+
+def test_per_run_override_expands_a_pair_to_its_member_qubits(backend, stub_machine,
+                                                              roster):
+    """A composite target carries no drive channel of its own; the reset happens
+    on its MEMBER modes, resolved through the roster (the QUAM pair is named
+    after its coupler, so a name-based shortcut would miss)."""
+    from scqo.experiments import get
+
+    from conftest import make_experiment
+
+    cls = get("pair_zz_coupler")
+    exp = make_experiment(cls, backend, roster,
+                          cls.Parameters(targets=["q1_q2"],
+                                         thermalization_time_ns=12_000.0))
+    with backend._thermalization_override(exp):
+        assert stub_machine.qubits["q1"].thermalization_time_ns == 12_000
+        assert stub_machine.qubits["q2"].thermalization_time_ns == 12_000
+
+
 def test_snapshot_reports_the_bound_knobs_per_entity(backend):
     """The pull-mode seed source: every realized channel reports exactly the
     knobs the fieldmap BINDS for its kind, and the composite reports the
