@@ -158,7 +158,7 @@ uv pip install -e D:\github\SCQO -e D:\github\scqat
 safe there. Do not copy its command over here.)
 
 **Then just run the whole suite: 93 tests, ~36 s.** At this size a per-file selection map would
-cost more attention than it saves — unlike SCQO (473 tests) and scqat (~300 / 102 s), the full
+cost more attention than it saves — unlike SCQO (476 tests, ~7 min) and scqat (296 / ~53 s), the full
 suite IS the targeted run. Run it before every commit.
 
 The narrowing worth knowing: most of this suite is **pure unit tests needing no QM/QUAM/hardware**,
