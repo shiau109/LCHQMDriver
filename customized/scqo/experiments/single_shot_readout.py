@@ -31,6 +31,7 @@ class QMSingleShotReadout(SingleShotReadout):
     suggestions from the measured blobs."""
 
     def probe(self) -> Any:
+        from ._reset import reset_type
         from customized.probes._lib import select_qubits
         from customized.probes import readout_fidelity as fidelity_probe
 
@@ -42,7 +43,7 @@ class QMSingleShotReadout(SingleShotReadout):
             qubits,
             operation="readout",
             num_shots=self.params.num_shots,
-            reset_type="thermal",
+            reset_type=reset_type(self),
         )
 
     def update(self) -> None:

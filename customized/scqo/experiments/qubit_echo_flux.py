@@ -18,6 +18,7 @@ class QMQubitEchoFlux(QubitEchoFlux):
     """Build a multiplexed T2 Echo vs Flux QUA program on the QM OPX."""
 
     def probe(self) -> Any:
+        from ._reset import reset_type
         from customized.probes._lib import select_qubits
         from customized.probes import qubit_echo_flux as echo_flux_probe
 
@@ -35,6 +36,6 @@ class QMQubitEchoFlux(QubitEchoFlux):
             wait_times_cycles=wait_cycles,
             flux_amps_v=flux_bias,
             num_shots=int(self.params.num_averages),
-            reset_type="thermal",
+            reset_type=reset_type(self),
             use_state_discrimination=bool(self.params.use_state_discrimination),
         )

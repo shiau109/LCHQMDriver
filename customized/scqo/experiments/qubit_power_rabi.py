@@ -19,6 +19,7 @@ class QMQubitPowerRabi(QubitPowerRabi):
     """Build a multiplexed power-Rabi QUA program on the QM OPX."""
 
     def probe(self) -> Any:
+        from ._reset import reset_type
         from customized.probes._lib import select_qubits
         from customized.probes import qubit_power_rabi as power_rabi_probe
 
@@ -31,7 +32,7 @@ class QMQubitPowerRabi(QubitPowerRabi):
             amps=self.sweep_axes["amp_factor"],
             operation="x180",
             num_shots=self.params.num_averages,
-            reset_type="thermal",
+            reset_type=reset_type(self),
             use_state_discrimination=bool(self.params.use_state_discrimination),
             drive_qubit=None,
         )

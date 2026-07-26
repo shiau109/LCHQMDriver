@@ -19,6 +19,7 @@ class QMQubitRamsey(QubitRamsey):
     """Build a multiplexed Ramsey QUA program on the QM OPX."""
 
     def probe(self) -> Any:
+        from ._reset import reset_type
         from customized.probes._lib import select_qubits
         from customized.probes import qubit_ramsey as ramsey_probe
 
@@ -35,6 +36,6 @@ class QMQubitRamsey(QubitRamsey):
             idle_times_cycles=idle_times_cycles,
             detuning_hz=int(self.params.frequency_detuning_hz),
             num_shots=self.params.num_averages,
-            reset_type="thermal",
+            reset_type=reset_type(self),
             use_state_discrimination=bool(self.params.use_state_discrimination),
         )

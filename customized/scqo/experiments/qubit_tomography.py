@@ -16,6 +16,7 @@ class QMQubitTomography(QubitTomography):
     """Build a multiplexed qubit tomography QUA program on the QM OPX."""
 
     def probe(self) -> Any:
+        from ._reset import reset_type
         from customized.probes._lib import select_qubits
         from customized.probes import qubit_tomography as tomo_probe
 
@@ -30,6 +31,6 @@ class QMQubitTomography(QubitTomography):
             num_shots=int(self.params.num_averages),
             num_training_shots=int(self.params.num_training_shots),
             symmetrized_readout=self.params.symmetrized_readout,
-            reset_type="thermal",
+            reset_type=reset_type(self),
         )
         return prog, sweep_axes, tomo_probe

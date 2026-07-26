@@ -157,7 +157,7 @@ uv pip install -e D:\github\SCQO -e D:\github\scqat
 (LCHQBDriver has no such trap — it declares `scqo` as a hard dependency, so plain `uv run` is
 safe there. Do not copy its command over here.)
 
-**Then just run the whole suite: 93 tests, ~36 s.** At this size a per-file selection map would
+**Then just run the whole suite: 96 tests, ~23 s.** At this size a per-file selection map would
 cost more attention than it saves — unlike SCQO (476 tests, ~7 min) and scqat (296 / ~53 s), the full
 suite IS the targeted run. Run it before every commit.
 
