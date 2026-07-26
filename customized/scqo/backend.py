@@ -175,6 +175,14 @@ class QMReadoutChannel(_QMChannelView, make_view_base("readout")):
         quam_fields.set_readout_rotation(self._q, value)
 
     @property
+    def readout_depletion_s(self) -> float:
+        return quam_fields.get_readout_depletion(self._q)
+
+    @readout_depletion_s.setter
+    def readout_depletion_s(self, value: float) -> None:
+        quam_fields.set_readout_depletion(self._q, value)
+
+    @property
     def readout_threshold(self) -> float:
         return quam_fields.get_readout_threshold(self._q)
 

@@ -288,3 +288,42 @@ def test_drag_beta_writes_dragcosine_and_skips_alias():
     assert q.xy.operations["x90_DragCosine"].alpha == pytest.approx(-0.75)  # lock_x90 default True
     assert q.xy.operations["x180"] == "#./x180_DragCosine"  # alias untouched
     assert quam_fields.get_drag_beta(q) == pytest.approx(-0.75)
+
+
+# ----------------------------------------------------------------- depletion wait
+def _resonator(depletion_time=16):
+    return SimpleNamespace(resonator=SimpleNamespace(depletion_time=depletion_time))
+
+
+def test_readout_depletion_roundtrips_on_the_4ns_grid():
+    """Seconds <-> ns, rounded (not refused) onto the QUA wait grid: this is a
+    policy wait resonator_spectroscopy writes as depletion_factor / (2 pi x
+    kappa_tot_hz), which is never on the grid by luck -- the same rule
+    set_thermalization_time already settled. Stored as int: QUAM types the field
+    that way and does depletion_time // 4."""
+    q = _resonator()
+    quam_fields.set_readout_depletion(q, 795.77e-9)  # 5 / (2 pi x 1 MHz)
+
+    assert q.resonator.depletion_time == 792  # 795.77 -> 792, a multiple of 4
+    assert isinstance(q.resonator.depletion_time, int)
+    assert quam_fields.get_readout_depletion(q) == pytest.approx(792e-9)
+
+
+def test_zero_depletion_is_legal_but_negative_is_not():
+    """0 is a real calibrated answer ("this resonator needs no settle") and must
+    survive, unlike a reset wait where 0 is nonsense. Only negative is refused."""
+    q = _resonator()
+    quam_fields.set_readout_depletion(q, 0.0)
+    assert q.resonator.depletion_time == 0
+
+    with pytest.raises(ValueError, match="negative"):
+        quam_fields.set_readout_depletion(q, -1e-9)
+
+
+def test_depletion_needs_no_custom_transmon_class():
+    """Unlike thermalization_time_s, which REQUIRES a Thermalizing*Transmon
+    because QUAM derives its wait as factor x T1 with nowhere to store an
+    absolute one. depletion_time is a plain settable field on every stock
+    ReadoutResonator, so this knob needs no per-device migration."""
+    q = _resonator(depletion_time=16)  # QUAM's own default, ungoverned until now
+    assert quam_fields.get_readout_depletion(q) == pytest.approx(16e-9)

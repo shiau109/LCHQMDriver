@@ -122,6 +122,19 @@ FIELD_BINDINGS: dict[str, dict[str, VendorBinding]] = {
                  "pulse); multiples of 4 ns. Qblox counterpart: "
                  "measure.integration_time (s)",
         ),
+        "readout_depletion_s": VendorBinding(
+            path="q.resonator.depletion_time", unit="ns",
+            convert="seconds -> ns, ROUNDED to the 4 ns QUA wait grid and stored "
+                    "as int (a policy wait derived from a fit, like "
+                    "thermalization_time_s; 0 is legal and means 'measured, no "
+                    "settle needed')",
+            note="post-readout photon-depletion wait. Needs NO custom transmon "
+                 "class, unlike thermalization_time_s: depletion_time is a plain "
+                 "settable int field, and QUAM already spends it after every "
+                 "measurement and as depletion_time // 2 in reset_qubit_active. "
+                 "Calibrated by resonator_spectroscopy as depletion_factor / "
+                 "(2 pi x kappa_tot_hz). Qblox counterpart: "
+                 "element.depletion.duration (s, a lab addition to the element)"),
         "readout_rotation_rad": VendorBinding(
             path="q.resonator.operations['readout'].integration_weights_angle",
             unit="rad",
@@ -277,11 +290,13 @@ VENDOR_ONLY: dict[str, VendorOnly] = {
             "path with its own transmit path. The TOF measurement's product is "
             "written HERE, in NANOSECONDS, offline - never a neutral field. "
             "Qblox counterpart: measure.acq_delay (s)"),
-    "depletion_time": VendorOnly(
-        path="q.resonator.depletion_time", unit="ns", kind="vendor",
-        doc="resonator ring-down wait after readout - a policy value (~several/"
-            "kappa), not a calibration outcome; the punchout experiments "
-            "override it per run via resonator_relaxation_time_ns"),
+    # NOTE: depletion_time is no longer VendorOnly - it REALIZES the tracked
+    # readout_depletion_s (binding above). It was a hand-set policy value sitting
+    # at QUAM's 16 ns default with nothing governing it, while QUAM spent it in
+    # four places (after every measurement, and depletion_time // 2 inside
+    # reset_qubit_active). resonator_spectroscopy now calibrates it from the
+    # measured linewidth; the governed write is
+    # scqo set QUBIT.readout_depletion_s=... .
     "readout_upconverter_frequency": VendorOnly(
         path="q.resonator.opx_output.upconverter_frequency", unit="Hz", kind="vendor",
         doc="readout LO - the MW-FEM upconverter, PORT-level (state.json "

@@ -632,8 +632,9 @@ def test_power_amp_probe_builds_with_new_loop_order(machine, live_roster):
     stream averaging) compiles to a QUA program: prefactors 10**((P - max)/20)
     relative to the window top the core run() solved the chain for (top exactly
     1.0, all <= 1 — inside QUA's amplitude_scale range), and
-    resonator_relaxation_time_ns reaches the program (the generated script changes
+    readout_depletion_ns reaches the program (the generated script changes
     when it is set)."""
+    from conftest import make_experiment
     from qm import generate_qua_script
 
     from customized.scqo.experiments.resonator_spectroscopy_power_amp import (
@@ -644,9 +645,13 @@ def test_power_amp_probe_builds_with_new_loop_order(machine, live_roster):
     config = machine.generate_config()
 
     def script(params):
-        exp = QMResonatorSpectroscopyPowerAmp(
-            backend, QMResonatorSpectroscopyPowerAmp.Parameters(**params)
-        )
+        # make_experiment, not a bare constructor: the ring-down wait is resolved
+        # through the neutral device surface now (per-run override -> the
+        # readout_depletion_s knob), so the probe needs the channel views a
+        # Session would have attached.
+        exp = make_experiment(
+            QMResonatorSpectroscopyPowerAmp, backend, live_roster,
+            QMResonatorSpectroscopyPowerAmp.Parameters(**params))
         exp.sweep_axes = exp.define_sweep()
         # the axis is the absolute window straight from the core
         power_dbm = np.asarray(exp.sweep_axes["power_dbm"])
@@ -659,5 +664,5 @@ def test_power_amp_probe_builds_with_new_loop_order(machine, live_roster):
 
     base = dict(targets=["q4"], num_power_points=5, num_freq_points=3, num_averages=10)
     default = script(base)
-    overridden = script({**base, "resonator_relaxation_time_ns": 25000.0})
+    overridden = script({**base, "readout_depletion_ns": 25000.0})
     assert default != overridden  # the relaxation override reaches the QUA program

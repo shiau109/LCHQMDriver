@@ -221,6 +221,33 @@ def set_readout_threshold(qubit: Any, value: float, *, operation: str = READOUT_
     qubit.resonator.operations[operation].threshold = float(value)
 
 
+def get_readout_depletion(qubit: Any) -> float:
+    """The post-readout photon-depletion wait, ns -> seconds.
+
+    Unlike the thermal wait, this needs no custom transmon class: QUAM's
+    ``ReadoutResonator.depletion_time`` is a plain settable int field (ns), and
+    QUAM already spends it in four places — after every measurement in the
+    single-qubit gates, and as ``depletion_time // 2`` inside
+    ``reset_qubit_active``. Until scqo calibrated it, it sat at its 16 ns default
+    with nothing governing it."""
+    return float(qubit.resonator.depletion_time) / 1e9
+
+
+def set_readout_depletion(qubit: Any, value: float) -> None:
+    """Write the depletion wait (seconds -> ns, rounded to the 4 ns QUA grid).
+
+    Rounded, not refused, for the same reason as :func:`set_thermalization_time`:
+    resonator_spectroscopy writes ``depletion_factor / (2 pi x kappa_tot_hz)``,
+    which is never on the grid by luck. ZERO IS LEGAL — "measured, needs no
+    settle" is a real answer, distinct from never having been calibrated — so
+    only a negative value is refused. The field is typed ``int``, so the write
+    is an int."""
+    ns = float(value) * 1e9
+    if ns < 0:
+        raise ValueError(f"readout_depletion_s={value!r} s: must not be negative")
+    qubit.resonator.depletion_time = int(ns / 4) * 4
+
+
 def get_readout_rus_threshold(qubit: Any, operation: str = READOUT_OPERATION) -> float:
     return float(qubit.resonator.operations[operation].rus_exit_threshold)
 
