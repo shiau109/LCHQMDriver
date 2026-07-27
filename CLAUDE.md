@@ -157,7 +157,7 @@ uv pip install -e D:\github\SCQO -e D:\github\scqat
 (LCHQBDriver has no such trap — it declares `scqo` as a hard dependency, so plain `uv run` is
 safe there. Do not copy its command over here.)
 
-**Then just run the whole suite: 96 tests, ~23 s.** At this size a per-file selection map would
+**Then just run the whole suite: 99 tests, ~21 s.** At this size a per-file selection map would
 cost more attention than it saves — unlike SCQO (476 tests, ~7 min) and scqat (296 / ~53 s), the full
 suite IS the targeted run. Run it before every commit.
 
@@ -167,6 +167,7 @@ so they are instant — loop on those while iterating, and take the full suite b
 | File | Covers | Needs QM stack? |
 |---|---|---|
 | `test_quam_fields.py` | the single neutral-field ↔ QUAM mapping (stub qubit) | no |
+| `test_reset_method.py` | `reset_method="active"` is REFUSED by name, never downgraded to thermal | no |
 | `test_qc_populations.py` | shared swap-reset population helpers | no |
 | `test_power_rabi_update.py`, `test_ramsey_update.py`, `test_readout_frequency_update.py` | the pure `update()` decisions of the matching `LCH_*` node | no |
 | `test_experiment_surface.py` | `customized/scqo/experiments/_vendor.py` — the probes' one door out of the neutral surface | yes |
