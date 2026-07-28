@@ -7,8 +7,9 @@ Three tiers:
   views, the composite pair knobs, snapshot/power_context) runs against the stub
   QUAM tree from ``conftest.py`` — always, on every machine.
 * Probe equivalence and the absolute-power chain solve load the LIVE
-  ``quam_state/`` and skip when it does not match the root class currently
-  toggled in ``quam_config/my_quam.py``.
+  ``quam_state/``. These no longer skip: the state file and ``quam_config.Quam``
+  both name ``MixedTransmonQuam``, which validates fixed, tunable and mixed trees
+  alike, so there is no root class left for them to disagree about.
 """
 
 import numpy as np
@@ -491,15 +492,12 @@ pytest.importorskip("qm")
 
 @pytest.fixture(scope="module")
 def machine():
-    # my_quam.py's root class is toggled per experiment (FluxTunableQuam <->
-    # FixedFrequencyQuam, see CLAUDE.md "Key Entrypoints"); the default-resolved
-    # QUAM state may not match the currently toggled root (e.g. a flux-tunable
-    # quam_state with qubit_pairs cannot validate under a FixedFrequencyQuam root).
-    # That mismatch is a legitimate working-tree situation, not a test failure.
-    try:
-        return quam_config.Quam.load()
-    except TypeError as err:
-        pytest.skip(f"default QUAM state does not match the toggled my_quam root class: {err}")
+    # No root-class skip any more. This used to tolerate my_quam.py being toggled
+    # between FluxTunableQuam and FixedFrequencyQuam, under which a flux-tunable
+    # quam_state could not validate. Both the state file and the default now name
+    # MixedTransmonQuam, which accepts fixed, tunable and mixed trees alike, so a
+    # TypeError here is a real failure rather than a working-tree situation.
+    return quam_config.Quam.load()
 
 
 @pytest.fixture(scope="module")
