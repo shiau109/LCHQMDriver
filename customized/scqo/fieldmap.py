@@ -42,8 +42,16 @@ FIELD_BINDINGS: dict[str, dict[str, VendorBinding]] = {
                     "(quam_fields.set_drive_freq keeps the drive line on the qubit)"),
         "pi_amp": VendorBinding(
             path="q.xy.operations['x180'].amplitude", unit="",
+            convert="a write also sets the pi/2 storage nodes (x90_DragCosine and "
+                    "-x90_DragCosine) to HALF this value",
             note="written on the x180_DragCosine storage node; the plain x180 "
-                 "entry is usually a QUAM reference alias and follows"),
+                 "entry is usually a QUAM reference alias and follows. The x90 lock "
+                 "is what makes this field mean the same thing on both backends: "
+                 "Qblox stores it as rxy.amp180 and DERIVES X90 as amp180*theta/180, "
+                 "so an unlocked x90 here would leave QM's pi/2 unreachable under "
+                 "scqo (nothing else reads or writes it) and silently stale - a "
+                 "46-degree 'pi/2' still fits cleanly, it just caps Ramsey contrast "
+                 "at sin^2(46 deg). y90/-y90 are aliases and follow x90_DragCosine"),
         "drag_beta": VendorBinding(
             path="q.xy.operations['x180_DragCosine'].alpha", unit="",
             convert="QM stores DRAG as DragCosinePulse.alpha; written on the "

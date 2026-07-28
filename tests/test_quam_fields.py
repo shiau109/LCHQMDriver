@@ -78,6 +78,42 @@ def test_set_pi_amp_locks_x90_for_x180():
     assert q.xy.operations["x90"].amplitude == pytest.approx(0.12)
 
 
+def test_set_pi_amp_locks_both_pi_half_storage_nodes():
+    """chipA's real shape: -x90 carries its OWN amplitude, only alpha/detuning are
+    references. It held a third, inconsistent value (0.0933 against x90's 0.0730 and
+    a correct 0.1431) until the lock covered it."""
+    class _Op:
+        def __init__(self, amplitude):
+            self.amplitude = amplitude
+
+    q = SimpleNamespace(xy=SimpleNamespace(operations={
+        "x180_DragCosine": _Op(0.28619),
+        "x90_DragCosine": _Op(0.07302),
+        "-x90_DragCosine": _Op(0.09329),
+        "x180": "#./x180_DragCosine",   # string-reference aliases: skipped, they follow
+        "x90": "#./x90_DragCosine",
+        "-x90": "#./-x90_DragCosine",
+        "y90": "#./y90_DragCosine",
+    }))
+    quam_fields.set_pi_amp(q, 0.28619, lock_x90=True)
+    ops = q.xy.operations
+    assert ops["x180_DragCosine"].amplitude == pytest.approx(0.28619)
+    assert ops["x90_DragCosine"].amplitude == pytest.approx(0.143095)
+    assert ops["-x90_DragCosine"].amplitude == pytest.approx(0.143095)
+    # the negative sense comes from axis_angle = pi, so the amplitude matches x90
+    assert ops["-x90_DragCosine"].amplitude == ops["x90_DragCosine"].amplitude
+    for alias in ("x180", "x90", "-x90", "y90"):
+        assert isinstance(ops[alias], str), f"{alias} alias must stay a reference"
+
+
+def test_set_pi_amp_without_lock_leaves_x90_alone():
+    """The qualibrate path keeps its own update_x90 choice -- default stays off."""
+    q = _qubit()
+    quam_fields.set_pi_amp(q, 0.24)
+    assert q.xy.operations["x180"].amplitude == pytest.approx(0.24)
+    assert q.xy.operations["x90"].amplitude == pytest.approx(0.1)  # untouched
+
+
 def test_set_pi_amp_other_operation_never_touches_x90():
     q = _qubit()
     q.xy.operations["x90_DRAG"] = SimpleNamespace(amplitude=0.05)
@@ -233,6 +269,10 @@ def test_qm_channel_views_use_the_shared_mapping():
 
     drive.pi_amp = 0.3
     assert q.xy.operations["x180"].amplitude == pytest.approx(0.3)
+    # the scqo path ALWAYS locks x90 -- pi_amp is the only neutral drive-amplitude
+    # knob and its Qblox home (rxy.amp180) governs X90 there too, so an unlocked x90
+    # would leave QM's pi/2 unreachable and stale (chipA q1 ran at a 46-degree "pi/2")
+    assert q.xy.operations["x90"].amplitude == pytest.approx(0.15)
 
     readout = QMReadoutChannel("q0_ro", q)
     readout.readout_freq_hz = 6.4e9

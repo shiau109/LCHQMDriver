@@ -338,15 +338,28 @@ def set_pi_amp(qubit: Any, value: float, *, operation: str = PI_OPERATION, lock_
     """Write the pi-pulse amplitude.
 
     QUAM structure (state.json):
-      - x180_DragCosine: the real pi-pulse storage node.
-      - x90_DragCosine:  the real pi/2-pulse storage node.
-      - x180, y180 etc.: QUAM reference aliases -> follow x180_DragCosine automatically.
-      - -x90, y90, -y90: QUAM reference aliases -> follow x90_DragCosine automatically.
+      - x180_DragCosine:  the real pi-pulse storage node.
+      - x90_DragCosine:   the real pi/2-pulse storage node.
+      - -x90_DragCosine:  a SECOND real pi/2 storage node (its alpha/detuning are
+                          references to x90_DragCosine, but its AMPLITUDE is its own
+                          number -- the negative sense comes from axis_angle = pi, so
+                          its amplitude must equal x90's, not the negative of it).
+      - x180, y180 etc.:  QUAM reference aliases -> follow x180_DragCosine automatically.
+      - y90, -y90:        QUAM reference aliases -> follow x90_DragCosine automatically.
 
-    So we write the DragCosine storage node directly (the plain ``x180`` alias is
-    also written when it is a real pulse, for non-DragCosine setups). ``lock_x90``
-    defaults False to preserve the historical power_rabi behaviour; when set, x90
-    is locked to half the pi amplitude.
+    So we write the DragCosine storage nodes directly (the plain ``x180`` alias is
+    also written when it is a real pulse, for non-DragCosine setups).
+
+    ``lock_x90`` defaults False to preserve the historical power_rabi behaviour, where
+    the qualibrate node exposes the choice as its own ``update_x90`` parameter. The
+    SCQO path passes True unconditionally, and must: ``pi_amp`` is the only neutral
+    drive-amplitude knob, and on Qblox it lands on ``rxy.amp180``, from which
+    qblox_scheduler DERIVES X90 as amp180 * theta/180. Leaving x90 unwritten here
+    would make one neutral field mean "pi and pi/2" on Qblox and "pi only" on QM --
+    x90 would be unreachable under scqo (no experiment calibrates it, no knob sets
+    it) and silently stale. chipA q1 ran that way: x180 = 0.286 with x90 = 0.073
+    instead of 0.143, a 46-degree "pi/2", which caps Ramsey contrast at sin^2(46 deg)
+    ~ 0.5 while every fit still converges.
     """
     val = float(value)
     if not (hasattr(qubit, "xy") and hasattr(qubit.xy, "operations")):
@@ -360,10 +373,13 @@ def set_pi_amp(qubit: Any, value: float, *, operation: str = PI_OPERATION, lock_
         _set_op_amp(ops, "x180_DragCosine", val)
     _set_op_amp(ops, operation, val)
     # lock_x90 only ever couples x90 to HALF the x180 amplitude — never for other ops.
+    # Both pi/2 storage nodes get it: -x90 carries its own amplitude (only its alpha
+    # and detuning are references), so skipping it leaves the two pi/2 gates
+    # disagreeing with each other as well as with the pi pulse.
     if lock_x90 and operation == "x180":
         half_val = val / 2.0
-        _set_op_amp(ops, "x90_DragCosine", half_val)
-        _set_op_amp(ops, "x90", half_val)
+        for name in ("x90_DragCosine", "x90", "-x90_DragCosine", "-x90"):
+            _set_op_amp(ops, name, half_val)
 
 
 def get_thermalization_time(qubit: Any) -> float:

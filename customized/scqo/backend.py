@@ -252,7 +252,13 @@ class QMDriveChannel(_QMChannelView, make_view_base("drive")):
 
     @pi_amp.setter
     def pi_amp(self, value: float) -> None:
-        quam_fields.set_pi_amp(self._q, value)
+        # lock_x90=True is REQUIRED on the scqo path, not a preference. pi_amp is the
+        # only neutral drive-amplitude knob, and its Qblox home (rxy.amp180) also
+        # governs X90 there, which the scheduler derives as amp180 * theta/180. Without
+        # the lock the same neutral field would calibrate the pi/2 on one backend and
+        # not the other, and QM's x90 would be unreachable under scqo entirely --
+        # nothing else reads or writes it. See quam_fields.set_pi_amp.
+        quam_fields.set_pi_amp(self._q, value, lock_x90=True)
 
     @property
     def pi_duration_s(self) -> float:
