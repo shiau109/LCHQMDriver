@@ -36,7 +36,11 @@ class QMQubitDragEquator(QubitDragEquator):
             beta_array=beta_array,
             pulse_repetitions=int(self.params.pulse_repetitions),
             use_state_discrimination=False,
+            target_gate=getattr(self.params, "target_gate", "x180"),
         )
+
+
+
 
         params = self.params
         shots = getattr(params, "num_averages", None) or getattr(params, "num_shots", 1)

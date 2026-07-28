@@ -252,7 +252,19 @@ class QMDriveChannel(_QMChannelView, make_view_base("drive")):
 
     @pi_amp.setter
     def pi_amp(self, value: float) -> None:
-        quam_fields.set_pi_amp(self._q, value)
+        quam_fields.set_pi_amp(self._q, value, lock_x90=False)
+
+
+    @property
+    def pi_amp_x90(self) -> float:
+        return quam_fields.get_pi_amp(self._q, operation="x90")
+
+    @pi_amp_x90.setter
+    def pi_amp_x90(self, value: float) -> None:
+        quam_fields.set_pi_amp(self._q, value, operation="x90", lock_x90=False)
+
+
+
 
     @property
     def pi_duration_s(self) -> float:
@@ -264,11 +276,29 @@ class QMDriveChannel(_QMChannelView, make_view_base("drive")):
 
     @property
     def drag_beta(self) -> float:
-        return quam_fields.get_drag_beta(self._q)
+        return quam_fields.get_drag_beta(self._q, operation="x180")
 
     @drag_beta.setter
     def drag_beta(self, value: float) -> None:
-        quam_fields.set_drag_beta(self._q, value)
+        quam_fields.set_drag_beta(self._q, value, operation="x180", lock_x90=False)
+
+    @property
+    def drag_beta_x90(self) -> float:
+        return quam_fields.get_drag_beta(self._q, operation="x90")
+
+    @drag_beta_x90.setter
+    def drag_beta_x90(self, value: float) -> None:
+        quam_fields.set_drag_beta(self._q, value, operation="x90", lock_x90=False)
+
+    def set_drag_beta(self, value: float, operation: str = "x180", lock_x90: bool = False) -> None:
+        quam_fields.set_drag_beta(self._q, value, operation=operation, lock_x90=lock_x90)
+
+
+
+
+
+
+
 
     # Lives on the QUBIT, not on q.xy: the wait is the qubit's own relaxation,
     # and QUAM hangs thermalization off the transmon. The drive channel is the

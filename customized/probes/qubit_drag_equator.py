@@ -16,6 +16,7 @@ def build_program(
     beta_array: List[float],
     pulse_repetitions: int,
     use_state_discrimination: bool,
+    target_gate: str = "x180",
     simulate: bool = False,
     log: Optional[Callable] = None,
 ):
@@ -25,26 +26,19 @@ def build_program(
 
     alpha_array = np.asarray(beta_array, dtype=float)
 
-    # --- Safe fixed-point scaling ---
-    # QUA `fixed` is a 2.28 format with range [-2, 2).  If scale_array = alpha / alpha_base
-    # contains values outside that range the amp() matrix wraps (mod 4), cycling through the
-    # same effective alpha values and producing flat data.
-    #
-    # Fix: temporarily set every DragCosine alpha to ref_alpha = max(|alpha_array|) so the
-    # waveform baked into the QM config already encodes the largest alpha we need.  The QUA
-    # scale factor then only needs to range in [-1, 1], well within the fixed-point range.
-    # The original alpha is restored immediately after generate_config() is called in acquire().
+    op_name = "x90" if target_gate in ("x90", "X90") else "x180"
+
     ref_alpha = float(np.max(np.abs(alpha_array)))
     if ref_alpha < 1e-6:
         ref_alpha = 1.0
     scale_array = alpha_array / ref_alpha  # values in [-1, 1] ✓
 
-    # Save originals and install ref_alpha into every DragCosine operation
+    # Save originals and install ref_alpha into DragCosine operation
     orig_alphas: dict = {}
     for q_name in qubits.get_names():
         q_obj = machine.qubits[q_name]
-        orig_alphas[q_name] = quam_fields.get_drag_beta(q_obj)
-        quam_fields.set_drag_beta(q_obj, ref_alpha)
+        orig_alphas[q_name] = quam_fields.get_drag_beta(q_obj, operation=op_name)
+        quam_fields.set_drag_beta(q_obj, ref_alpha, operation=op_name, lock_x90=(op_name == "x180"))
 
     sweep_axes = {
         "qubit": xr.DataArray(qubits.get_names()),
@@ -78,14 +72,24 @@ def build_program(
                         # Play sequence
                         for i_q, qubit in multiplexed_qubits.items():
                             qubit.align()
-                            # seq 0: Rx(pi) - Ry(pi/2)
-                            # seq 1: Ry(pi) - Rx(pi/2)
+                            # seq 0: Rx(pi) - Ry(pi/2)  (or two x90 - Ry(pi/2))
+                            # seq 1: Ry(pi) - Rx(pi/2)  (or two y90 - Rx(pi/2))
                             with if_(seq == 0):
-                                play("x180" * amp(1, 0, 0, a), qubit.xy.name)
-                                play("y90" * amp(a, 0, 0, 1), qubit.xy.name)
+                                if op_name == "x90":
+                                    play("x90" * amp(1, 0, 0, a), qubit.xy.name)
+                                    play("x90" * amp(1, 0, 0, a), qubit.xy.name)
+                                    play("y90" * amp(a, 0, 0, 1), qubit.xy.name)
+                                else:
+                                    play("x180" * amp(1, 0, 0, a), qubit.xy.name)
+                                    play("y90" * amp(a, 0, 0, 1), qubit.xy.name)
                             with else_():
-                                play("y180" * amp(a, 0, 0, 1), qubit.xy.name)
-                                play("x90" * amp(1, 0, 0, a), qubit.xy.name)
+                                if op_name == "x90":
+                                    play("y90" * amp(a, 0, 0, 1), qubit.xy.name)
+                                    play("y90" * amp(a, 0, 0, 1), qubit.xy.name)
+                                    play("x90" * amp(1, 0, 0, a), qubit.xy.name)
+                                else:
+                                    play("y180" * amp(a, 0, 0, 1), qubit.xy.name)
+                                    play("x90" * amp(1, 0, 0, a), qubit.xy.name)
 
                             qubit.align()
 
@@ -110,15 +114,15 @@ def build_program(
                     I_st[i_q].buffer(len(beta_array)).buffer(2).average().save(f"I{i_q + 1}")
                     Q_st[i_q].buffer(len(beta_array)).buffer(2).average().save(f"Q{i_q + 1}")
 
-    # Generate the QM config while ref_alpha is still active in QUAM, so the waveform
-    # baked into the config encodes the correct DRAG Q amplitude.
+    # Generate the QM config while ref_alpha is still active in QUAM
     config = machine.generate_config()
 
-    # Restore original QUAM alpha values (state.json is unaffected: we never call save())
+    # Restore original QUAM alpha values
     for q_name, orig_alpha in orig_alphas.items():
-        quam_fields.set_drag_beta(machine.qubits[q_name], orig_alpha)
+        quam_fields.set_drag_beta(machine.qubits[q_name], orig_alpha, operation=op_name, lock_x90=(op_name == "x180"))
 
     return prog, sweep_axes, config
+
 
 
 def acquire(

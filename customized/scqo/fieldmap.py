@@ -44,11 +44,25 @@ FIELD_BINDINGS: dict[str, dict[str, VendorBinding]] = {
             path="q.xy.operations['x180'].amplitude", unit="",
             note="written on the x180_DragCosine storage node; the plain x180 "
                  "entry is usually a QUAM reference alias and follows"),
+        "pi_amp_x90": VendorBinding(
+            path="q.xy.operations['x90_DragCosine'].amplitude", unit="",
+            note="written on the x90_DragCosine storage node; calibrated by qubit_deterministic_benchmarking for x90"),
+
         "drag_beta": VendorBinding(
+
+
             path="q.xy.operations['x180_DragCosine'].alpha", unit="",
             convert="QM stores DRAG as DragCosinePulse.alpha; written on the "
                     "x180_DragCosine storage node (reference aliases follow)",
             note="calibrated by qubit_drag_equator / qubit_drag_alternating"),
+        "drag_beta_x90": VendorBinding(
+            path="q.xy.operations['x90_DragCosine'].alpha", unit="",
+            convert="QM stores DRAG as DragCosinePulse.alpha; written on the "
+                    "x90_DragCosine storage node",
+            note="calibrated by qubit_drag_equator / qubit_drag_alternating for x90"),
+
+
+
         "pi_duration_s": VendorBinding(
             path="q.xy.operations['x180'].length", unit="ns",
             convert="seconds -> ns",
