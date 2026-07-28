@@ -26,11 +26,24 @@ class QMQubitDragAlternating(QubitDragAlternating):
         beta_array = list(sweeps["beta"])
         nb_pulses_array = [int(x) for x in sweeps["nb_of_pulses"]]
 
-        return alternating_probe.build_program(
+        prog, sweep_axes = alternating_probe.build_program(
             machine,
             qubits,
             num_shots=int(self.params.num_averages),
             beta_array=beta_array,
             nb_pulses_array=nb_pulses_array,
             use_state_discrimination=False,
+            target_gate=getattr(self.params, "target_gate", "x180"),
         )
+
+        params = self.params
+        shots = getattr(params, "num_averages", None) or getattr(params, "num_shots", 1)
+
+        return alternating_probe.acquire(
+            machine,
+            prog,
+            sweep_axes,
+            num_shots=int(shots),
+            timeout=self.backend._timeout,
+        )
+

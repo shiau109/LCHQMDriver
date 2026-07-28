@@ -16,6 +16,7 @@ def build_program(
     beta_array: List[float],
     nb_pulses_array: List[int],
     use_state_discrimination: bool,
+    target_gate: str = "x180",
     simulate: bool = False,
     log: Optional[Callable] = None,
 ):
@@ -25,9 +26,11 @@ def build_program(
     alpha_array = np.asarray(beta_array, dtype=float)
     nb_pulses_array = np.asarray(nb_pulses_array)
 
+    op_name = "x90" if target_gate in ("x90", "X90") else "x180"
+
     first_q_name = qubits.get_names()[0]
     first_q = machine.qubits[first_q_name]
-    alpha_base = quam_fields.get_drag_beta(first_q)
+    alpha_base = quam_fields.get_drag_beta(first_q, operation=op_name)
     if abs(alpha_base) < 1e-6:
         alpha_base = 1.0
 
@@ -67,9 +70,18 @@ def build_program(
                         for i_q, qubit in multiplexed_qubits.items():
                             qubit.align()
                             with for_(count, 0, count < npi, count + 1):
-                                play("x180" * amp(1, 0, 0, a), qubit.xy.name)
-                                play("x180" * amp(-1, 0, 0, -a), qubit.xy.name)
+                                if op_name == "x90":
+                                    # Each x180 is replaced by two x90 pulses
+                                    play("x90" * amp(1, 0, 0, a), qubit.xy.name)
+                                    play("x90" * amp(1, 0, 0, a), qubit.xy.name)
+                                    # Each -x180 is replaced by two -x90 pulses
+                                    play("x90" * amp(-1, 0, 0, -a), qubit.xy.name)
+                                    play("x90" * amp(-1, 0, 0, -a), qubit.xy.name)
+                                else:
+                                    play("x180" * amp(1, 0, 0, a), qubit.xy.name)
+                                    play("x180" * amp(-1, 0, 0, -a), qubit.xy.name)
                             qubit.align()
+
 
                         # Measurement
                         for i_q, qubit in multiplexed_qubits.items():

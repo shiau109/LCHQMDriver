@@ -4,7 +4,9 @@ Add a line here for each new experiment module so its ``@register`` runs.
 """
 
 from . import pair_zz_coupler  # noqa: F401  (import side effect: @register)
+from . import qubit_deterministic_benchmarking  # noqa: F401  (import side effect: @register)
 from . import qubit_drag_alternating  # noqa: F401  (import side effect: @register)
+
 from . import qubit_drag_equator  # noqa: F401  (import side effect: @register)
 from . import qubit_echo  # noqa: F401  (import side effect: @register)
 from . import qubit_echo_flux  # noqa: F401  (import side effect: @register)

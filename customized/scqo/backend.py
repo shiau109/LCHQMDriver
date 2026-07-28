@@ -252,13 +252,18 @@ class QMDriveChannel(_QMChannelView, make_view_base("drive")):
 
     @pi_amp.setter
     def pi_amp(self, value: float) -> None:
-        # lock_x90=True is REQUIRED on the scqo path, not a preference. pi_amp is the
-        # only neutral drive-amplitude knob, and its Qblox home (rxy.amp180) also
-        # governs X90 there, which the scheduler derives as amp180 * theta/180. Without
-        # the lock the same neutral field would calibrate the pi/2 on one backend and
-        # not the other, and QM's x90 would be unreachable under scqo entirely --
-        # nothing else reads or writes it. See quam_fields.set_pi_amp.
-        quam_fields.set_pi_amp(self._q, value, lock_x90=True)
+        quam_fields.set_pi_amp(self._q, value)
+
+    @property
+    def pi_amp_x90(self) -> float:
+        return quam_fields.get_pi_amp(self._q, operation="x90")
+
+    @pi_amp_x90.setter
+    def pi_amp_x90(self, value: float) -> None:
+        # An INDEPENDENT knob, never pi_amp/2: qubit_deterministic_benchmarking
+        # calibrates the pi/2 in its own right, and amplitude response is not
+        # perfectly linear, which is the error that experiment measures.
+        quam_fields.set_pi_amp(self._q, value, operation="x90")
 
     @property
     def pi_duration_s(self) -> float:
@@ -270,11 +275,19 @@ class QMDriveChannel(_QMChannelView, make_view_base("drive")):
 
     @property
     def drag_beta(self) -> float:
-        return quam_fields.get_drag_beta(self._q)
+        return quam_fields.get_drag_beta(self._q, operation="x180")
 
     @drag_beta.setter
     def drag_beta(self, value: float) -> None:
-        quam_fields.set_drag_beta(self._q, value)
+        quam_fields.set_drag_beta(self._q, value, operation="x180")
+
+    @property
+    def drag_beta_x90(self) -> float:
+        return quam_fields.get_drag_beta(self._q, operation="x90")
+
+    @drag_beta_x90.setter
+    def drag_beta_x90(self, value: float) -> None:
+        quam_fields.set_drag_beta(self._q, value, operation="x90")
 
     # Lives on the QUBIT, not on q.xy: the wait is the qubit's own relaxation,
     # and QUAM hangs thermalization off the transmon. The drive channel is the

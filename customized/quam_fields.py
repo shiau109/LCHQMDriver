@@ -330,56 +330,63 @@ def set_coupler_idle_flux(coupler: Any, value: float) -> None:
 
 
 # ------------------------------------------------------------------------- pi amplitude
+#: The QUAM storage nodes each drive-amplitude family owns. ``x180``/``x90``/``y90``
+#: etc. are usually reference ALIASES that follow their DragCosine node (``_set_op_amp``
+#: skips string references), but are written anyway for non-DragCosine setups where
+#: they are real pulses.
+#:
+#: ``-x90_DragCosine`` is a SECOND REAL pi/2 node, not an alias: only its ``alpha`` and
+#: ``detuning`` are references to ``x90_DragCosine``. Its AMPLITUDE is its own number,
+#: because the negative sense comes from ``axis_angle = pi`` rather than a negated
+#: amplitude. Writing x90 without it leaves the two pi/2 gates disagreeing with each
+#: other -- chipA q1 ran at x90 = 0.07302 with -x90 = 0.09329 against a correct 0.14310.
+_AMP_NODES: dict[str, tuple[str, ...]] = {
+    "x180": ("x180_DragCosine", "x180"),
+    "x90": ("x90_DragCosine", "x90", "-x90_DragCosine", "-x90"),
+}
+
+
+def _amp_nodes(operation: str) -> tuple[str, ...]:
+    """The storage nodes a read/write of ``operation`` must reach.
+
+    An operation outside the two known families is its own node alone: a bespoke
+    pulse has no family to keep consistent."""
+    for nodes in _AMP_NODES.values():
+        if operation in nodes:
+            return nodes
+    return (operation,)
+
+
 def get_pi_amp(qubit: Any, operation: str = PI_OPERATION) -> float:
-    return float(qubit.xy.operations[operation].amplitude)
+    """Read the amplitude of the operation's family from its first REAL storage node
+    (string-reference aliases carry no number of their own)."""
+    if not (hasattr(qubit, "xy") and hasattr(qubit.xy, "operations")):
+        return 0.0
+    ops = qubit.xy.operations
+    for name in _amp_nodes(operation):
+        try:
+            op = ops[name]
+        except (KeyError, TypeError):
+            continue
+        if not isinstance(op, str) and hasattr(op, "amplitude"):
+            return float(op.amplitude)
+    return float(ops[operation].amplitude)
 
 
-def set_pi_amp(qubit: Any, value: float, *, operation: str = PI_OPERATION, lock_x90: bool = False) -> None:
-    """Write the pi-pulse amplitude.
+def set_pi_amp(qubit: Any, value: float, *, operation: str = PI_OPERATION) -> None:
+    """Write a drive amplitude onto every storage node of the operation's family.
 
-    QUAM structure (state.json):
-      - x180_DragCosine:  the real pi-pulse storage node.
-      - x90_DragCosine:   the real pi/2-pulse storage node.
-      - -x90_DragCosine:  a SECOND real pi/2 storage node (its alpha/detuning are
-                          references to x90_DragCosine, but its AMPLITUDE is its own
-                          number -- the negative sense comes from axis_angle = pi, so
-                          its amplitude must equal x90's, not the negative of it).
-      - x180, y180 etc.:  QUAM reference aliases -> follow x180_DragCosine automatically.
-      - y90, -y90:        QUAM reference aliases -> follow x90_DragCosine automatically.
-
-    So we write the DragCosine storage nodes directly (the plain ``x180`` alias is
-    also written when it is a real pulse, for non-DragCosine setups).
-
-    ``lock_x90`` defaults False to preserve the historical power_rabi behaviour, where
-    the qualibrate node exposes the choice as its own ``update_x90`` parameter. The
-    SCQO path passes True unconditionally, and must: ``pi_amp`` is the only neutral
-    drive-amplitude knob, and on Qblox it lands on ``rxy.amp180``, from which
-    qblox_scheduler DERIVES X90 as amp180 * theta/180. Leaving x90 unwritten here
-    would make one neutral field mean "pi and pi/2" on Qblox and "pi only" on QM --
-    x90 would be unreachable under scqo (no experiment calibrates it, no knob sets
-    it) and silently stale. chipA q1 ran that way: x180 = 0.286 with x90 = 0.073
-    instead of 0.143, a 46-degree "pi/2", which caps Ramsey contrast at sin^2(46 deg)
-    ~ 0.5 while every fit still converges.
+    There is deliberately **no** ``lock_x90``. The pi/2 pulse is calibrated in its own
+    right (``qubit_deterministic_benchmarking``) and carries its own neutral knob,
+    ``pi_amp_x90``, so coupling it to half the pi amplitude would silently overwrite a
+    real calibration with a derived guess. One operation, one family, no mode flag.
     """
     val = float(value)
     if not (hasattr(qubit, "xy") and hasattr(qubit.xy, "operations")):
         return
     ops = qubit.xy.operations
-    # Write the REQUESTED operation's storage node. For the default x180 also write
-    # the x180_DragCosine node (the plain "x180" is often a reference alias that
-    # _set_op_amp skips); any other operation is written directly, so this respects
-    # the `operation` contract the qualibrate writeback + power_rabi tests rely on.
-    if operation == "x180":
-        _set_op_amp(ops, "x180_DragCosine", val)
-    _set_op_amp(ops, operation, val)
-    # lock_x90 only ever couples x90 to HALF the x180 amplitude — never for other ops.
-    # Both pi/2 storage nodes get it: -x90 carries its own amplitude (only its alpha
-    # and detuning are references), so skipping it leaves the two pi/2 gates
-    # disagreeing with each other as well as with the pi pulse.
-    if lock_x90 and operation == "x180":
-        half_val = val / 2.0
-        for name in ("x90_DragCosine", "x90", "-x90_DragCosine", "-x90"):
-            _set_op_amp(ops, name, half_val)
+    for name in _amp_nodes(operation):
+        _set_op_amp(ops, name, val)
 
 
 def get_thermalization_time(qubit: Any) -> float:
@@ -488,23 +495,13 @@ def set_saturation_amp(qubit: Any, value: float, *, operation: str = SATURATION_
 
 # ------------------------------------------------------------------ DRAG coefficient
 def get_drag_beta(qubit: Any, operation: str = PI_OPERATION) -> float:
-    """Read the DRAG coefficient from the x180_DragCosine storage node (QUAM stores
-    it as ``DragCosinePulse.alpha``); guards each access so one bad reference does
-    not abort the search."""
+    """Read the DRAG coefficient (QUAM ``DragCosinePulse.alpha``) from the operation's
+    family, falling back to any node that carries one; guards each access so a single
+    bad reference does not abort the search."""
     if not (hasattr(qubit, "xy") and hasattr(qubit.xy, "operations")):
         return 0.0
     ops = qubit.xy.operations
-    for name in ("x180_DragCosine", operation):
-        try:
-            op = ops[name]
-            if isinstance(op, str):
-                continue
-            alpha = op.alpha
-            if alpha is not None:
-                return float(alpha)
-        except Exception:
-            continue
-    for name in list(ops):
+    for name in (*_amp_nodes(operation), *list(ops)):
         try:
             op = ops[name]
             if isinstance(op, str):
@@ -517,22 +514,29 @@ def get_drag_beta(qubit: Any, operation: str = PI_OPERATION) -> float:
     return 0.0
 
 
-def set_drag_beta(qubit: Any, value: float, *, operation: str = PI_OPERATION, lock_x90: bool = True) -> None:
-    """Write the DRAG coefficient (QUAM ``DragCosinePulse.alpha``) on the storage
-    nodes; the reference aliases follow automatically."""
+def set_drag_beta(qubit: Any, value: float, *, operation: str = PI_OPERATION) -> None:
+    """Write the DRAG coefficient (QUAM ``DragCosinePulse.alpha``) on the operation's
+    family -- the same storage nodes ``set_pi_amp`` writes.
+
+    No ``lock_x90``: the pi/2 DRAG is calibrated in its own right and carries its own
+    neutral knob, ``drag_beta_x90``.
+    """
     val = float(value)
     if not (hasattr(qubit, "xy") and hasattr(qubit.xy, "operations")):
         return
     ops = qubit.xy.operations
-    _set_op_alpha(ops, "x180_DragCosine", val)
-    _set_op_alpha(ops, operation, val)
-    if lock_x90:
-        _set_op_alpha(ops, "x90_DragCosine", val)
-        _set_op_alpha(ops, "x90", val)
+    for name in _amp_nodes(operation):
+        _set_op_alpha(ops, name, val)
 
 
 def _set_op_alpha(ops: Any, name: str, value: float) -> None:
-    """Set ops[name].alpha, skipping string-reference aliases."""
+    """Set ``ops[name].alpha``, skipping string-reference aliases AND nodes whose
+    ``alpha`` is itself a QUAM reference.
+
+    Those follow their storage node by design -- ``-x90_DragCosine.alpha`` is exactly
+    such a reference. Forcing a literal over one would silently SEVER the alias, so
+    later writes to the real node would stop propagating to it.
+    """
     try:
         op = ops[name]
     except (KeyError, TypeError):
@@ -546,4 +550,6 @@ def _set_op_alpha(ops: Any, name: str, value: float) -> None:
     except Exception:
         pass
     if hasattr(op, "alpha"):
-        op.alpha = value
+        op.alpha = float(value)
+
+

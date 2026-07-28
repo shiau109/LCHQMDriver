@@ -45,18 +45,34 @@ FIELD_BINDINGS: dict[str, dict[str, VendorBinding]] = {
             convert="a write also sets the pi/2 storage nodes (x90_DragCosine and "
                     "-x90_DragCosine) to HALF this value",
             note="written on the x180_DragCosine storage node; the plain x180 "
-                 "entry is usually a QUAM reference alias and follows. The x90 lock "
-                 "is what makes this field mean the same thing on both backends: "
-                 "Qblox stores it as rxy.amp180 and DERIVES X90 as amp180*theta/180, "
-                 "so an unlocked x90 here would leave QM's pi/2 unreachable under "
-                 "scqo (nothing else reads or writes it) and silently stale - a "
-                 "46-degree 'pi/2' still fits cleanly, it just caps Ramsey contrast "
-                 "at sin^2(46 deg). y90/-y90 are aliases and follow x90_DragCosine"),
+                 "entry is usually a QUAM reference alias and follows. Writes the "
+                 "x180 family ONLY - the pi/2 is its own knob (pi_amp_x90), never "
+                 "derived as half of this one"),
+        "pi_amp_x90": VendorBinding(
+            path="q.xy.operations['x90_DragCosine'].amplitude", unit="",
+            convert="a write also sets -x90_DragCosine, whose AMPLITUDE is its own "
+                    "number (only its alpha/detuning are references - the negative "
+                    "sense comes from axis_angle = pi), so the two pi/2 gates cannot "
+                    "drift apart; y90/-y90 are aliases and follow x90_DragCosine",
+            note="written on the x90_DragCosine storage node; calibrated by "
+                 "qubit_deterministic_benchmarking with target_gate=x90. Qblox "
+                 "DERIVES X90 from rxy.amp180, so it has no independent home there "
+                 "and declines this knob (Unrealized) until a Qblox probe lands"),
         "drag_beta": VendorBinding(
+
+
             path="q.xy.operations['x180_DragCosine'].alpha", unit="",
             convert="QM stores DRAG as DragCosinePulse.alpha; written on the "
                     "x180_DragCosine storage node (reference aliases follow)",
             note="calibrated by qubit_drag_equator / qubit_drag_alternating"),
+        "drag_beta_x90": VendorBinding(
+            path="q.xy.operations['x90_DragCosine'].alpha", unit="",
+            convert="QM stores DRAG as DragCosinePulse.alpha; written on the "
+                    "x90_DragCosine storage node",
+            note="calibrated by qubit_drag_equator / qubit_drag_alternating for x90"),
+
+
+
         "pi_duration_s": VendorBinding(
             path="q.xy.operations['x180'].length", unit="ns",
             convert="seconds -> ns",
