@@ -85,7 +85,18 @@ def build_program(
                 save(n, n_st)
                 with for_(*from_array(amp, amplitudes)):
                     with for_(*from_array(t, durations)):
-                        assign(virtual_detuning_phase, Cast.mul_fixed_by_int(detuning_hz * 1e-9, 4 * t))
+                        # The ramp is NEGATED on purpose -- this is not a typo. QUA's
+                        # frame_rotation_2pi rotates the ELEMENT FRAME, the opposite
+                        # handedness to a pulse-axis phase (Qblox's X90(phase=...)). Both
+                        # consumers recover the residual ZZ as `zz = f_fit - detuning`
+                        # (scqo's neutral estimate(), the node's analysis.py), which only
+                        # means the PHYSICAL zeta if the fringe sits at detuning + zeta.
+                        # Un-negated it reports -zeta. The zero crossing that estimate()
+                        # actually writes back is sign-invariant, so this is a reporting
+                        # fix, not a writeback one. Official 19_zz_off_jazz.py leaves the
+                        # ramp un-negated -- it only takes argmin|zeta|, which cannot tell
+                        # the difference, so do not copy its sign into a probe.
+                        assign(virtual_detuning_phase, Cast.mul_fixed_by_int(-detuning_hz * 1e-9, 4 * t))
 
                         # Reset
                         for ii, qp in multiplexed_qubit_pairs.items():

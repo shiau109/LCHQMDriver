@@ -16,7 +16,7 @@ from customized import quam_fields
 
 @dataclass(frozen=True)
 class RamseyUpdate:
-    d_f01: int               # Hz; subtracted from q.f_01 and q.xy.RF_frequency
+    d_f01: int               # Hz; added to q.f_01 and q.xy.RF_frequency
     charge_dispersion: int   # Hz; written to q.charge_dispersion
 
 
@@ -35,7 +35,11 @@ def compute_update(fit: Dict, detuning_hz: int) -> RamseyUpdate:
 def apply_update(qubit, upd: RamseyUpdate) -> None:
     """Write the correction onto the QUAM qubit (call inside the shell's
     `record_state_updates()` when GUI approval is wanted)."""
-    # Shift f_01 and the xy drive RF together by -d_f01 (the shared mapping seeds f_01
-    # from the drive RF first when the qubit is not yet calibrated).
-    quam_fields.shift_drive_freq(qubit, -upd.d_f01)
+    # Shift f_01 and the xy drive RF together by +d_f01 (the shared mapping seeds f_01
+    # from the drive RF first when the qubit is not yet calibrated). The sign follows
+    # the probe's NEGATED frame ramp (customized/probes/qubit_ramsey.py): the effective
+    # drive sits +detuning above the qubit, so a fringe faster than the applied detuning
+    # means the qubit is HIGH by the difference. Official 06a_ramsey.py subtracts instead
+    # -- it builds its own program with the opposite (un-negated) frame ramp.
+    quam_fields.shift_drive_freq(qubit, upd.d_f01)
     qubit.charge_dispersion = upd.charge_dispersion
