@@ -252,8 +252,7 @@ class QMDriveChannel(_QMChannelView, make_view_base("drive")):
 
     @pi_amp.setter
     def pi_amp(self, value: float) -> None:
-        quam_fields.set_pi_amp(self._q, value, lock_x90=False)
-
+        quam_fields.set_pi_amp(self._q, value)
 
     @property
     def pi_amp_x90(self) -> float:
@@ -261,10 +260,10 @@ class QMDriveChannel(_QMChannelView, make_view_base("drive")):
 
     @pi_amp_x90.setter
     def pi_amp_x90(self, value: float) -> None:
-        quam_fields.set_pi_amp(self._q, value, operation="x90", lock_x90=False)
-
-
-
+        # An INDEPENDENT knob, never pi_amp/2: qubit_deterministic_benchmarking
+        # calibrates the pi/2 in its own right, and amplitude response is not
+        # perfectly linear, which is the error that experiment measures.
+        quam_fields.set_pi_amp(self._q, value, operation="x90")
 
     @property
     def pi_duration_s(self) -> float:
@@ -280,7 +279,7 @@ class QMDriveChannel(_QMChannelView, make_view_base("drive")):
 
     @drag_beta.setter
     def drag_beta(self, value: float) -> None:
-        quam_fields.set_drag_beta(self._q, value, operation="x180", lock_x90=False)
+        quam_fields.set_drag_beta(self._q, value, operation="x180")
 
     @property
     def drag_beta_x90(self) -> float:
@@ -288,17 +287,7 @@ class QMDriveChannel(_QMChannelView, make_view_base("drive")):
 
     @drag_beta_x90.setter
     def drag_beta_x90(self, value: float) -> None:
-        quam_fields.set_drag_beta(self._q, value, operation="x90", lock_x90=False)
-
-    def set_drag_beta(self, value: float, operation: str = "x180", lock_x90: bool = False) -> None:
-        quam_fields.set_drag_beta(self._q, value, operation=operation, lock_x90=lock_x90)
-
-
-
-
-
-
-
+        quam_fields.set_drag_beta(self._q, value, operation="x90")
 
     # Lives on the QUBIT, not on q.xy: the wait is the qubit's own relaxation,
     # and QUAM hangs thermalization off the transmon. The drive channel is the

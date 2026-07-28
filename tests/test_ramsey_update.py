@@ -43,8 +43,12 @@ class _FakeQubit:
 
 
 def test_apply_update_writes_all_three_fields():
+    # d_f01 is ADDED: the probe's frame ramp is negated so the effective drive sits
+    # +detuning above the qubit, making a fringe faster than the applied detuning mean
+    # "the qubit is high by the difference". Flipping this doubles the residual detuning
+    # on every accepted update instead of cancelling it.
     q = _FakeQubit()
     apply_update(q, RamseyUpdate(d_f01=500_000, charge_dispersion=42))
-    assert q.f_01 == 5_000_000_000 - 500_000
-    assert q.xy.RF_frequency == 5_100_000_000 - 500_000
+    assert q.f_01 == 5_000_000_000 + 500_000
+    assert q.xy.RF_frequency == 5_100_000_000 + 500_000
     assert q.charge_dispersion == 42

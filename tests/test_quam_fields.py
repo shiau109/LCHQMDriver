@@ -71,19 +71,64 @@ def test_drive_freq_seeds_f01_from_rf_when_unset():
 
 
 # ------------------------------------------------------------------------------ pi amplitude
-def test_set_pi_amp_locks_x90_for_x180():
+def _chipa_ops():
+    """chipA q1's real shape: three REAL storage nodes plus reference aliases.
+
+    ``-x90_DragCosine`` carries its OWN amplitude (only its alpha/detuning are
+    references), and it held a third inconsistent value -- 0.09329 against x90's
+    0.07302 and a correct 0.14310 -- because nothing wrote it."""
+    class _Op:
+        def __init__(self, amplitude):
+            self.amplitude = amplitude
+
+    return SimpleNamespace(xy=SimpleNamespace(operations={
+        "x180_DragCosine": _Op(0.28619),
+        "x90_DragCosine": _Op(0.07302),
+        "-x90_DragCosine": _Op(0.09329),
+        "x180": "#./x180_DragCosine",   # string-reference aliases: skipped, they follow
+        "x90": "#./x90_DragCosine",
+        "-x90": "#./-x90_DragCosine",
+        "y90": "#./y90_DragCosine",
+    }))
+
+
+def test_set_pi_amp_writes_the_x180_family_only():
+    """pi_amp is the PI amplitude. The pi/2 is its own knob, so a pi write must not
+    touch it -- deriving x90 = pi_amp/2 would overwrite a real calibration."""
     q = _qubit()
-    quam_fields.set_pi_amp(q, 0.24, lock_x90=True)
+    quam_fields.set_pi_amp(q, 0.24)
     assert q.xy.operations["x180"].amplitude == pytest.approx(0.24)
-    assert q.xy.operations["x90"].amplitude == pytest.approx(0.12)
+    assert q.xy.operations["x90"].amplitude == pytest.approx(0.1)  # untouched
 
 
-def test_set_pi_amp_other_operation_never_touches_x90():
+def test_set_pi_amp_x90_writes_both_pi_half_storage_nodes():
+    """The x90 write must reach -x90_DragCosine too, or the two pi/2 gates disagree."""
+    q = _chipa_ops()
+    quam_fields.set_pi_amp(q, 0.143095, operation="x90")
+    ops = q.xy.operations
+    assert ops["x90_DragCosine"].amplitude == pytest.approx(0.143095)
+    assert ops["-x90_DragCosine"].amplitude == pytest.approx(0.143095)
+    # the negative sense comes from axis_angle = pi, so the amplitude matches x90
+    assert ops["-x90_DragCosine"].amplitude == ops["x90_DragCosine"].amplitude
+    assert ops["x180_DragCosine"].amplitude == pytest.approx(0.28619)  # pi untouched
+    for alias in ("x180", "x90", "-x90", "y90"):
+        assert isinstance(ops[alias], str), f"{alias} alias must stay a reference"
+
+
+def test_get_pi_amp_reads_the_requested_family():
+    q = _chipa_ops()
+    assert quam_fields.get_pi_amp(q) == pytest.approx(0.28619)
+    assert quam_fields.get_pi_amp(q, operation="x90") == pytest.approx(0.07302)
+
+
+def test_set_pi_amp_other_operation_writes_only_itself():
+    """A bespoke pulse has no family to keep consistent."""
     q = _qubit()
     q.xy.operations["x90_DRAG"] = SimpleNamespace(amplitude=0.05)
-    quam_fields.set_pi_amp(q, 0.06, operation="x90_DRAG", lock_x90=True)
+    quam_fields.set_pi_amp(q, 0.06, operation="x90_DRAG")
     assert q.xy.operations["x90_DRAG"].amplitude == pytest.approx(0.06)
-    assert q.xy.operations["x90"].amplitude == pytest.approx(0.1)  # untouched
+    assert q.xy.operations["x90"].amplitude == pytest.approx(0.1)   # untouched
+    assert q.xy.operations["x180"].amplitude == pytest.approx(0.2)  # untouched
 
 
 # --------------------------------------------------------- saturation (spec) drive
@@ -233,6 +278,13 @@ def test_qm_channel_views_use_the_shared_mapping():
 
     drive.pi_amp = 0.3
     assert q.xy.operations["x180"].amplitude == pytest.approx(0.3)
+    # pi_amp and pi_amp_x90 are INDEPENDENT knobs: the pi write leaves the pi/2 alone,
+    # because qubit_deterministic_benchmarking calibrates the pi/2 in its own right and
+    # a derived pi_amp/2 would silently overwrite that measurement
+    assert q.xy.operations["x90"].amplitude == pytest.approx(0.1)
+    drive.pi_amp_x90 = 0.16
+    assert q.xy.operations["x90"].amplitude == pytest.approx(0.16)
+    assert q.xy.operations["x180"].amplitude == pytest.approx(0.3)  # pi unchanged
 
     readout = QMReadoutChannel("q0_ro", q)
     readout.readout_freq_hz = 6.4e9
@@ -285,9 +337,15 @@ def test_drag_beta_writes_dragcosine_and_skips_alias():
     }))
     quam_fields.set_drag_beta(q, -0.75)
     assert q.xy.operations["x180_DragCosine"].alpha == pytest.approx(-0.75)
-    assert q.xy.operations["x90_DragCosine"].alpha == pytest.approx(-0.75)  # lock_x90 default True
+    # the pi/2 DRAG is its own knob (drag_beta_x90) and is NOT written here
+    assert q.xy.operations["x90_DragCosine"].alpha == pytest.approx(0.0)
     assert q.xy.operations["x180"] == "#./x180_DragCosine"  # alias untouched
     assert quam_fields.get_drag_beta(q) == pytest.approx(-0.75)
+
+    quam_fields.set_drag_beta(q, -0.4, operation="x90")
+    assert q.xy.operations["x90_DragCosine"].alpha == pytest.approx(-0.4)
+    assert q.xy.operations["x180_DragCosine"].alpha == pytest.approx(-0.75)  # unchanged
+    assert quam_fields.get_drag_beta(q, operation="x90") == pytest.approx(-0.4)
 
 
 # ----------------------------------------------------------------- depletion wait

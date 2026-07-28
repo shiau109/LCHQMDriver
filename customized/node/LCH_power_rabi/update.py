@@ -24,7 +24,13 @@ def apply_update(qubit, operation: str, upd: PowerRabiUpdate, *, update_x90: boo
     """Write the calibrated amplitude onto the QUAM qubit (call inside the
     shell's `record_state_updates()` when GUI approval is wanted).
 
-    When the swept operation is x180 and `update_x90` is set, x90 is locked to
-    half the pi-pulse amplitude.
+    When the swept operation is x180 and `update_x90` is set, x90 is ALSO set to
+    half the pi-pulse amplitude. That halving is this NODE's policy, exposed as its
+    own GUI parameter — `quam_fields.set_pi_amp` has no mode flag for it, because
+    pi and pi/2 are independent knobs (`pi_amp` / `pi_amp_x90`) and a derived x90
+    would silently overwrite a real `qubit_deterministic_benchmarking` calibration.
+    Power Rabi only measures the pi, so halving is a convenience, not a measurement.
     """
-    quam_fields.set_pi_amp(qubit, upd.opt_amp, operation=operation, lock_x90=update_x90)
+    quam_fields.set_pi_amp(qubit, upd.opt_amp, operation=operation)
+    if update_x90 and operation == "x180":
+        quam_fields.set_pi_amp(qubit, upd.opt_amp / 2.0, operation="x90")

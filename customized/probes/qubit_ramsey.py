@@ -1,6 +1,6 @@
 """Ramsey acquisition probe: vendor code only (qm/quam) - no qualibrate, no scqo, no scqat.
 
-Virtual-detuning Ramsey: x90 -> idle -> y90 with the drive virtually detuned by
+Virtual-detuning Ramsey: y90 -> idle -> x90 with the drive virtually detuned by
 `detuning_hz` via a frame rotation proportional to the idle time.
 """
 
@@ -69,9 +69,17 @@ def build_program(
                     align()
                     # Qubit manipulation
                     for i, qubit in multiplexed_qubits.items():
+                        # The ramp is NEGATED on purpose -- this is not a typo. QUA's
+                        # frame_rotation_2pi rotates the ELEMENT FRAME, the opposite
+                        # handedness to a pulse-axis phase (Qblox's X90(phase=...)).
+                        # scqo's contract is that the effective drive sits
+                        # +detuning_hz ABOVE drive_freq_hz, so the frame ramp has to
+                        # run the other way to mean the same thing on both backends.
+                        # Get this wrong and every accepted update DOUBLES the residual
+                        # detuning instead of cancelling it (the fit still looks clean).
                         assign(
                             virtual_detuning_phases[i],
-                            Cast.mul_fixed_by_int(detuning_hz * 1e-9, 4 * idle_time),
+                            Cast.mul_fixed_by_int(-detuning_hz * 1e-9, 4 * idle_time),
                         )
 
                         qubit.xy.play("y90")

@@ -42,6 +42,21 @@ LCH nodes are being refactored so qualibrate is a thin shell, not the architectu
 Shared probe helpers (`select_qubits` — the node-free `get_qubits`; `acquire` — the shared
 execute-and-fetch) live in `customized/probes/_lib.py`.
 
+**Virtual-detuning sign — a SILENT failure.** QUA's `frame_rotation_2pi` rotates the ELEMENT
+FRAME, the opposite handedness to a pulse-axis phase (Qblox's `X90(phase=...)`). A probe
+realizing scqo's `frequency_detuning_hz` must therefore ramp the frame **negative**, so the
+effective drive sits `+detuning` ABOVE `drive_freq_hz` exactly as it does on Qblox — scqo's
+shared `estimate()` writes `drive_freq += (f_fit − applied)` for both backends. Get it backwards
+and every accepted update DOUBLES the residual detuning instead of cancelling it, while the fit
+still converges and looks clean (chipA q1, 2026-07-28: +47.9 k → +95.7 k → +191.5 k Hz).
+BOTH frame-ramping probes carry the negation: `customized/probes/qubit_ramsey.py`
+(`customized/node/LCH_Ramsey/update.py` ADDS `d_f01` to match) and
+`customized/probes/pair_qcq_zz_coupler_freq.py`, where the stakes are lower — un-negated, its
+reported `zz = f_fit − detuning` is sign-flipped, but the zero crossing that feeds the only
+writeback is sign-invariant, so no accepted update was ever wrong. The official nodes leave the
+ramp un-negated (`06a_ramsey.py` subtracts to compensate; `19_zz_off_jazz.py` takes only
+argmin|ζ|, which cannot tell) — do not copy either sign into a probe.
+
 **Why this split:** the scqo contract is that a driver contributes only `probe()`; estimate/update are
 inherited from `scqo.experiments` + scqat. So the probe is the one piece both orchestrators share and
 must stay framework-free, while analysis/update are qualibrate-path adapters. ("probes" matches scqo's
