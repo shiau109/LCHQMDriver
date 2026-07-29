@@ -94,6 +94,66 @@ def test_pair_measure_role_maps_onto_the_vendor_side(backend, roster, measure, s
     assert exp._measure_side(backend.machine) == side
 
 
+def _swap_experiment(cls_name, backend, roster, **kw):
+    import importlib
+
+    module = importlib.import_module(f"customized.scqo.experiments.{cls_name}")
+    cls = next(v for k, v in vars(module).items() if k.startswith("QMPair"))
+    return make_experiment(cls, backend, roster,
+                           cls.Parameters(targets=["q1_q2"], **kw))
+
+
+SWAP_MAPS = ["pair_swap_chevron", "pair_swap_flux_map"]
+
+
+@pytest.mark.parametrize("module", SWAP_MAPS)
+@pytest.mark.parametrize("side,vendor", [("low", "control"), ("high", "target")])
+def test_swap_map_role_selectors_map_onto_the_vendor_side(backend, roster, module,
+                                                          side, vendor):
+    """``drive_side`` (who gets the pi pulse) and ``flux_side`` (whose z line
+    carries the pulse) are independent roster ROLES; the probes take vendor
+    control/target. The stub pair is control=q1 / target=q2 while the roster
+    says high=q2 / low=q1, so a positional guess would invert both."""
+    from customized.scqo.experiments._vendor import role_side
+
+    exp = _swap_experiment(module, backend, roster, drive_side=side, flux_side=side)
+    assert role_side(exp, exp.params.drive_side, field="drive_side") == vendor
+    assert role_side(exp, exp.params.flux_side, field="flux_side",
+                     needs_flux=True) == vendor
+
+
+@pytest.mark.parametrize("module", SWAP_MAPS)
+def test_swap_map_high_side_orientation_drives_the_reduction(backend, roster, module):
+    """``reduce_raw`` labels the joint populations by ROLE, and the probes label
+    them by vendor side (first digit = control). The orientation is resolved
+    once, here."""
+    from customized.scqo.experiments._vendor import role_side
+
+    exp = _swap_experiment(module, backend, roster)
+    assert role_side(exp, "high", field="targets") == "target"  # roster high=q2
+
+
+def test_role_side_refuses_the_selected_member_without_a_flux_channel(backend):
+    """The params-AWARE half of the gate: ``validate_targets`` is a classmethod
+    over (roster, targets) and cannot see ``flux_side``, so it can only ask
+    whether SOME member has a flux channel. Choosing the one that does not is
+    refused here — still pre-probe, before any QUA is built."""
+    from scqo.roster import parse_components
+
+    from conftest import ROSTER_TOML
+    from customized.scqo.backend import QMBackend
+    from customized.scqo.experiments._vendor import role_side
+
+    # same chip, but q2's flux wire is gone -> roster high (=q2) has no flux
+    no_z2 = parse_components(ROSTER_TOML.replace('[lines.z2]\nflux = ["q2"]\n\n', ""))
+    unfluxed = QMBackend(backend.machine, roster=no_z2)
+    exp = _swap_experiment("pair_swap_chevron", unfluxed, no_z2, flux_side="high")
+
+    assert role_side(exp, "low", field="flux_side", needs_flux=True) == "control"
+    with pytest.raises(ValueError, match="no flux channel"):
+        role_side(exp, "high", field="flux_side", needs_flux=True)
+
+
 def test_single_shot_readout_addresses_the_readout_channel(backend, roster):
     """The discriminator proposal writes through the READOUT CHANNEL entity — the
     qubit MODE name carries no knobs since the greenfield split."""

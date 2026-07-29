@@ -64,6 +64,72 @@ def vendor_pair_name(experiment: Any, composite: str) -> str:
         f"{sorted(pairs)})")
 
 
+def role_member(roster: Any, pair: str, role: str) -> str:
+    """The ONE mode filling a pair's ``high``/``low`` role (roster truth)."""
+    members = roster.entities[pair].roles.get(role, ())
+    if len(members) != 1:
+        raise ValueError(
+            f"{pair}: role {role!r} has {len(members)} member(s) "
+            f"{list(members)} - the selected member must be exactly one")
+    return members[0]
+
+
+def role_side(experiment: Any, role: str, *, field: str,
+              needs_flux: bool = False) -> str:
+    """Map a neutral high/low ROLE onto the vendor pair's control/target.
+
+    The roster's declared high/low ROLES are the governed truth and the only
+    source: high/low is design-nominal topology, while a live-f_01 ordering
+    legitimately crosses during tuning (greenfield schema section 4), so there
+    is nothing to fall back to. ``targets`` are ROSTER composite names; the QUAM
+    pair behind one is resolved by the backend (QM names its pairs after the
+    coupler, so the roster name rarely matches), never by indexing
+    ``machine.qubit_pairs`` with the roster name.
+
+    ``field`` is the Parameters field the role came from - it appears in every
+    refusal, so an error says WHICH knob to split the run on. The pair probes
+    take ONE side for the whole program, so a role that maps onto DIFFERENT
+    vendor sides across the selected pairs is refused.
+
+    ``needs_flux=True`` also asserts the selected member owns a flux channel.
+    That gate is params-AWARE, and ``Experiment.validate_targets`` is a
+    classmethod over ``(roster, targets)`` with no view of params - so the
+    roster hook can only ask "could some member carry it", and this is where
+    "the one you chose does" is checked. Still pre-probe: it fires before any
+    QUA is built.
+    """
+    roster = experiment.device.roster
+    targets = list(experiment.params.targets)
+    if not targets:
+        raise ValueError(f"{field}={role!r}: no targets selected")
+    sides: dict[str, str] = {}
+    for pair_name in targets:
+        qp = vendor_pair(experiment, pair_name)
+        control = qp.qubit_control.name
+        target = qp.qubit_target.name
+        member = role_member(roster, pair_name, role)
+        if needs_flux and (member, "flux") not in roster.defaults:
+            raise ValueError(
+                f"{pair_name}: {field}={role!r} selects member {member!r}, which "
+                f"has no flux channel in this roster - nothing to play the flux "
+                f"pulse on. Choose the other member, or wire this one's flux line.")
+        if member == control:
+            sides[pair_name] = "control"
+        elif member == target:
+            sides[pair_name] = "target"
+        else:
+            raise ValueError(
+                f"{pair_name}: roster member {field}={member!r} is neither the "
+                f"vendor pair's control ({control}) nor target ({target}) - "
+                f"roster/vendor naming mismatch")
+    if len(set(sides.values())) > 1:
+        raise ValueError(
+            f"{field}={role!r} maps onto DIFFERENT vendor sides across the "
+            f"selected pairs ({sides}); the probe plays one side per program - "
+            f"run these pairs in separate commands")
+    return next(iter(sides.values()))
+
+
 def flux_source_name(experiment: Any, entity: str, *,
                      qubit_only: bool = False) -> str:
     """The VENDOR name a foreign flux source is addressed by in the probes.

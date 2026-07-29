@@ -3,6 +3,13 @@
 Sweep a flux bias and the drive frequency and read out each qubit; the qubit line is fitted
 flux-by-flux downstream to give a frequency(flux) trace. Optional single flux / xy source qubits:
 when `z_source_qubit` / `xy_source_qubit` are None every measured qubit fluxes / drives itself.
+
+PULSE CONTRACT: `dcs` are VOLTS measured from the standing DC bias that
+`initialize_qpu` applies -- the z `const` pulse rides on top of that offset, so
+the axis is idle-relative and 0 V means "stay parked". `flux_point` is passed
+EXPLICITLY (rather than leaning on quam_builder's "joint" default) because the
+same value feeds the rail validation: the DAC emits idle + excursion, so the
+number that was checked must be the number that plays.
 """
 
 from typing import Callable, Optional
@@ -12,7 +19,7 @@ from qm.qua import *
 from qualang_tools.loops import from_array
 from qualang_tools.units import unit
 
-from customized.probes._lib import acquire as _acquire
+from customized.probes._lib import acquire as _acquire, check_flux_pulse_window, idle_offset_v
 
 
 def build_program(
@@ -28,13 +35,16 @@ def build_program(
     z_source_qubit: Optional[str] = None,
     xy_source_qubit: Optional[str] = None,
     multiplexed: bool = False,
+    flux_point: str = "joint",
 ):
     """Build the qubit-spectroscopy-vs-flux QUA program. Returns (program, sweep_axes).
 
-    `dfs` is the drive-detuning sweep (Hz), `dcs` the flux-bias sweep (V); `qubits` is a
-    BatchableList (see `_lib.select_qubits`). `z_source_qubit` / `xy_source_qubit` (names on
-    `machine`, or None) select a single flux / xy source. `operation_len` (ns) overrides the
-    driving qubit's operation length when not None.
+    `dfs` is the drive-detuning sweep (Hz), `dcs` the flux-PULSE sweep in volts
+    RELATIVE to `flux_point`'s standing offset (see the module docstring's PULSE
+    CONTRACT); `qubits` is a BatchableList (see `_lib.select_qubits`).
+    `z_source_qubit` / `xy_source_qubit` (names on `machine`, or None) select a
+    single flux / xy source. `operation_len` (ns) overrides the driving qubit's
+    operation length when not None.
     """
     u = unit(coerce_to_integer=True)
     num_qubits = len(qubits)
@@ -43,6 +53,21 @@ def build_program(
     # qubit drives its own z- / xy-line (identical to the official 03b node).
     z_source = None if z_source_qubit is None else machine.qubits[z_source_qubit]
     xy_source = None if xy_source_qubit is None else machine.qubits[xy_source_qubit]
+
+    # Validate the line(s) that will actually carry the pulse: the assigned
+    # source when there is one, else every measured qubit's own z. The division
+    # below was always correct; what was missing is the check that the requested
+    # window is expressible AND that idle + excursion stays under the rail.
+    flux_carriers = [z_source] if z_source is not None else list(qubits)
+    amp_ref = {}
+    for carrier in flux_carriers:
+        z = getattr(carrier, "z", None)
+        if z is None:
+            raise ValueError(
+                f"{carrier.name}: no flux line, but this probe plays the flux "
+                f"as a z pulse on it")
+        amp_ref[carrier.name] = check_flux_pulse_window(
+            z, name=carrier.name, idle_v=idle_offset_v(z, flux_point), amps_v=dcs)
 
     # Saturation duration (Python-level): uniform when operation_len is given, else
     # taken from the driving qubit's operation length.
@@ -55,7 +80,10 @@ def build_program(
     sweep_axes = {
         "qubit": xr.DataArray(qubits.get_names()),
         "detuning": xr.DataArray(dfs, attrs={"long_name": "qubit frequency", "units": "Hz"}),
-        "flux_bias": xr.DataArray(dcs, attrs={"long_name": "flux bias", "units": "V"}),
+        "flux_bias": xr.DataArray(
+            dcs,
+            attrs={"long_name": "flux pulse amplitude relative to the idle bias", "units": "V"},
+        ),
     }
 
     with program() as prog:
@@ -67,7 +95,7 @@ def build_program(
         for multiplexed_qubits in qubits.batch():
             # Initialize the QPU in terms of flux points (flux tunable transmons and/or tunable couplers)
             for qubit in multiplexed_qubits.values():
-                machine.initialize_qpu(target=qubit)
+                machine.initialize_qpu(target=qubit, flux_point=flux_point)
             align()
 
             with for_(n, 0, n < num_shots, n + 1):

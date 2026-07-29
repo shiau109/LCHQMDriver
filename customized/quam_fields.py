@@ -257,10 +257,82 @@ def set_readout_rus_threshold(qubit: Any, value: float, *, operation: str = READ
 
 
 # ------------------------------------------------------------------------ idle flux
+#: The named flux points the scqo path PINS, because they are the ones every
+#: probe's ``initialize_qpu`` actually applies: quam_builder defaults
+#: ``flux_point="joint"``, whose qubit leg is ``to_joint_idle()`` ->
+#: ``joint_offset`` and whose coupler leg is ``apply_all_couplers_to_min()`` ->
+#: ``to_decouple_idle()`` -> ``decouple_offset``.
+#:
+#: These accessors stay GENERIC over the vendor vocabulary (the qualibrate path
+#: legitimately runs "independent"), so nothing here refuses a different point.
+#: What refuses is :func:`flux_point_problems`, called once by the scqo backend
+#: factory — because a line that DECLARES one point while the probes APPLY
+#: another makes ``idle_flux`` a knob that reads and writes a number the
+#: hardware never sees. That was live on 5Q4C until 2026-07-29: all five z lines
+#: declared "independent" while every run biased them at ``joint_offset``, so
+#: both the arch fits' and the resonator map's accepted sweet spots were inert.
+GOVERNED_FLUX_POINT = "joint"
+GOVERNED_COUPLER_FLUX_POINT = "off"
+
+
+def flux_point_problems(machine: Any) -> list[str]:
+    """Every reason this QUAM tree's flux points disagree with what runs.
+
+    Empty list = the governed knob and the applied bias are the same field.
+    Pure (no I/O, no QUA); the caller decides how loudly to fail.
+    """
+    problems: list[str] = []
+
+    # None (not an empty set) when the tree cannot answer: an absent attribute
+    # means "cannot determine", and flagging every qubit would be a false alarm.
+    raw_active = getattr(machine, "active_qubits", None)
+    active = None if raw_active is None else {getattr(q, "name", None) for q in raw_active}
+
+    for name, qubit in getattr(machine, "qubits", {}).items():
+        z = getattr(qubit, "z", None)
+        if z is None:
+            continue  # fixed-frequency qubit: no flux line, nothing to govern
+        point = getattr(z, "flux_point", None)
+        if point != GOVERNED_FLUX_POINT:
+            problems.append(
+                f"qubits.{name}.z.flux_point = {point!r}, but every probe biases "
+                f"at {GOVERNED_FLUX_POINT!r} ({GOVERNED_FLUX_POINT}_offset). "
+                f"idle_flux would read/write "
+                f"{getattr(z, f'{point}_offset', '?')} while the hardware holds "
+                f"{getattr(z, f'{GOVERNED_FLUX_POINT}_offset', '?')} V. "
+                f"Set it to {GOVERNED_FLUX_POINT!r} in state.json.")
+        elif active is not None and name not in active:
+            # apply_all_flux_to_joint_idle parks INACTIVE qubits at min_offset,
+            # so their idle_flux is a lie in exactly the same way.
+            problems.append(
+                f"qubits.{name} has a flux line but is not in active_qubit_names: "
+                f"the joint path parks inactive qubits at min_offset, so its "
+                f"idle_flux ({GOVERNED_FLUX_POINT}_offset) is not what the "
+                f"hardware holds. Activate it or remove its flux rider.")
+
+    for name, pair in getattr(machine, "qubit_pairs", {}).items():
+        coupler = getattr(pair, "coupler", None)
+        if coupler is None:
+            continue
+        point = getattr(coupler, "flux_point", None)
+        if point != GOVERNED_COUPLER_FLUX_POINT:
+            problems.append(
+                f"qubit_pairs.{name}.coupler.flux_point = {point!r}, but the "
+                f"joint path decouples every coupler "
+                f"(to_decouple_idle -> decouple_offset), which is "
+                f"{GOVERNED_COUPLER_FLUX_POINT!r}. Set it to "
+                f"{GOVERNED_COUPLER_FLUX_POINT!r} in state.json.")
+
+    return problems
+
+
 def get_idle_flux(qubit: Any) -> float:
     """Standing z-line idle bias (V): the offset SELECTED by ``z.flux_point``
     (joint/independent/min/arbitrary; ``zero`` reads as 0.0). Which named point
-    is active stays vendor config — the neutral knob is the bias AT that point."""
+    is active stays vendor config — the neutral knob is the bias AT that point.
+
+    Under scqo that point must be :data:`GOVERNED_FLUX_POINT`; see
+    :func:`flux_point_problems` for why and where it is enforced."""
     z = qubit.z
     if z.flux_point == "zero":
         return 0.0

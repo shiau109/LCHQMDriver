@@ -44,6 +44,19 @@ def build_backend(cfg: LabConfig, setup: dict, roster: "Roster") -> Backend:
             f"qm setup: {', '.join(missing)} not found in {folder} — "
             "canonical QUAM filenames required"
         )
+    from customized.quam_fields import flux_point_problems
     from customized.scqo.backend import QMBackend
 
-    return QMBackend.load(state_path=str(folder), roster=roster)
+    backend = QMBackend.load(state_path=str(folder), roster=roster)
+
+    # The governed knob must BE the applied bias. Checked once, here, rather than
+    # inside get/set_idle_flux: that getter runs during pull-seeding, so refusing
+    # there would abort session construction with no context, and the accessor is
+    # shared with the qualibrate path where a different point is legitimate.
+    problems = flux_point_problems(backend.machine)
+    if problems:
+        raise SystemExit(
+            f"qm setup: flux points in {folder / 'state.json'} disagree with the "
+            f"bias every probe applies, so idle_flux would be a knob the hardware "
+            f"never sees:\n  - " + "\n  - ".join(problems))
+    return backend

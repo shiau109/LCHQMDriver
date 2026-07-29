@@ -269,7 +269,11 @@ def test_qm_channel_views_use_the_shared_mapping():
 
     q = _qubit(f_01=5.0e9, xy_rf=5.1e9)
     q.name = "q0"
-    q.z = SimpleNamespace(flux_point="joint", joint_offset=0.0)
+    # a real FluxLine carries all four named offsets; the stub needs the other
+    # ones so the "nothing else moved" assertion below can actually check them
+    q.z = SimpleNamespace(flux_point="joint", joint_offset=0.0,
+                          independent_offset=0.0, min_offset=0.0,
+                          arbitrary_offset=0.0)
 
     drive = QMDriveChannel("q0_xy", q)
     drive.drive_freq_hz = 5.002e9
@@ -298,11 +302,17 @@ def test_qm_channel_views_use_the_shared_mapping():
     assert q.resonator.operations["readout"]._raw_weights == [(1.0, 2000), (0.0, 2000)]
     assert readout.readout_integration_s == pytest.approx(2.0e-6)
 
-    # the flux view's single knob lands on the offset z.flux_point SELECTS
+    # the flux view's single knob lands on the offset z.flux_point SELECTS —
+    # which under scqo is always "joint", the point every probe applies
     flux = QMFluxChannel("q0_z", q)
     flux.idle_flux = -0.031
     assert q.z.joint_offset == pytest.approx(-0.031)
     assert flux.idle_flux == pytest.approx(-0.031)
+    # ... and NOTHING else moved. This is the assertion that would have caught
+    # the 5Q4C defect: there the line declared "independent", so every accepted
+    # sweet spot landed on independent_offset while the hardware held
+    # joint_offset. The write succeeded and the run was simply unaffected.
+    assert q.z.independent_offset == 0.0
 
 
 def test_qm_flux_view_serves_a_coupler_without_a_qubit():

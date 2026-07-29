@@ -1,6 +1,12 @@
-"""QM qubit echo vs flux (T2 echo spectrum) for scqo - supplies only ``probe()``.
+"""QM qubit echo vs flux PULSE (T2 echo spectrum) for scqo - supplies only ``probe()``.
 
-Parameters, fit, and reporting are inherited from ``scqo.experiments.QubitEchoFlux``.
+Parameters, fit, and reporting are inherited from
+``scqo.experiments.QubitEchoFluxPulse``.
+
+PULSE CONTRACT: as in ``qubit_relaxation_flux_pulse`` - the z bias is a ``const``
+PULSE (played in BOTH echo arms) riding on the standing offset, so
+``flux_bias_v`` is an excursion FROM ``idle_flux``. The probe MODULE keeps its
+historical name (shared with the qualibrate shell path).
 """
 
 from __future__ import annotations
@@ -10,15 +16,16 @@ from typing import Any
 import numpy as np
 
 from scqo import register
-from scqo.experiments import QubitEchoFlux
+from scqo.experiments import QubitEchoFluxPulse
 
 
 @register
-class QMQubitEchoFlux(QubitEchoFlux):
-    """Build a multiplexed T2 Echo vs Flux QUA program on the QM OPX."""
+class QMQubitEchoFluxPulse(QubitEchoFluxPulse):
+    """Build a multiplexed T2 Echo vs flux-PULSE QUA program on the QM OPX."""
 
     def probe(self) -> Any:
         from ._reset import reset_type
+        from customized.quam_fields import GOVERNED_FLUX_POINT
         from customized.probes._lib import select_qubits
         from customized.probes import qubit_echo_flux as echo_flux_probe
 
@@ -38,4 +45,5 @@ class QMQubitEchoFlux(QubitEchoFlux):
             num_shots=int(self.params.num_averages),
             reset_type=reset_type(self),
             use_state_discrimination=bool(self.params.use_state_discrimination),
+            flux_point=GOVERNED_FLUX_POINT,
         )

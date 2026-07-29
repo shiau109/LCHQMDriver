@@ -30,38 +30,13 @@ class QMPairZZCoupler(PairZZCoupler):
     def _measure_side(self, machine: Any) -> str:
         """Map the neutral ``measure`` role (high/low) onto vendor control/target.
 
-        The roster's declared high/low ROLES are the governed truth and the only
-        source: high/low is design-nominal topology, while a live-f_01 ordering
-        legitimately crosses during tuning (greenfield schema section 4), so
-        there is nothing to fall back to. The probe takes ONE side for all pairs,
-        so a mixed mapping across the selected pairs refuses.
+        The mapping itself is shared with the pair swap maps — see
+        ``_vendor.role_side`` for why the roster's declared roles are the only
+        source and why a mixed mapping refuses. ``machine`` is accepted (and
+        unused) so the call site reads like the probe helpers around it."""
+        from ._vendor import role_side
 
-        ``targets`` are ROSTER composite names; the QUAM pair behind one is
-        resolved by the backend (QM names its pairs after the coupler, so the
-        roster name rarely matches), never by indexing ``machine.qubit_pairs``
-        with the roster name."""
-        roster = self.device.roster
-        sides: dict[str, str] = {}
-        for pair_name in self.params.targets:
-            qp = self._vendor_pair(machine, pair_name)
-            control = qp.qubit_control.name
-            target = qp.qubit_target.name
-            measured = self._role_member(roster, pair_name, self.params.measure)
-            if measured == control:
-                sides[pair_name] = "control"
-            elif measured == target:
-                sides[pair_name] = "target"
-            else:
-                raise ValueError(
-                    f"{pair_name}: roster member {self.params.measure}={measured!r} "
-                    f"is neither the vendor pair's control ({control}) nor target "
-                    f"({target}) - roster/vendor naming mismatch")
-        if len(set(sides.values())) > 1:
-            raise ValueError(
-                f"measure={self.params.measure!r} maps onto DIFFERENT vendor sides "
-                f"across the selected pairs ({sides}); the probe measures one side "
-                f"per program - run these pairs in separate commands")
-        return next(iter(sides.values()))
+        return role_side(self, self.params.measure, field="measure")
 
     def _vendor_pair(self, machine: Any, name: str) -> Any:
         """The QUAM qubit_pair behind a ROSTER composite name.
@@ -72,16 +47,6 @@ class QMPairZZCoupler(PairZZCoupler):
         from ._vendor import vendor_pair
 
         return vendor_pair(self, name)
-
-    @staticmethod
-    def _role_member(roster: Any, pair: str, role: str) -> str:
-        """The ONE mode filling a pair's ``high``/``low`` role (roster truth)."""
-        members = roster.entities[pair].roles.get(role, ())
-        if len(members) != 1:
-            raise ValueError(
-                f"{pair}: role {role!r} has {len(members)} member(s) "
-                f"{list(members)} - the echoed qubit must be exactly one")
-        return members[0]
 
     def probe(self) -> Any:
         from ._reset import reset_type

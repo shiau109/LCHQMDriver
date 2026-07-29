@@ -194,3 +194,71 @@ def test_plot_population_maps_raw_when_no_state_discrimination():
     )
     assert set(figs) == {"raw_I_maps"}
     assert _n_map_panels(figs["raw_I_maps"]) == 2
+
+
+# ----------------------------------------------------- the scqo swap-map reduction
+
+def _joint_raw() -> xr.Dataset:
+    """A probe-shaped joint-population dataset: the four P00/P01/P10/P11 maps
+    over (qubit_pair, x, y), FIRST digit = the vendor's control qubit."""
+    dims = ["qubit_pair", "x", "y"]
+    coords = {"qubit_pair": ["q1_q2"], "x": [0.0, 1.0], "y": [0.0, 1.0, 2.0]}
+
+    def var(values):
+        return xr.DataArray(np.array([values], dtype=float), dims=dims, coords=coords)
+
+    # control-excited, target-excited, both, neither — rows sum to 1
+    return xr.Dataset({
+        "state_eg": var([[0.7, 0.4, 0.1], [0.6, 0.3, 0.05]]),
+        "state_ge": var([[0.1, 0.4, 0.7], [0.2, 0.5, 0.80]]),
+        "state_ee": var([[0.02, 0.03, 0.04], [0.05, 0.06, 0.07]]),
+        "state_gg": var([[0.18, 0.17, 0.16], [0.15, 0.14, 0.08]]),
+    })
+
+
+class _Reducer:
+    """The mixin under test, with the orientation probe() would have resolved."""
+
+    name = "pair_swap_chevron"
+
+    def __init__(self, high_side):
+        self._high_side = high_side
+
+
+def _reduce(high_side, raw):
+    from customized.scqo.experiments._pair_roles import JointPopulationMixin
+
+    reducer = type("R", (JointPopulationMixin, _Reducer), {})(high_side)
+    return reducer.reduce_raw(raw)
+
+
+@pytest.mark.parametrize("high_side", ["control", "target"])
+def test_reduce_raw_labels_the_marginals_by_roster_role(high_side):
+    """The probes label the joint populations by VENDOR side; scqo's contract is
+    role-named. Which marginal is p_high therefore follows the orientation, and
+    getting it backwards would mislabel every map without changing its shape."""
+    raw = _joint_raw()
+    out = _reduce(high_side, raw)
+
+    assert set(out.data_vars) == {"p_high", "p_low", "p_ee", "p_gg"}
+    p_control = raw["state_eg"] + raw["state_ee"]
+    p_target = raw["state_ge"] + raw["state_ee"]
+    expect_high = p_control if high_side == "control" else p_target
+    expect_low = p_target if high_side == "control" else p_control
+    xr.testing.assert_allclose(out["p_high"], expect_high)
+    xr.testing.assert_allclose(out["p_low"], expect_low)
+    xr.testing.assert_allclose(out["p_ee"], raw["state_ee"])
+
+
+def test_reduce_raw_marginals_satisfy_the_inclusion_exclusion_identity():
+    """p_gg = 1 - p_high - p_low + p_ee exactly — which is why the contract
+    requires only two marginals plus the |ee> witness, not all four."""
+    out = _reduce("target", _joint_raw())
+    derived = 1.0 - out["p_high"] - out["p_low"] + out["p_ee"]
+    xr.testing.assert_allclose(out["p_gg"], derived)
+
+
+def test_reduce_raw_refuses_an_undiscriminated_probe_with_the_fix():
+    raw = _joint_raw().drop_vars("state_ee").rename({"state_eg": "I_control"})
+    with pytest.raises(ValueError, match="single_shot_readout"):
+        _reduce("control", raw)

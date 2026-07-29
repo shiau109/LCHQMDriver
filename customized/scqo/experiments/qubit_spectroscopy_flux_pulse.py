@@ -11,8 +11,13 @@ flux is a z PULSE played only alongside the saturation drive
 (``customized/probes/qubit_spectroscopy_flux.py``: ``qubit.z.play(...,
 duration=operation_duration)`` then ``align()`` then ``measure``), so every
 readout happens at idle flux and the neutral ``estimate()`` reduces the map
-against ONE global IQ reference. The probe MODULE keeps its historical name (it
-is shared with the qualibrate shell path).
+against ONE global IQ reference. The DAC adds that pulse to the standing offset
+``initialize_qpu`` applies, which is what makes ``flux_bias_v`` an excursion FROM
+``idle_flux`` (0 V = stay parked) and why the neutral ``estimate()``
+re-references the fitted sweet spot to an absolute set-point before writing
+``flux_offset``. ``flux_point`` is passed explicitly so the bias the probe
+rail-validated is the bias that plays. The probe MODULE keeps its historical name
+(it is shared with the qualibrate shell path).
 
 AXIS-ORDER NOTE (do not "fix" the order below): the probe's QUA loops nest df
 (outer) over dc (inner) and its streams are ``buffer(len(dcs)).buffer(len(dfs))``,
@@ -40,6 +45,7 @@ class QMQubitSpectroscopyFluxPulse(QubitSpectroscopyFluxPulse):
     def probe(self) -> Any:
         from customized.probes._lib import select_qubits
         from customized.probes import qubit_spectroscopy_flux as flux_probe
+        from customized.quam_fields import GOVERNED_FLUX_POINT
 
         from ._vendor import flux_source_name
 
@@ -64,6 +70,7 @@ class QMQubitSpectroscopyFluxPulse(QubitSpectroscopyFluxPulse):
             num_shots=self.params.num_averages,
             z_source_qubit=z_source,
             xy_source_qubit=None,  # None = every measured qubit drives its own xy line
+            flux_point=GOVERNED_FLUX_POINT,
         )
         # Canonical names in RAW nesting order (detuning outer, flux inner — see
         # module docstring); the DataArray values (incl. units attrs) are reused.

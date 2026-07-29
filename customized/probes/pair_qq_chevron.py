@@ -15,8 +15,20 @@ single-qubit averages. Without state discrimination the raw I/Q of each qubit is
 The sub-4ns flux-pulse granularity uses the baking tool (`qualang_tools.bakery`):
 short segments (1..16 ns) are baked into the config, and longer pulses combine a
 baked tail with a dynamically stretched (multiple-of-4ns) `play`.
+
+Amplitude sweep (`amp_mode`), mirroring `customized.probes.pair_qcq_fixed_time`:
+  - "prefactor" (default, what the qualibrate node uses): the sweep values are a
+    unitless pre-factor on a base amplitude computed from QUAM as the |11>-|02>
+    resonance point of each pair.
+  - "absolute": the sweep values ARE the emitted flux-pulse amplitudes in volts.
+    The QUAM |11>-|02> formula is not consulted at all (it is meaningless when the
+    caller names volts, and a bring-up tree may not carry the fields it reads).
+
+`flux_role` selects which qubit's z line carries the flux pulse; it defaults to
+the control qubit, which is what this probe used to hardwire.
 """
 
+import warnings
 from typing import Callable, Optional
 
 import numpy as np
@@ -27,6 +39,171 @@ from qualang_tools.bakery import baking
 from qualang_tools.loops import from_array
 
 from customized.probes._lib import acquire as _acquire
+from customized.probes._lib import dac_rail_v
+
+# Largest magnitude QUA accepts for a dynamic `amplitude_scale` (the fixed-point range is (-2, 2)).
+_MAX_AMP_SCALE = 2.0
+
+
+def _flux_qubit(qp, flux_role: str):
+    """Return the qubit of the pair whose z line carries the flux pulse."""
+    return qp.qubit_target if flux_role == "target" else qp.qubit_control
+
+
+def resolve_amplitudes(qubit_pairs, amplitudes, *, amp_mode: str, flux_role: str):
+    """Resolve the amplitude sweep into what the QUA program actually needs.
+
+    Returns `(qua_amps, base_levels, denoms)`:
+      - `qua_amps` is the array the single shared QUA loop iterates (the value the
+        baked pulse's `amp_array` scales by);
+      - `base_levels[pair]` is the level the 1..16 ns segments are baked at;
+      - `denoms[pair]` is the stored amplitude of the z line's `const` operation,
+        which the >16 ns `play` branch divides by.
+
+    Both QUA branches emit `base_level * qua_amp` volts -- the baked branch scales
+    the baked waveform directly, the play branch plays `const` at
+    `(base_level/denom) * qua_amp`. That equality is the invariant every mode has
+    to preserve, and it is what `tests/test_pair_swap_probes.py` pins.
+
+    In "prefactor" mode `base_level` is the per-pair QUAM |11>-|02> amplitude and
+    `qua_amps` is the sweep verbatim -- the same numbers this probe has always
+    played, so the qualibrate node is unchanged (what is new there is that the
+    degenerate cases refuse by name instead of by ZeroDivisionError). In
+    "absolute" mode the sweep is volts: one
+    reference `amp_ref = max|amplitudes|` becomes the baked level for every pair
+    and `qua_amps = amplitudes / amp_ref`, so the emitted volts equal the swept
+    value on both branches. The reference must be a SCALAR because
+    `for_(*from_array(a, ...))` is one loop shared by every multiplexed pair;
+    deriving it from the sweep also makes the stored waveform peak equal the
+    sweep's own maximum, so the DAC-rail guard below becomes the physically
+    meaningful one ("you asked to emit more than the rail can").
+
+    Pure: no QUA, no config, no baking -- callable from a test with stub pairs.
+    """
+    if amp_mode not in ("absolute", "prefactor"):
+        raise ValueError(f"amp_mode must be 'absolute' or 'prefactor', got {amp_mode!r}")
+    if flux_role not in ("control", "target"):
+        raise ValueError(f"flux_role must be 'control' or 'target', got {flux_role!r}")
+
+    amplitudes = np.asarray(amplitudes, dtype=float)
+    if amplitudes.size == 0:
+        raise ValueError("amplitudes is empty; nothing to sweep.")
+
+    # The z line carrying the pulse must exist and own the `const` operation the
+    # >16 ns branch stretches. The DAC rail is read PER PORT (direct 0.5 V vs
+    # amplified 2.5 V) -- a fixed 0.5 would refuse every amplified-mode config.
+    denoms = {}
+    rails = {}
+    for qp in qubit_pairs:
+        fq = _flux_qubit(qp, flux_role)
+        if fq.z is None:
+            raise ValueError(
+                f"{flux_role} qubit of {qp.name} ({fq.name}) has no z line; cannot play a flux pulse."
+            )
+        if "const" not in fq.z.operations:
+            raise ValueError(
+                f"z line of {fq.name} has no operation 'const'; available: {list(fq.z.operations)}"
+            )
+        rail = dac_rail_v(fq.z)
+        denom = float(fq.z.operations["const"].amplitude)
+        if abs(denom) >= rail:
+            raise ValueError(
+                f"z op 'const' on {fq.name} has amplitude {denom} V >= {rail} V "
+                f"(the OPX1000 LF-FEM full scale of its output mode): the stored waveform peak "
+                f"is clipped/corrupted on hardware and the simulator hides it. Lower the op "
+                f"amplitude, or run that port in 'amplified' mode."
+            )
+        denoms[qp.name] = denom
+        rails[qp.name] = rail
+
+    if amp_mode == "absolute":
+        amp_ref = float(np.max(np.abs(amplitudes)))
+        if amp_ref == 0.0:
+            raise ValueError(
+                "an all-zero absolute amplitude sweep has no reference to bake against; "
+                "widen the window or use amp_mode='prefactor'."
+            )
+        for qp in qubit_pairs:
+            if amp_ref >= rails[qp.name]:
+                raise ValueError(
+                    f"absolute flux sweep peaks at {amp_ref} V >= {rails[qp.name]} V, the "
+                    f"OPX1000 LF-FEM full scale of {_flux_qubit(qp, flux_role).name}'s output "
+                    f"mode: that pulse is clipped/corrupted on hardware and the simulator hides "
+                    f"it. Narrow the amplitude window."
+                )
+        base_levels = {qp.name: amp_ref for qp in qubit_pairs}
+        qua_amps = amplitudes / amp_ref
+    else:
+        # The flux-pulse base amplitude that brings |11> into resonance with |02> for each pair.
+        base_levels = {}
+        for qp in qubit_pairs:
+            detuning = (qp.qubit_control.xy.RF_frequency - qp.qubit_target.xy.RF_frequency
+                        - qp.qubit_target.anharmonicity)
+            quad = float(qp.qubit_control.freq_vs_flux_01_quad_term or 0.0)
+            with np.errstate(invalid="ignore", divide="ignore"):
+                level = float(np.sqrt(-detuning / quad)) if quad else float("nan")
+            if not np.isfinite(level) or level <= 0.0:
+                # The pre-factor sweep is defined RELATIVE to this level, so a
+                # chip whose quad term is unmeasured (0/None) or whose detuning
+                # has the wrong sign has nothing for it to be a factor OF. This
+                # used to be a bare ZeroDivisionError (quad 0), a TypeError
+                # (quad None) or a baked NaN waveform (wrong sign) -- and it is
+                # the state 7 of the 9 live chipA pairs are actually in.
+                raise ValueError(
+                    f"{qp.name}: the |11>-|02> base amplitude is not a usable level "
+                    f"({level}). It is sqrt(-detuning / freq_vs_flux_01_quad_term) with "
+                    f"detuning = {detuning:.4g} Hz and "
+                    f"freq_vs_flux_01_quad_term = {quad:.4g} — measure the control qubit's "
+                    f"flux arch (qubit_spectroscopy_flux_pulse) to fill the quad term in, or "
+                    f"sweep volts directly with amp_mode='absolute', which does not use it."
+                )
+            base_levels[qp.name] = level
+        qua_amps = amplitudes
+        for qp in qubit_pairs:
+            level = base_levels[qp.name]
+            if abs(level) >= rails[qp.name]:
+                # WARN, not raise: this level is computed from the chip's own
+                # |11>-|02> detuning, and a real chip can legitimately land above
+                # the rail. Raising here would break the qualibrate node on a
+                # config that has always "worked" -- silently clipped.
+                warnings.warn(
+                    f"{qp.name}: the |11>-|02> base amplitude is {level} V >= "
+                    f"{rails[qp.name]} V, the OPX1000 LF-FEM full scale of its output mode. "
+                    f"The baked waveform peak is clipped on hardware and the simulator hides "
+                    f"it -- sweep in volts (amp_mode='absolute') below the rail instead.",
+                    RuntimeWarning, stacklevel=2)
+
+    # One baked op set per flux ELEMENT (baking files its pulses and waveforms
+    # under the z element's own name -- `<element>_baked_pulse_<i>`), so two
+    # pairs sharing a flux qubit at DIFFERENT base levels would silently
+    # overwrite each other's waveforms in the shared config.
+    per_element = {}
+    for qp in qubit_pairs:
+        element = _flux_qubit(qp, flux_role).z.name
+        seen = per_element.setdefault(element, (qp.name, base_levels[qp.name]))
+        if seen[0] != qp.name and seen[1] != base_levels[qp.name]:
+            raise ValueError(
+                f"pairs {seen[0]} and {qp.name} share the flux element {element!r} but need "
+                f"different baked base levels ({seen[1]} V vs {base_levels[qp.name]} V); the "
+                f"baked flux_pulse ops would overwrite each other. Run these pairs separately."
+            )
+
+    max_qua = float(np.max(np.abs(qua_amps)))
+    if max_qua >= _MAX_AMP_SCALE:
+        raise ValueError(
+            f"amplitude sweep exceeds QUA's amplitude_scale range: max |a| = {max_qua:.3f} "
+            f">= {_MAX_AMP_SCALE} (the baked pulse is scaled by this value directly)."
+        )
+    for qp in qubit_pairs:
+        play_scale = abs(base_levels[qp.name] / denoms[qp.name]) * max_qua
+        if play_scale >= _MAX_AMP_SCALE:
+            raise ValueError(
+                f"flux sweep for {qp.name} exceeds QUA's amplitude_scale range on the >16 ns "
+                f"branch: max |(base/const)*a| = {play_scale:.3f} >= {_MAX_AMP_SCALE} "
+                f"(base = {base_levels[qp.name]} V, const = {denoms[qp.name]} V). "
+                f"Reduce the amplitude range or raise the 'const' op amplitude."
+            )
+    return qua_amps, base_levels, denoms
 
 
 def baked_waveform(qubit, baked_config, base_level: float = 0.5, max_samples: int = 16):
@@ -61,6 +238,8 @@ def build_program(
     num_shots: int,
     reset_type: str,
     use_state_discrimination: bool,
+    amp_mode: str = "prefactor",
+    flux_role: str = "control",
     drive_role: str = "control",
     simulate: bool = False,
 ):
@@ -70,31 +249,38 @@ def build_program(
     the baked flux-pulse operations and MUST be the config used to execute (pass it to
     `acquire(..., config=baked_config)`); a freshly generated config would lack them.
 
-    `amplitudes` is the flux-pulse amplitude pre-factor sweep (centred on 1.0);
+    `amplitudes` is the flux-pulse amplitude sweep -- a unitless pre-factor centred on
+    1.0 when `amp_mode="prefactor"` (the default), or absolute volts when
+    `amp_mode="absolute"` (see the module docstring and `resolve_amplitudes`).
     `times_cycles` is the pulse-duration sweep in ns; `qubit_pairs` is a BatchableList
-    of qubit pairs (`qubit_pairs.batch()` / `.get_names()`). `drive_role` selects which
-    qubit of each pair receives the x180 ("control" or "target").
+    of qubit pairs (`qubit_pairs.batch()` / `.get_names()`). `flux_role` selects which
+    qubit of each pair carries the flux pulse and `drive_role` which receives the x180
+    ("control" or "target"); the two are independent.
     """
     num_qubit_pairs = len(qubit_pairs)
 
-    # The flux-pulse base amplitude that brings |11> into resonance with |02> for each pair.
-    pulse_amplitudes = {}
-    for qp in qubit_pairs:
-        detuning = qp.qubit_control.xy.RF_frequency - qp.qubit_target.xy.RF_frequency - qp.qubit_target.anharmonicity
-        pulse_amplitudes[qp.name] = float(np.sqrt(-detuning / qp.qubit_control.freq_vs_flux_01_quad_term))
+    qua_amps, base_levels, denoms = resolve_amplitudes(
+        qubit_pairs, amplitudes, amp_mode=amp_mode, flux_role=flux_role
+    )
 
     sweep_axes = {
         "qubit_pair": xr.DataArray(qubit_pairs.get_names()),
-        "amplitude": xr.DataArray(amplitudes, attrs={"long_name": "amplitudes of the flux pulse"}),
+        # the axis carries what the CALLER swept, not the QUA scale factor
+        "amplitude": xr.DataArray(
+            np.asarray(amplitudes, dtype=float),
+            attrs={"long_name": "amplitudes of the flux pulse",
+                   "units": "V" if amp_mode == "absolute" else "prefactor"},
+        ),
         "time": xr.DataArray(times_cycles, attrs={"long_name": "pulse duration", "units": "ns"}),
     }
 
     baked_config = machine.generate_config()
 
-    # Pre-compute the baked short segments (1..16 samples) for each control qubit in the pairs.
+    # Pre-compute the baked short segments (1..16 samples) for each flux qubit in the pairs.
     baked_signals = {
-        qp.qubit_control.name: baked_waveform(
-            qp.qubit_control, baked_config, base_level=pulse_amplitudes[qp.name], max_samples=16
+        _flux_qubit(qp, flux_role).name: baked_waveform(
+            _flux_qubit(qp, flux_role), baked_config,
+            base_level=base_levels[qp.name], max_samples=16
         )
         for qp in qubit_pairs
     }
@@ -130,8 +316,8 @@ def build_program(
             # Averaging loop
             with for_(n, 0, n < num_shots, n + 1):
                 save(n, n_st)
-                # Pulse amplitude loop
-                with for_(*from_array(a, amplitudes)):
+                # Pulse amplitude loop (the QUA scale factor; see resolve_amplitudes)
+                with for_(*from_array(a, qua_amps)):
                     ################################################################################################
                     # The duration argument in the play command can only produce pulses with duration multiple of  #
                     # 4ns. To overcome this limitation we use the baking tool from the qualang-tools package to    #
@@ -140,6 +326,7 @@ def build_program(
                     ################################################################################################
                     with for_(*from_array(t, times_cycles)):
                         for ii, qp in multiplexed_qubit_pairs.items():
+                            fq = _flux_qubit(qp, flux_role)
                             # Qubit initialization
                             qp.qubit_control.reset(reset_type, simulate)
                             qp.qubit_target.reset(reset_type, simulate)
@@ -158,8 +345,8 @@ def build_program(
                                     # Switch case to select the baked pulse with duration t ns
                                     for j in range(1, 17):
                                         with case_(j):
-                                            baked_signals[qp.qubit_control.name][j - 1].run(
-                                                amp_array=[(qp.qubit_control.z.name, a)]
+                                            baked_signals[fq.name][j - 1].run(
+                                                amp_array=[(fq.z.name, a)]
                                             )
 
                             # For pulse durations above 16ns we combine baking with regular play statements.
@@ -173,10 +360,10 @@ def build_program(
                                     # Play only the pulse multiple of 4
                                     with case_(0):
                                         align()
-                                        p = pulse_amplitudes[qp.name]
-                                        denom = qp.qubit_control.z.operations["const"].amplitude
+                                        p = base_levels[qp.name]
+                                        denom = denoms[qp.name]
                                         scale = (p / denom) * a
-                                        qp.qubit_control.z.play(
+                                        fq.z.play(
                                             "const",
                                             duration=t_cycles,
                                             amplitude_scale=scale,
@@ -185,17 +372,17 @@ def build_program(
                                     for j in range(1, 4):
                                         with case_(j):
                                             align()
-                                            p = pulse_amplitudes[qp.name]
-                                            denom = qp.qubit_control.z.operations["const"].amplitude
+                                            p = base_levels[qp.name]
+                                            denom = denoms[qp.name]
                                             scale = (p / denom) * a
                                             with strict_timing_():
-                                                qp.qubit_control.z.play(
+                                                fq.z.play(
                                                     "const",
                                                     duration=t_cycles,
                                                     amplitude_scale=scale,
                                                 )
-                                                baked_signals[qp.qubit_control.name][j - 1].run(
-                                                    amp_array=[(qp.qubit_control.z.name, a)]
+                                                baked_signals[fq.name][j - 1].run(
+                                                    amp_array=[(fq.z.name, a)]
                                                 )
                             align()
 

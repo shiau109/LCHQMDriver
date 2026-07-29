@@ -195,9 +195,16 @@ FIELD_BINDINGS: dict[str, dict[str, VendorBinding]] = {
                     "interaction_offset, arbitrary -> arbitrary_offset, 'zero' "
                     "likewise 0 V and read-only",
             note="which named flux point is active stays vendor config "
-                 "(z.flux_point / coupler.flux_point, catalogued below); the "
-                 "write lands on hardware at the next initialize_qpu (every "
-                 "probe runs it). A coupler's standing/decouple bias IS this "
+                 "(z.flux_point / coupler.flux_point, catalogued below), BUT "
+                 "the scqo path PINS it: z.flux_point must be 'joint' and "
+                 "coupler.flux_point 'off', because that is what every probe's "
+                 "initialize_qpu applies, and the backend factory REFUSES a "
+                 "state that disagrees (quam_fields.flux_point_problems). "
+                 "Without that pin the knob reads and writes an offset the "
+                 "hardware never holds - live on 5Q4C until 2026-07-29. Given "
+                 "the pin, the write lands on hardware at the next "
+                 "initialize_qpu (every probe runs it). A coupler's "
+                 "standing/decouple bias IS this "
                  "knob on its own flux channel - the old pair-level "
                  "coupler_decouple_v / coupler_interaction_v are gone. On a "
                  "fixed-frequency machine the qubit has no z, so the roster "
@@ -392,7 +399,10 @@ VENDOR_ONLY: dict[str, VendorOnly] = {
             "arbitrary/zero) - SELECTS which offset the tracked idle_flux "
             "reads and writes on q1_z. A mode switch, not a calibration "
             "outcome; flipping it re-points idle_flux at a different stored "
-            "number, so re-seed after changing it"),
+            "number, so re-seed after changing it. Under scqo it is PINNED to "
+            "'joint' (the point every probe's initialize_qpu applies) and the "
+            "backend factory refuses anything else - a declaration that "
+            "disagrees with the applied bias makes idle_flux inert"),
     "coupler_flux_point": VendorOnly(
         path="qp.coupler.flux_point", unit="", kind="vendor",
         doc="which named coupler point idles (off/on/arbitrary/zero) - SELECTS "

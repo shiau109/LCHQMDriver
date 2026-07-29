@@ -79,6 +79,30 @@ in `customized/node/LCH_power_rabi/parameters.py`), **never** in vendored `calib
 power) and `resonator_spectroscopy_power_amp` (sweeps amplitude prefactors) take absolute-dBm inputs
 (`min/max_power_dbm`).
 
+**The DAC rail is a property of the PORT, not a constant.** An OPX1000 LF-FEM analog output
+reaches ±0.5 V in `direct` mode and ±2.5 V in `amplified` mode, and a stored waveform peak at or
+above its port's full scale is clipped on hardware while the SIMULATOR SHOWS NOTHING. The live
+chipA state runs every flux port `amplified` with `const` op amplitudes at 1.25 V, so a probe that
+hardcodes 0.5 refuses the real chip outright — which is what `pair_qcq_fixed_time` did until
+2026-07-29. Flux probes resolve it through `customized/probes/_lib.py::dac_rail_v(channel)`
+(unknown port → the conservative direct rail); `pair_qq_chevron` and `pair_qcq_fixed_time` use it.
+`customized/probes/qc_N_swap_amp.py` still carries its own `_DAC_RAIL = 0.5` and has the same bug.
+
+**Flux-amplitude sweeps: absolute volts or prefactor.** Both pair swap probes take
+`amp_mode="absolute"|"prefactor"` (and `flux_role` selecting which member's z carries the pulse).
+scqo drives them in `"absolute"`, where the swept values ARE the emitted volts;
+`pair_qq_chevron`'s default stays `"prefactor"` — a factor on the QUAM-computed |11>-|02>
+amplitude — because that is what the qualibrate node uses. The chevron's two QUA branches (baked
+below 17 ns, stretched `const` above) must emit the same volts for a given sweep point; the
+arithmetic is factored into the pure `resolve_amplitudes` helper and pinned by
+`tests/test_pair_swap_probes.py`.
+
+Prefactor mode needs `freq_vs_flux_01_quad_term` on the control qubit, and **7 of the 9 live chipA
+pairs have it unset** (only `coupler_q5_q6` and `coupler_q6_q7` resolve), so the qualibrate chevron
+node cannot run on them — it used to die on a bare `ZeroDivisionError`, and now refuses naming the
+missing field. Absolute mode never reads it and works on all nine, which is why scqo drives it that
+way. Fix the underlying gap by measuring the flux arch (`qubit_spectroscopy_flux_pulse`).
+
 **Migration status:** qualibrate-node migration is in progress; the `customized/` split into a
 standalone QM-backend repo (symmetric with LCHQBDriver) is decided but deferred until migration
 completes — the shells→probes import rule above is the boundary the split will cut along.

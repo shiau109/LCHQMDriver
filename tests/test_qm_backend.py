@@ -128,6 +128,9 @@ def test_catalog_registers_qm_experiments():
 
     names = {e["name"] for e in catalog()}
     assert {"qubit_ramsey", "qubit_power_rabi", "resonator_spectroscopy"} <= names
+    # the pair family: registered here, so `scqo run` on a QM setup gets a
+    # probe() instead of the core class's NotImplementedError
+    assert {"pair_zz_coupler", "pair_swap_chevron", "pair_swap_flux_map"} <= names
 
 
 # ------------------------------------------------ entity surface (stub QUAM tree)
@@ -436,6 +439,15 @@ def roster_toml_for(machine) -> str:
     every z-capable mode INCLUDING the couplers, and one composite per QUAM
     qubit_pair named ``<low>_<high>`` — so the backend has to make the
     membership join that QM's coupler-named pairs require.
+
+    The coupler MODE is named ``<low>_<high>_c``, matching the real device files
+    (``5Q4C/components.toml`` declares ``[modes.q1_q2_c]`` beside
+    ``[composites.q1_q2]``) rather than reusing the QUAM pair key. The key is not
+    usable: QM names its pairs after the coupler, and on the live 5Q4C tree that
+    name is ``q1_q2`` — identical to the composite this function derives, so the
+    roster refused the whole fixture with "one name, one entity". Deriving both
+    names from the members keeps them distinct on any tree, and keeps the mode
+    name join going through the roster exactly as the real setup does.
     """
     modes, composites, lines, flux_riders = [], [], [], []
     lines.append("[lines.fl]\nreadout = ["
@@ -452,28 +464,39 @@ def roster_toml_for(machine) -> str:
         block = [f"[composites.{low}_{high}]", 'kind = "qubit_pair"',
                  f'high = "{high}"', f'low = "{low}"']
         if getattr(qp, "coupler", None) is not None:
-            modes.append(f'[modes.{key}]\nkind = "flux_transmon"')  # QM names
-            flux_riders.append(key)                                 # it after
-            block.append(f'coupler = "{key}"')                      # the pair
+            # derived from the MEMBERS, not from `key`: QM names its pairs after
+            # the coupler, and on the live tree that name collides with the
+            # composite above (see the docstring)
+            coupler = f"{low}_{high}_c"
+            modes.append(f'[modes.{coupler}]\nkind = "flux_transmon"')
+            flux_riders.append(coupler)
+            block.append(f'coupler = "{coupler}"')
         composites.append("\n".join(block))
     lines += [f'[lines.z_{t}]\nflux = ["{t}"]' for t in flux_riders]
     return "\n\n".join(["schema = 3", *modes, *composites, *lines]) + "\n"
 
 
 def test_roster_toml_for_a_quam_tree_parses(stub_machine):
-    """The live-state roster generator above is only exercised when the toggle
-    matches, so pin it here against the stub tree: fixed-frequency qubits get no
-    flux rider, the coupler becomes an ordinary mode with its own flux wire, and
-    the pair composite carries the coupler role."""
+    """Pin the live-state roster generator against the stub tree: fixed-frequency
+    qubits get no flux rider, the coupler becomes an ordinary mode with its own
+    flux wire, and the pair composite carries the coupler role.
+
+    Both names are derived from the MEMBERS (``q1_q2`` / ``q1_q2_c``), never from
+    the QUAM pair key — the stub's key is ``coupler_q1_q2`` and the live tree's
+    is ``q1_q2``, and reusing the latter collided with the composite. The join
+    from either vendor spelling to these roster names therefore has to go through
+    the roster, which is the property these fixtures exist to exercise."""
     from scqo.roster import parse_components
 
     generated = parse_components(roster_toml_for(stub_machine))
     assert generated.entities["q3"].kind == "transmon"
     assert ("q3", "flux") not in generated.defaults      # no flux on a fixed one
-    assert ("coupler_q1_q2", "flux") in generated.defaults
+    assert ("q1_q2_c", "flux") in generated.defaults
+    # the vendor's own name for the pair is NOT a roster name
+    assert "coupler_q1_q2" not in generated.entities
     pair = generated.entities["q1_q2"]
     assert pair.roles["high"] == ("q2",) and pair.roles["low"] == ("q1",)
-    assert pair.roles["coupler"] == ("coupler_q1_q2",)
+    assert pair.roles["coupler"] == ("q1_q2_c",)
 
     # ...and every name it declares resolves through the backend against the
     # same tree — which is what the skipped live-machine tests below rely on
@@ -664,3 +687,96 @@ def test_power_amp_probe_builds_with_new_loop_order(machine, live_roster):
     default = script(base)
     overridden = script({**base, "readout_depletion_ns": 25000.0})
     assert default != overridden  # the relaxation override reaches the QUA program
+
+
+# ------------------------------------------- the pair swap maps, live QUAM tree
+
+def _live_pair(machine) -> tuple[str, object]:
+    """The first live QUAM pair and the ROSTER composite name for it.
+
+    ``roster_toml_for`` names composites ``<control>_<target>`` — QM's own pairs
+    are named after the coupler, which is exactly the join under test."""
+    key, qp = next(iter(machine.qubit_pairs.items()))
+    return f"{qp.qubit_control.name}_{qp.qubit_target.name}", qp
+
+
+def _swap_experiment(cls, machine, live_roster, **params):
+    from conftest import make_experiment
+
+    backend = QMBackend(machine, roster=live_roster)
+    target, _ = _live_pair(machine)
+    return make_experiment(cls, backend, live_roster,
+                           cls.Parameters(targets=[target], **params))
+
+
+def test_swap_chevron_probe_builds_against_the_baked_config(machine, live_roster,
+                                                            monkeypatch):
+    """The chevron acquires itself because its program only runs against the
+    probe's own BAKED config: the 1..16 ns segments are registered there, and
+    the shared fetch path would hand the QOP a freshly generated config without
+    them. Pin that the config actually travels, and that the program compiles."""
+    from qm import generate_qua_script
+
+    from customized.probes import pair_qq_chevron as chevron_probe
+    from customized.scqo.experiments.pair_swap_chevron import QMPairSwapChevron
+
+    captured = {}
+
+    def fake_acquire(m, prog, sweep_axes, *, num_shots, timeout, log=None, config=None):
+        captured.update(prog=prog, sweep_axes=sweep_axes, config=config,
+                        num_shots=num_shots)
+        return xr.Dataset()
+
+    monkeypatch.setattr(chevron_probe, "acquire", fake_acquire)
+
+    exp = _swap_experiment(QMPairSwapChevron, machine, live_roster,
+                           min_flux_amp_v=0.0, max_flux_amp_v=0.05, num_amp_points=5,
+                           min_swap_time_ns=1.0, max_swap_time_ns=40.0,
+                           num_time_points=20, num_averages=10)
+    exp.sweep_axes = exp.define_sweep()
+    exp.probe()
+
+    # the 16 baked segments exist in the config that was passed, on the FLUX
+    # member's z element, and a freshly generated config has none of them —
+    # which is the whole reason this probe cannot use the shared fetch path
+    fresh = machine.generate_config()
+    baked = set(captured["config"]["pulses"]) - set(fresh["pulses"])
+    assert len(baked) == 16, sorted(baked)
+    _, qp = _live_pair(machine)
+    assert all(name.startswith(f"{qp.qubit_control.z.name}_baked") for name in baked)
+    assert captured["num_shots"] == 10
+
+    # canonical axis names, roster target names, and the REAL quantized time grid
+    assert set(captured["sweep_axes"]) == {"qubit_pair", "flux_amp_v", "swap_time_ns"}
+    target, _ = _live_pair(machine)
+    assert list(captured["sweep_axes"]["qubit_pair"].values) == [target]
+    np.testing.assert_allclose(exp.sweep_axes["swap_time_ns"],
+                               captured["sweep_axes"]["swap_time_ns"].values)
+    # absolute mode: the axis carries VOLTS, not the QUA scale factor
+    assert captured["sweep_axes"]["flux_amp_v"].attrs["units"] == "V"
+    assert float(captured["sweep_axes"]["flux_amp_v"].values.max()) == pytest.approx(0.05)
+
+    assert generate_qua_script(captured["prog"], captured["config"])
+
+
+def test_swap_flux_map_probe_builds(machine, live_roster):
+    """The 2D map needs no baking, so it returns the ordinary (program, axes)
+    pair and the backend's shared fetch runs it."""
+    from qm import generate_qua_script
+
+    from customized.scqo.experiments.pair_swap_flux_map import QMPairSwapFluxMap
+
+    exp = _swap_experiment(QMPairSwapFluxMap, machine, live_roster,
+                           min_coupler_flux_v=-0.02, max_coupler_flux_v=0.02,
+                           num_coupler_points=5, min_qubit_flux_v=0.0,
+                           max_qubit_flux_v=0.02, num_qubit_points=5,
+                           swap_time_ns=45.0, num_averages=10)
+    exp.sweep_axes = exp.define_sweep()
+    prog, axes = exp.probe()
+
+    assert set(axes) == {"qubit_pair", "qubit_flux_v", "coupler_flux_v"}
+    assert axes["coupler_flux_v"].attrs["units"] == "V"
+    # 45 ns is not on QM's 4 ns clock: the driver quantizes to 44 and RECORDS
+    # that, so result.fit reports what actually played, not what was asked for
+    assert exp._flux_time_ns == 44.0
+    assert generate_qua_script(prog, machine.generate_config())

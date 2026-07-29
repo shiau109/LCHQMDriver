@@ -40,13 +40,10 @@ from qm.qua import *
 from qualang_tools.loops import from_array
 
 from customized.probes._lib import acquire as _acquire
+from customized.probes._lib import dac_rail_v
 
 # Largest magnitude QUA accepts for a dynamic `amplitude_scale` (the fixed-point range is (-2, 2)).
 _MAX_AMP_SCALE = 2.0
-
-# OPX1000 LF-FEM "direct" output rail: a stored waveform peak at >= 0.5 V is clipped/corrupted at
-# runtime (the simulator does NOT show this). Flux op amplitudes must stay below it.
-_DAC_RAIL = 0.5
 
 
 def _flux_qubit(qp, flux_role: str):
@@ -123,18 +120,23 @@ def build_program(
         coupler_refs[qp.name] = float(qp.coupler.operations[coupler_operation].amplitude)
         qubit_refs[qp.name] = float(fq.z.operations[qubit_operation].amplitude)
 
-    # DAC-rail guard (direct mode): a flux op stored at >= 0.5 V is clipped/corrupted on hardware.
+    # DAC-rail guard: a flux op stored at or above its port's full scale is clipped/corrupted on
+    # hardware. The rail is PER PORT (LF-FEM direct 0.5 V, amplified 2.5 V) -- a fixed 0.5 refuses
+    # every amplified-mode config, which is what the live chipA state runs (flux ops at 1.25 V).
     if not swap_via_macro:
         for qp in qubit_pairs:
-            for what, op, ref in (
-                ("coupler", coupler_operation, coupler_refs[qp.name]),
-                (f"{flux_role}-qubit z", qubit_operation, qubit_refs[qp.name]),
+            for what, op, ref, channel in (
+                ("coupler", coupler_operation, coupler_refs[qp.name], qp.coupler),
+                (f"{flux_role}-qubit z", qubit_operation, qubit_refs[qp.name],
+                 _flux_qubit(qp, flux_role).z),
             ):
-                if abs(ref) >= _DAC_RAIL:
+                rail = dac_rail_v(channel)
+                if abs(ref) >= rail:
                     raise ValueError(
-                        f"{what} op {op!r} on {qp.name} has amplitude {ref} V >= {_DAC_RAIL} V "
-                        f"(OPX1000 'direct'-mode DAC rail): the stored waveform peak is clipped/corrupted "
-                        f"on hardware and the simulator hides it. Lower the op amplitude (<0.5 V; default 0.25)."
+                        f"{what} op {op!r} on {qp.name} has amplitude {ref} V >= {rail} V "
+                        f"(the OPX1000 LF-FEM full scale of its output mode): the stored waveform "
+                        f"peak is clipped/corrupted on hardware and the simulator hides it. Lower "
+                        f"the op amplitude, or run that port in 'amplified' mode."
                     )
 
     coupler_amplitudes = np.asarray(coupler_amplitudes, dtype=float)
@@ -183,11 +185,13 @@ def build_program(
                     f"Macro {swap_operation!r} on {qp.name} has a zero-amplitude z flux_pulse "
                     f"({flux_pulse_name!r}); cannot scale it by ctrl_amp in macro mode."
                 )
-            if ref >= _DAC_RAIL:
+            macro_rail = dac_rail_v(qp.qubit_control.z)
+            if ref >= macro_rail:
                 raise ValueError(
                     f"Macro {swap_operation!r} z pulse {flux_pulse_name!r} on {qp.name} has amplitude "
-                    f"{ref} V >= {_DAC_RAIL} V (OPX1000 'direct'-mode DAC rail): the waveform is clipped/"
-                    f"corrupted on hardware and the simulator hides it. Lower the pulse amplitude (<0.5 V)."
+                    f"{ref} V >= {macro_rail} V (the OPX1000 LF-FEM full scale of its output mode): the "
+                    f"waveform is clipped/corrupted on hardware and the simulator hides it. Lower the "
+                    f"pulse amplitude, or run that port in 'amplified' mode."
                 )
             max_scale = float(np.max(np.abs(qubit_amplitudes))) / ref
             if max_scale >= _MAX_AMP_SCALE:

@@ -150,12 +150,16 @@ def _resonator(rf: float) -> SimpleNamespace:
     )
 
 
-def _flux_line(joint: float = 0.0) -> SimpleNamespace:
+def _flux_line(joint: float = 0.0, *, flux_point: str = "joint") -> SimpleNamespace:
     """A QUAM ``FluxLine`` stand-in — its named points are the QUBIT vocabulary
     (joint/independent/min/arbitrary), which is why the coupler below cannot
-    share the accessor."""
+    share the accessor.
+
+    ``flux_point`` defaults to the GOVERNED value, so the stub tree is
+    scqo-compliant; pass another to exercise ``flux_point_problems``.
+    """
     return SimpleNamespace(
-        flux_point="joint", joint_offset=joint, independent_offset=0.0,
+        flux_point=flux_point, joint_offset=joint, independent_offset=0.0,
         min_offset=0.0, arbitrary_offset=0.0,
     )
 
@@ -208,6 +212,10 @@ def make_stub_machine() -> SimpleNamespace:
     return SimpleNamespace(
         qubits={"q1": q1, "q2": q2, "q3": q3},
         qubit_pairs={"coupler_q1_q2": pair},
+        # real QUAM always carries this; flux_point_problems reads it to catch an
+        # INACTIVE flux-tunable qubit, which the joint path parks at min_offset
+        # rather than at the joint_offset its idle_flux claims
+        active_qubits=[q1, q2, q3],
     )
 
 
