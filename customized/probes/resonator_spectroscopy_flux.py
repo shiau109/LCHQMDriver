@@ -14,6 +14,7 @@ from qualang_tools.loops import from_array
 from qualang_tools.units import unit
 
 from customized.probes._lib import acquire as _acquire
+from customized.probes._flux_limits import check_flux_bias_absolute
 
 
 def build_program(
@@ -46,6 +47,21 @@ def build_program(
         flux_driver = machine.qubit_pairs[z_source].coupler
     else:
         raise ValueError(f"z_source={z_source!r} is neither a qubit nor a qubit-pair name")
+
+    # ABSOLUTE frame: `set_dc_offset(dc)` REPLACES the standing bias, so the swept
+    # values ARE the line voltage and no idle term is added. Past the port's full
+    # scale the DAC clips and the simulator shows nothing.
+    if flux_driver is not None:
+        check_flux_bias_absolute(flux_driver, name=str(z_source), bias_v=dcs)
+    else:
+        for qubit in qubits:
+            z = getattr(qubit, "z", None)
+            if z is None:
+                raise ValueError(
+                    f"{qubit.name}: no flux line, but this probe biases every measured "
+                    f"qubit's own z line - it cannot silently skip one and still report "
+                    f"a flux axis in volts")
+            check_flux_bias_absolute(z, name=qubit.name, bias_v=dcs)
 
     sweep_axes = {
         "qubit": xr.DataArray(qubits.get_names()),

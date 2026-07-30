@@ -19,7 +19,8 @@ from qm.qua import *
 from qualang_tools.loops import from_array
 from qualang_tools.units import unit
 
-from customized.probes._lib import acquire as _acquire, check_flux_pulse_window, idle_offset_v
+from customized.probes._lib import acquire as _acquire
+from customized.probes._flux_limits import check_flux_pulse_relative, idle_offset_v
 
 
 def build_program(
@@ -66,7 +67,7 @@ def build_program(
             raise ValueError(
                 f"{carrier.name}: no flux line, but this probe plays the flux "
                 f"as a z pulse on it")
-        amp_ref[carrier.name] = check_flux_pulse_window(
+        amp_ref[carrier.name] = check_flux_pulse_relative(
             z, name=carrier.name, idle_v=idle_offset_v(z, flux_point), amps_v=dcs)
 
     # Saturation duration (Python-level): uniform when operation_len is given, else

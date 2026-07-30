@@ -38,11 +38,15 @@ from qm.qua import *
 from qualang_tools.bakery import baking
 from qualang_tools.loops import from_array
 
+from customized.probes._amp_limits import MAX_AMP_SCALE
 from customized.probes._lib import acquire as _acquire
-from customized.probes._lib import dac_rail_v
-
-# Largest magnitude QUA accepts for a dynamic `amplitude_scale` (the fixed-point range is (-2, 2)).
-_MAX_AMP_SCALE = 2.0
+from customized.probes._flux_limits import (
+    check_flux_pulse_relative,
+    dac_rail_v,
+    declared_idle_offset_v,
+    flux_reference_amplitude,
+    rail_remedy,
+)
 
 
 def _flux_qubit(qp, flux_role: str):
@@ -90,8 +94,8 @@ def resolve_amplitudes(qubit_pairs, amplitudes, *, amp_mode: str, flux_role: str
         raise ValueError("amplitudes is empty; nothing to sweep.")
 
     # The z line carrying the pulse must exist and own the `const` operation the
-    # >16 ns branch stretches. The DAC rail is read PER PORT (direct 0.5 V vs
-    # amplified 2.5 V) -- a fixed 0.5 would refuse every amplified-mode config.
+    # >16 ns branch stretches. `flux_reference_amplitude` enforces the rail/2
+    # convention on it (the rail being PER PORT, direct 0.5 V vs amplified 2.5 V).
     denoms = {}
     rails = {}
     for qp in qubit_pairs:
@@ -104,17 +108,8 @@ def resolve_amplitudes(qubit_pairs, amplitudes, *, amp_mode: str, flux_role: str
             raise ValueError(
                 f"z line of {fq.name} has no operation 'const'; available: {list(fq.z.operations)}"
             )
-        rail = dac_rail_v(fq.z)
-        denom = float(fq.z.operations["const"].amplitude)
-        if abs(denom) >= rail:
-            raise ValueError(
-                f"z op 'const' on {fq.name} has amplitude {denom} V >= {rail} V "
-                f"(the OPX1000 LF-FEM full scale of its output mode): the stored waveform peak "
-                f"is clipped/corrupted on hardware and the simulator hides it. Lower the op "
-                f"amplitude, or run that port in 'amplified' mode."
-            )
-        denoms[qp.name] = denom
-        rails[qp.name] = rail
+        denoms[qp.name] = flux_reference_amplitude(fq.z, name=fq.name, operation="const")
+        rails[qp.name] = dac_rail_v(fq.z)
 
     if amp_mode == "absolute":
         amp_ref = float(np.max(np.abs(amplitudes)))
@@ -124,13 +119,10 @@ def resolve_amplitudes(qubit_pairs, amplitudes, *, amp_mode: str, flux_role: str
                 "widen the window or use amp_mode='prefactor'."
             )
         for qp in qubit_pairs:
-            if amp_ref >= rails[qp.name]:
-                raise ValueError(
-                    f"absolute flux sweep peaks at {amp_ref} V >= {rails[qp.name]} V, the "
-                    f"OPX1000 LF-FEM full scale of {_flux_qubit(qp, flux_role).name}'s output "
-                    f"mode: that pulse is clipped/corrupted on hardware and the simulator hides "
-                    f"it. Narrow the amplitude window."
-                )
+            z = _flux_qubit(qp, flux_role).z
+            check_flux_pulse_relative(
+                z, name=f"{qp.name} absolute flux sweep on {_flux_qubit(qp, flux_role).name}.z",
+                idle_v=declared_idle_offset_v(z), amps_v=amplitudes, operation="const")
         base_levels = {qp.name: amp_ref for qp in qubit_pairs}
         qua_amps = amplitudes / amp_ref
     else:
@@ -166,11 +158,14 @@ def resolve_amplitudes(qubit_pairs, amplitudes, *, amp_mode: str, flux_role: str
                 # |11>-|02> detuning, and a real chip can legitimately land above
                 # the rail. Raising here would break the qualibrate node on a
                 # config that has always "worked" -- silently clipped.
+                z = _flux_qubit(qp, flux_role).z
                 warnings.warn(
-                    f"{qp.name}: the |11>-|02> base amplitude is {level} V >= "
-                    f"{rails[qp.name]} V, the OPX1000 LF-FEM full scale of its output mode. "
-                    f"The baked waveform peak is clipped on hardware and the simulator hides "
-                    f"it -- sweep in volts (amp_mode='absolute') below the rail instead.",
+                    f"{qp.name}: the |11>-|02> base amplitude is {level} V, at or past "
+                    f"the port's {rails[qp.name]} V full scale. The baked waveform peak is "
+                    f"clipped on hardware and the simulator hides it -- sweep in volts "
+                    f"(amp_mode='absolute') below the rail instead. "
+                    + rail_remedy(z, name=f"{qp.name} base amplitude",
+                                  needed_v=abs(level), rail=rails[qp.name]),
                     RuntimeWarning, stacklevel=2)
 
     # One baked op set per flux ELEMENT (baking files its pulses and waveforms
@@ -189,17 +184,17 @@ def resolve_amplitudes(qubit_pairs, amplitudes, *, amp_mode: str, flux_role: str
             )
 
     max_qua = float(np.max(np.abs(qua_amps)))
-    if max_qua >= _MAX_AMP_SCALE:
+    if max_qua >= MAX_AMP_SCALE:
         raise ValueError(
             f"amplitude sweep exceeds QUA's amplitude_scale range: max |a| = {max_qua:.3f} "
-            f">= {_MAX_AMP_SCALE} (the baked pulse is scaled by this value directly)."
+            f">= {MAX_AMP_SCALE} (the baked pulse is scaled by this value directly)."
         )
     for qp in qubit_pairs:
         play_scale = abs(base_levels[qp.name] / denoms[qp.name]) * max_qua
-        if play_scale >= _MAX_AMP_SCALE:
+        if play_scale >= MAX_AMP_SCALE:
             raise ValueError(
                 f"flux sweep for {qp.name} exceeds QUA's amplitude_scale range on the >16 ns "
-                f"branch: max |(base/const)*a| = {play_scale:.3f} >= {_MAX_AMP_SCALE} "
+                f"branch: max |(base/const)*a| = {play_scale:.3f} >= {MAX_AMP_SCALE} "
                 f"(base = {base_levels[qp.name]} V, const = {denoms[qp.name]} V). "
                 f"Reduce the amplitude range or raise the 'const' op amplitude."
             )

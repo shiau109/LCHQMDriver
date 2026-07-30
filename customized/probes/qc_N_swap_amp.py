@@ -39,14 +39,7 @@ from qm.qua import *
 from qualang_tools.loops import from_array
 
 from customized.probes._lib import acquire as _acquire
-
-# Largest magnitude QUA accepts for a dynamic `amplitude_scale` (the fixed-point range is (-2, 2)).
-_MAX_AMP_SCALE = 2.0
-
-# OPX1000 LF-FEM "direct" output rail: a waveform peak at >= 0.5 V is clipped/corrupted at
-# runtime (the simulator does NOT show this). Both the stored pulse and the emitted
-# (swept) amplitude must stay below it.
-_DAC_RAIL = 0.5
+from customized.probes._flux_limits import check_flux_pulse_relative, declared_idle_offset_v
 
 
 def _dedup_involved(measure_qubits, swap_pair) -> List:
@@ -117,32 +110,21 @@ def build_program(
             f"Macro {swap_operation!r} on {swap_pair.name} has no z flux_pulse playable with ctrl_amp "
             f"(flux_pulse={flux_pulse_name!r})."
         )
-    ref = abs(float(ops[flux_pulse_name].amplitude))
-    if ref == 0.0:
-        raise ValueError(
-            f"Macro {swap_operation!r} on {swap_pair.name} has a zero-amplitude z flux_pulse "
-            f"({flux_pulse_name!r}); cannot scale it by ctrl_amp."
-        )
-    if ref >= _DAC_RAIL:
-        raise ValueError(
-            f"Macro {swap_operation!r} z pulse {flux_pulse_name!r} on {swap_pair.name} has amplitude "
-            f"{ref} V >= {_DAC_RAIL} V (OPX1000 'direct'-mode DAC rail): the waveform is clipped/"
-            f"corrupted on hardware and the simulator hides it. Lower the pulse amplitude (<0.5 V)."
-        )
-    max_amp = float(np.max(np.abs(qubit_amplitudes)))
-    if max_amp >= _DAC_RAIL:
-        raise ValueError(
-            f"Qubit flux amplitude sweep reaches {max_amp} V >= {_DAC_RAIL} V (OPX1000 'direct'-mode "
-            f"DAC rail): the emitted pulse equals the swept value and is clipped/corrupted on hardware. "
-            f"Keep the sweep below 0.5 V."
-        )
-    max_scale = max_amp / ref
-    if max_scale >= _MAX_AMP_SCALE:
-        raise ValueError(
-            f"Qubit flux amplitude sweep for {swap_pair.name} exceeds QUA's amplitude_scale range: "
-            f"max |a/ref| = {max_scale:.3f} >= {_MAX_AMP_SCALE} (macro z ref = {ref} V). "
-            f"Reduce the amplitude range or raise the stored pulse amplitude."
-        )
+    # Rail + amplitude_scale + idle-sum guard, shared with every other flux probe.
+    # The macro's z pulse is the amplitude_scale REFERENCE (not a `const`, so the
+    # rail/2 convention deliberately does not apply to it), and the swept volts are
+    # an excursion on top of whatever standing bias initialize_qpu applied — this
+    # probe takes no flux_point argument, so the declaration is what runs.
+    # (the returned reference is unused here — the MACRO does its own ctrl_amp/ref
+    # rescaling internally; this call is for its refusals)
+    z = swap_pair.qubit_control.z
+    check_flux_pulse_relative(
+        z,
+        name=f"{swap_pair.name} macro {swap_operation!r} on {swap_pair.qubit_control.name}.z",
+        idle_v=declared_idle_offset_v(z),
+        amps_v=qubit_amplitudes,
+        operation=flux_pulse_name,
+    )
 
     # With state discrimination we save the per-shot discriminated states (so the joint
     # multi-qubit populations can be reconstructed downstream), hence the extra `shot` axis.

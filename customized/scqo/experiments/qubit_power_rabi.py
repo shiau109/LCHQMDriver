@@ -1,9 +1,10 @@
 """QM qubit power Rabi for scqo - supplies only ``probe()``.
 
-Parameters, the cosine fit, pi_amp_factor extraction and the pi_amp writeback are
-inherited from ``scqo.experiments.QubitPowerRabi``. scqo's ``amp_factor`` is already a
-factor of the current pi pulse, which is exactly the LCHQM probe's
-``amplitude_scale``, so the sweep passes straight through.
+Parameters, the cosine fit, opt_amp_prefactor extraction and the pi_amp writeback are
+inherited from ``scqo.experiments.QubitPowerRabi``. scqo's ``amp_prefactor`` is already
+a factor of the current pi pulse, which is exactly the LCHQM probe's
+``amplitude_scale``, so the sweep passes straight through — and since the probe emits
+that same axis NAME, ``_to_canonical`` matches it by name instead of by position.
 """
 
 from __future__ import annotations
@@ -29,7 +30,7 @@ class QMQubitPowerRabi(QubitPowerRabi):
         return power_rabi_probe.build_program(
             machine,
             qubits,
-            amps=self.sweep_axes["amp_factor"],
+            amps=self.sweep_axes["amp_prefactor"],
             operation="x180",
             num_shots=self.params.num_averages,
             reset_type=reset_type(self),

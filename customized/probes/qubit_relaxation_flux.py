@@ -14,7 +14,8 @@ import numpy as np
 import xarray as xr
 from qm.qua import *
 
-from customized.probes._lib import acquire as _acquire, check_flux_pulse_window, idle_offset_v
+from customized.probes._lib import acquire as _acquire
+from customized.probes._flux_limits import check_flux_pulse_relative, idle_offset_v
 
 
 def build_program(
@@ -59,7 +60,7 @@ def build_program(
                 f"{qubit.name}: no flux line, but this probe sweeps a z pulse "
                 f"on every measured qubit - it cannot silently skip one and "
                 f"still report a flux axis in volts")
-        amp_ref[qubit.name] = check_flux_pulse_window(
+        amp_ref[qubit.name] = check_flux_pulse_relative(
             z, name=qubit.name, idle_v=idle_offset_v(z, flux_point), amps_v=flux_amps_v)
 
     with program() as prog:

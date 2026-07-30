@@ -9,6 +9,7 @@ import numpy as np
 import xarray as xr
 from qm.qua import *
 
+from customized.probes._amp_limits import check_amp_scale_window
 from customized.probes._lib import acquire as _acquire
 
 
@@ -18,7 +19,7 @@ def build_program(
     *,
     num_shots: int,
     repetitions: List[int],
-    amp_factors: Optional[List[float]] = None,
+    amp_prefactors: Optional[List[float]] = None,
     target_gate: str = "x180",
     use_state_discrimination: bool = True,
     simulate: bool = False,
@@ -27,7 +28,8 @@ def build_program(
     """Build the Deterministic Benchmarking QUA program."""
     num_qubits = len(qubits)
     rep_arr = np.asarray(repetitions, dtype=int)
-    amp_arr = np.asarray(amp_factors if amp_factors is not None else [1.0], dtype=float)
+    amp_arr = np.asarray(amp_prefactors if amp_prefactors is not None else [1.0], dtype=float)
+    check_amp_scale_window(amp_arr, name=", ".join(qubits.get_names()))
     gate_name = str(target_gate).strip().lower()
 
     # Map friendly gate names to QAM operation names
@@ -48,7 +50,7 @@ def build_program(
 
     sweep_axes = {
         "qubit": xr.DataArray(qubits.get_names()),
-        "amp_factor": xr.DataArray(amp_arr, attrs={"long_name": "amplitude scaling factor"}),
+        "amp_prefactor": xr.DataArray(amp_arr, attrs={"long_name": "amplitude scaling factor"}),
         "repetitions": xr.DataArray(rep_arr, attrs={"long_name": "gate repetitions N"}),
     }
 

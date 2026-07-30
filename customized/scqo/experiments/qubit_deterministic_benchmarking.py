@@ -25,7 +25,9 @@ class QMQubitDeterministicBenchmarking(QubitDeterministicBenchmarking):
             qubits,
             num_shots=int(self.params.num_averages),
             repetitions=repetitions,
-            amp_factors=self.params.get_amp_factors(),
+            # from sweep_axes, not the Parameters: run() has already resolved the
+            # window (explicit list / single-point mode / linspace) into the axis
+            amp_prefactors=list(self.sweep_axes["amp_prefactor"]),
             target_gate=self.params.target_gate,
             use_state_discrimination=self.params.use_state_discrimination,
         )

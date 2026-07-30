@@ -19,15 +19,14 @@ class QMQubitPiPulseError(QubitPiPulseError):
         machine = self.backend.machine
         qubits = select_qubits(machine, self.params.targets, multiplexed=True)
 
-        sweeps = self.define_sweep()
-        amp_factors = list(sweeps["amp_factor"])
-        gate_counts = list(sweeps["gate_count"])
-
+        # self.sweep_axes, not a second define_sweep() call: run() has already
+        # built the axes, and rebuilding them here is a way for the emitted sweep
+        # and the declared one to drift apart
         return pi_pulse_error_probe.build_program(
             machine,
             qubits,
-            amp_factors=amp_factors,
-            gate_counts=gate_counts,
+            amp_prefactors=list(self.sweep_axes["amp_prefactor"]),
+            gate_counts=list(self.sweep_axes["gate_count"]),
             num_shots=int(self.params.num_averages),
             use_state_discrimination=False,
         )

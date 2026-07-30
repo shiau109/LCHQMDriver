@@ -39,11 +39,16 @@ from qm.qua import *
 
 from qualang_tools.loops import from_array
 
+from customized.probes._amp_limits import MAX_AMP_SCALE
 from customized.probes._lib import acquire as _acquire
-from customized.probes._lib import dac_rail_v
+from customized.probes._flux_limits import (
+    check_flux_pulse_relative,
+    declared_idle_offset_v,
+    flux_reference_amplitude,
+)
 
-# Largest magnitude QUA accepts for a dynamic `amplitude_scale` (the fixed-point range is (-2, 2)).
-_MAX_AMP_SCALE = 2.0
+# MAX_AMP_SCALE (imported above) is still needed here for the PREFACTOR branch,
+# whose sweep values ARE amplitude_scale and so never reach the volts-based helpers.
 
 
 def _flux_qubit(qp, flux_role: str):
@@ -120,49 +125,49 @@ def build_program(
         coupler_refs[qp.name] = float(qp.coupler.operations[coupler_operation].amplitude)
         qubit_refs[qp.name] = float(fq.z.operations[qubit_operation].amplitude)
 
-    # DAC-rail guard: a flux op stored at or above its port's full scale is clipped/corrupted on
-    # hardware. The rail is PER PORT (LF-FEM direct 0.5 V, amplified 2.5 V) -- a fixed 0.5 refuses
-    # every amplified-mode config, which is what the live chipA state runs (flux ops at 1.25 V).
-    if not swap_via_macro:
-        for qp in qubit_pairs:
-            for what, op, ref, channel in (
-                ("coupler", coupler_operation, coupler_refs[qp.name], qp.coupler),
-                (f"{flux_role}-qubit z", qubit_operation, qubit_refs[qp.name],
-                 _flux_qubit(qp, flux_role).z),
-            ):
-                rail = dac_rail_v(channel)
-                if abs(ref) >= rail:
-                    raise ValueError(
-                        f"{what} op {op!r} on {qp.name} has amplitude {ref} V >= {rail} V "
-                        f"(the OPX1000 LF-FEM full scale of its output mode): the stored waveform "
-                        f"peak is clipped/corrupted on hardware and the simulator hides it. Lower "
-                        f"the op amplitude, or run that port in 'amplified' mode."
-                    )
-
     coupler_amplitudes = np.asarray(coupler_amplitudes, dtype=float)
     qubit_amplitudes = np.asarray(qubit_amplitudes, dtype=float)
 
-    # Validate that, in absolute mode, both sweeps keep amplitude_scale within QUA's (-2, 2) range.
+    # ABSOLUTE mode: the swept values are volts on each channel, riding on whatever
+    # standing bias initialize_qpu applied (this probe takes no flux_point argument,
+    # so the declaration is what runs). One shared helper does the reference
+    # contract, QUA's amplitude_scale bound and the idle + excursion sum.
     if amp_mode == "absolute":
-        for qp in qubit_pairs:
-            for what, amps, ref in (
-                ("coupler", coupler_amplitudes, coupler_refs[qp.name]),
-                (f"{flux_role} qubit", qubit_amplitudes, qubit_refs[qp.name]),
-            ):
-                max_scale = float(np.max(np.abs(amps))) / abs(ref)
-                if max_scale >= _MAX_AMP_SCALE:
-                    raise ValueError(
-                        f"Absolute {what} flux sweep for {qp.name} exceeds QUA's amplitude_scale range: "
-                        f"max |a/ref| = {max_scale:.3f} >= {_MAX_AMP_SCALE} (ref = {ref} V). "
-                        f"Reduce the amplitude range or use amp_mode='prefactor'."
-                    )
+        if not swap_via_macro:
+            for qp in qubit_pairs:
+                for what, op, channel, amps in (
+                    ("coupler", coupler_operation, qp.coupler, coupler_amplitudes),
+                    (f"{flux_role}-qubit z", qubit_operation,
+                     _flux_qubit(qp, flux_role).z, qubit_amplitudes),
+                ):
+                    check_flux_pulse_relative(
+                        channel, name=f"{qp.name} {what} op {op!r}",
+                        idle_v=declared_idle_offset_v(channel),
+                        amps_v=amps, operation=op)
     else:  # prefactor
+        # The sweep values ARE amplitude_scale, so the volts helper does not apply --
+        # but the STORED op each prefactor multiplies still has to be a legal
+        # reference, and the emitted product still has to clear the rail.
+        if not swap_via_macro:
+            for qp in qubit_pairs:
+                for what, op, channel, amps in (
+                    ("coupler", coupler_operation, qp.coupler, coupler_amplitudes),
+                    (f"{flux_role}-qubit z", qubit_operation,
+                     _flux_qubit(qp, flux_role).z, qubit_amplitudes),
+                ):
+                    ref = flux_reference_amplitude(
+                        channel, name=f"{qp.name} {what}", operation=op)
+                    check_flux_pulse_relative(
+                        channel, name=f"{qp.name} {what} op {op!r} at prefactor",
+                        idle_v=declared_idle_offset_v(channel),
+                        amps_v=[abs(ref) * float(np.max(np.abs(amps)))],
+                        operation=op)
         for what, amps in (("coupler", coupler_amplitudes), (f"{flux_role} qubit", qubit_amplitudes)):
             max_scale = float(np.max(np.abs(amps)))
-            if max_scale >= _MAX_AMP_SCALE:
+            if max_scale >= MAX_AMP_SCALE:
                 raise ValueError(
                     f"Prefactor {what} flux sweep exceeds QUA's amplitude_scale range: "
-                    f"max |a| = {max_scale:.3f} >= {_MAX_AMP_SCALE}."
+                    f"max |a| = {max_scale:.3f} >= {MAX_AMP_SCALE}."
                 )
 
     # Optional debug: play the swap through the QUAM macro instead of the direct flux play.
@@ -179,26 +184,18 @@ def build_program(
                     f"Macro {swap_operation!r} on {qp.name} has no z flux_pulse playable in macro mode "
                     f"(flux_pulse={flux_pulse_name!r})."
                 )
-            ref = abs(float(ops[flux_pulse_name].amplitude))
-            if ref == 0.0:
-                raise ValueError(
-                    f"Macro {swap_operation!r} on {qp.name} has a zero-amplitude z flux_pulse "
-                    f"({flux_pulse_name!r}); cannot scale it by ctrl_amp in macro mode."
-                )
-            macro_rail = dac_rail_v(qp.qubit_control.z)
-            if ref >= macro_rail:
-                raise ValueError(
-                    f"Macro {swap_operation!r} z pulse {flux_pulse_name!r} on {qp.name} has amplitude "
-                    f"{ref} V >= {macro_rail} V (the OPX1000 LF-FEM full scale of its output mode): the "
-                    f"waveform is clipped/corrupted on hardware and the simulator hides it. Lower the "
-                    f"pulse amplitude, or run that port in 'amplified' mode."
-                )
-            max_scale = float(np.max(np.abs(qubit_amplitudes))) / ref
-            if max_scale >= _MAX_AMP_SCALE:
-                raise ValueError(
-                    f"swap_via_macro qubit sweep for {qp.name} exceeds QUA amplitude_scale range: "
-                    f"max |a/ref| = {max_scale:.3f} >= {_MAX_AMP_SCALE} (macro z ref = {ref} V)."
-                )
+            # Same shared guard as qc_N_swap_amp, which sweeps this exact knob: the
+            # macro's z pulse is the amplitude_scale reference (not a `const`, so the
+            # rail/2 convention does not apply), and the swept volts ride on the
+            # declared standing bias.
+            z = qp.qubit_control.z
+            check_flux_pulse_relative(
+                z,
+                name=f"{qp.name} macro {swap_operation!r} on {qp.qubit_control.name}.z",
+                idle_v=declared_idle_offset_v(z),
+                amps_v=qubit_amplitudes,
+                operation=flux_pulse_name,
+            )
 
     # Shared fixed pulse duration in clock cycles (4 ns), or None to use each op's native length.
     duration_cycles = None

@@ -79,14 +79,39 @@ in `customized/node/LCH_power_rabi/parameters.py`), **never** in vendored `calib
 power) and `resonator_spectroscopy_power_amp` (sweeps amplitude prefactors) take absolute-dBm inputs
 (`min/max_power_dbm`).
 
+### Flux headroom — `customized/probes/_flux_limits.py`
 **The DAC rail is a property of the PORT, not a constant.** An OPX1000 LF-FEM analog output
 reaches ±0.5 V in `direct` mode and ±2.5 V in `amplified` mode, and a stored waveform peak at or
-above its port's full scale is clipped on hardware while the SIMULATOR SHOWS NOTHING. The live
-chipA state runs every flux port `amplified` with `const` op amplitudes at 1.25 V, so a probe that
-hardcodes 0.5 refuses the real chip outright — which is what `pair_qcq_fixed_time` did until
-2026-07-29. Flux probes resolve it through `customized/probes/_lib.py::dac_rail_v(channel)`
-(unknown port → the conservative direct rail); `pair_qq_chevron` and `pair_qcq_fixed_time` use it.
-`customized/probes/qc_N_swap_amp.py` still carries its own `_DAC_RAIL = 0.5` and has the same bug.
+above its port's full scale is clipped on hardware while the SIMULATOR SHOWS NOTHING. A probe that
+hardcodes 0.5 refuses every amplified-mode config outright (`state_lib/10Q` runs all ten flux ports
+`amplified` with `const` at 1.25 V) — which is what three probes did until 2026-07-29. **No probe
+carries its own rail constant; do not reintroduce one.**
+
+**Two frames, two entry points**, mirroring scqo's `FluxSweepParameters` /
+`FluxPulseSweepParameters` 1:1 so the same word describes the experiment and the check:
+- `check_flux_bias_absolute` — `set_dc_offset` REPLACES the standing bias, so the swept value IS
+  the line voltage and **no idle term is added**;
+- `check_flux_pulse_relative` — `play("const", amplitude_scale=…)` rides ON the standing bias, so
+  the check is `|idle + excursion|` and the DAC emits the SUM.
+
+Confusing the two is itself silent: adding `idle_v` in the absolute frame refuses legal sweeps,
+omitting it in the relative frame admits clipping ones. Probes with their own `flux_point` argument
+pass it to `idle_offset_v`; probes without one use `declared_idle_offset_v`, because what
+`initialize_qpu` applies IS the declaration and no override can disagree. A **coupler** names its
+points `off`/`on` but its attributes `decouple_offset`/`interaction_offset` — resolving by the
+`<point>_offset` convention alone raises on every coupler.
+
+**Severity is split by whether the DAC LIES**, and the split is load-bearing:
+- *clipping* (stored op or idle bias past the rail) → refuse, per-probe and in the session audit;
+- *reach* (the `const` = rail/2 convention) → **advisory only**. An undersized `const` emits exactly
+  what was asked, there is just less range available, and the `amplitude_scale` bound already
+  refuses the moment a sweep actually needs more. The live 5Q4C couplers sit at 0.15 V and have
+  always run — making that fatal would block every session. It is enforced in exactly ONE place,
+  `quam_fields.flux_headroom_warnings`; the per-sweep helpers deliberately do not.
+
+`quam_fields.flux_headroom_problems` / `_warnings` audit the whole tree once from
+`scqo/backend_factory.py`, beside `flux_point_problems`, so a bad config reports every offending
+port at once instead of one probe dying on the first it touches.
 
 **Flux-amplitude sweeps: absolute volts or prefactor.** Both pair swap probes take
 `amp_mode="absolute"|"prefactor"` (and `flux_role` selecting which member's z carries the pulse).
@@ -196,7 +221,7 @@ uv pip install -e D:\github\SCQO -e D:\github\scqat
 (LCHQBDriver has no such trap — it declares `scqo` as a hard dependency, so plain `uv run` is
 safe there. Do not copy its command over here.)
 
-**Then just run the whole suite: 99 tests, ~21 s.** At this size a per-file selection map would
+**Then just run the whole suite: 191 tests, ~25 s.** At this size a per-file selection map would
 cost more attention than it saves — unlike SCQO (476 tests, ~7 min) and scqat (296 / ~53 s), the full
 suite IS the targeted run. Run it before every commit.
 
@@ -206,6 +231,8 @@ so they are instant — loop on those while iterating, and take the full suite b
 | File | Covers | Needs QM stack? |
 |---|---|---|
 | `test_quam_fields.py` | the single neutral-field ↔ QUAM mapping (stub qubit) | no |
+| `test_flux_pulse_amplitude.py` | `probes/_flux_limits.py`: the two frames, the rail per port, the idle sum, the remedy messages | no |
+| `test_flux_headroom_guard.py` | the whole-tree audit + the clipping-vs-reach severity split | no |
 | `test_reset_method.py` | `reset_method="active"` is REFUSED by name, never downgraded to thermal | no |
 | `test_qc_populations.py` | shared swap-reset population helpers | no |
 | `test_power_rabi_update.py`, `test_ramsey_update.py`, `test_readout_frequency_update.py` | the pure `update()` decisions of the matching `LCH_*` node | no |

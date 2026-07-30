@@ -11,6 +11,7 @@ import xarray as xr
 from qm.qua import *
 from qualang_tools.loops import from_array
 
+from customized.probes._amp_limits import check_amp_scale_window
 from customized.probes._lib import acquire as _acquire
 
 
@@ -29,6 +30,7 @@ def build_program(
     (amplitude, prepared state) point (0 = ground, 1 = x180-excited). `qubits` is a
     BatchableList (see `_lib.select_qubits`).
     """
+    check_amp_scale_window(amps, name=", ".join(qubits.get_names()))
     num_qubits = len(qubits)
     prepared_states = [0, 1]
 

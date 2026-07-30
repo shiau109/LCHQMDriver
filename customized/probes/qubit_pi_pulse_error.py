@@ -9,6 +9,7 @@ import numpy as np
 import xarray as xr
 from qm.qua import *
 
+from customized.probes._amp_limits import check_amp_scale_window
 from customized.probes._lib import acquire as _acquire
 
 
@@ -16,7 +17,7 @@ def build_program(
     machine,
     qubits,
     *,
-    amp_factors: List[float],
+    amp_prefactors: List[float],
     gate_counts: List[int],
     num_shots: int,
     use_state_discrimination: bool = False,
@@ -24,14 +25,15 @@ def build_program(
     log: Optional[Callable] = None,
 ):
     """Build the Pi-pulse error amplification QUA program. Returns (program, sweep_axes)."""
+    check_amp_scale_window(amp_prefactors, name=", ".join(qubits.get_names()))
     num_qubits = len(qubits)
-    amp_arr = np.asarray(amp_factors, dtype=float)
+    amp_arr = np.asarray(amp_prefactors, dtype=float)
     gc_arr = np.asarray(gate_counts, dtype=int)
 
     sweep_axes = {
         "qubit": xr.DataArray(qubits.get_names()),
         "gate_count": xr.DataArray(gc_arr, attrs={"long_name": "gate count (repetitions)"}),
-        "amp_factor": xr.DataArray(amp_arr, attrs={"long_name": "amplitude scaling factor"}),
+        "amp_prefactor": xr.DataArray(amp_arr, attrs={"long_name": "amplitude scaling factor"}),
     }
 
     with program() as prog:

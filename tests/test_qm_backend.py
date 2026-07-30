@@ -41,10 +41,19 @@ def test_to_canonical_renames_ramsey_axis():
     assert set(out.data_vars) == {"I", "Q"}
 
 
-def test_to_canonical_renames_power_rabi_axis():
+def test_power_rabi_axis_needs_no_rename_at_all():
+    """The probe and scqo now agree on ``amp_prefactor``, so this axis takes the
+    NAME-based path and never the positional fallback.
+
+    It used to differ (probe ``amp_prefactor`` vs scqo ``amp_factor``) and was
+    rescued only by position — the less-safe branch, which cannot tell two
+    same-length axes apart. The positional fallback itself stays covered by the
+    ramsey and resonator cases above/below, which are still genuinely positional.
+    """
     raw = _raw("amp_prefactor")
-    out = QMBackend._to_canonical(raw, _FakeExp({"amp_factor": np.arange(5)}))
-    assert "amp_factor" in out.dims and "amp_prefactor" not in out.dims
+    out = QMBackend._to_canonical(raw, _FakeExp({"amp_prefactor": np.arange(5)}))
+    assert "amp_prefactor" in out.dims
+    assert "amp_factor" not in out.dims
 
 
 def test_to_canonical_renames_resonator_spec_axis():
@@ -569,7 +578,7 @@ def test_probe_matches_direct_build(machine, live_roster):
     p.sweep_axes = p.define_sweep()
     p_prog, _ = p.probe()
     p_direct, _ = power_rabi_probe.build_program(
-        machine, qubits, amps=p.sweep_axes["amp_factor"], operation="x180",
+        machine, qubits, amps=p.sweep_axes["amp_prefactor"], operation="x180",
         num_shots=200, reset_type="thermal", use_state_discrimination=False, drive_qubit=None,
     )
     assert script(p_prog) == script(p_direct)

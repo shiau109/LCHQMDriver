@@ -12,6 +12,7 @@ from qm.qua import *
 from qualang_tools.loops import from_array
 
 from customized.probes._lib import acquire as _acquire
+from customized.probes._flux_limits import check_flux_pulse_relative, declared_idle_offset_v
 
 
 def build_program(
@@ -35,6 +36,19 @@ def build_program(
     (see `qualibration_libs.parameters.get_qubit_pairs`).
     """
     num_qubit_pairs = len(qubit_pairs)
+
+    # The coupler plays `const` rescaled by amp/const.amplitude, on top of whatever
+    # standing bias initialize_qpu applied (this probe takes no flux_point argument,
+    # so the coupler's declaration -- normally "off" -> decouple_offset -- is what
+    # runs). Rail, amplitude_scale bound and the idle + excursion sum, all shared.
+    for qp in qubit_pairs:
+        coupler = getattr(qp, "coupler", None)
+        if coupler is None:
+            raise ValueError(
+                f"Qubit pair {qp.name} has no coupler; this probe sweeps a coupler bias.")
+        check_flux_pulse_relative(
+            coupler, name=f"{qp.name} coupler", idle_v=declared_idle_offset_v(coupler),
+            amps_v=amplitudes, operation="const")
 
     sweep_axes = {
         "qubit_pair": xr.DataArray(qubit_pairs.get_names()),

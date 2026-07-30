@@ -13,9 +13,11 @@ from qm.qua import *
 from qualang_tools.loops import from_array
 
 from customized.probes._lib import acquire as _acquire
+from customized.probes._amp_limits import MAX_AMP_SCALE
+from customized.probes._flux_limits import check_flux_pulse_relative, declared_idle_offset_v
 
-# Largest magnitude QUA accepts for a dynamic `amplitude_scale` (the fixed-point range is (-2, 2)).
-_MAX_AMP_SCALE = 2.0
+# MAX_AMP_SCALE is still needed here for the PREFACTOR branch, whose drive_amp IS
+# an amplitude_scale and so never reaches the volts-based helpers.
 
 
 def build_program(
@@ -44,23 +46,20 @@ def build_program(
     num_qubits = len(qubits)
     time_ns = time_tick * 4  # in ns
 
-    # Validate drive_amp stays within QUA's (-2, 2) amplitude_scale range. In "absolute"
-    # mode the emitted scale is drive_amp/ref (ref = the qubit z 'const' op amplitude).
+    # In "absolute" mode drive_amp is a z-pulse excursion in volts on the standing bias
+    # initialize_qpu applied (no flux_point argument here, so the declaration runs):
+    # the shared helper does the `const` contract, QUA's amplitude_scale bound and the
+    # idle + excursion sum, which nothing checked before.
     if amp_mode == "absolute":
         for qubit in qubits:
-            ref = float(qubit.z.operations["const"].amplitude)
-            scale = abs(drive_amp) / abs(ref)
-            if scale >= _MAX_AMP_SCALE:
-                raise ValueError(
-                    f"Absolute drive_amp for {qubit.name} exceeds QUA's amplitude_scale range: "
-                    f"|a/ref| = {scale:.3f} >= {_MAX_AMP_SCALE} (ref = {ref} V). "
-                    f"Reduce drive_amp or use amp_mode='prefactor'."
-                )
+            check_flux_pulse_relative(
+                qubit.z, name=qubit.name, idle_v=declared_idle_offset_v(qubit.z),
+                amps_v=[drive_amp], operation="const")
     else:  # prefactor
-        if abs(drive_amp) >= _MAX_AMP_SCALE:
+        if abs(drive_amp) >= MAX_AMP_SCALE:
             raise ValueError(
                 f"Prefactor drive_amp exceeds QUA's amplitude_scale range: "
-                f"|a| = {abs(drive_amp):.3f} >= {_MAX_AMP_SCALE}."
+                f"|a| = {abs(drive_amp):.3f} >= {MAX_AMP_SCALE}."
             )
 
     # X/Y/Z readout-basis axis — only swept when tomography is enabled.

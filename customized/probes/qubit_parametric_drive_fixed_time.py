@@ -14,9 +14,11 @@ from qualang_tools.loops import from_array
 from qualang_tools.units import unit
 
 from customized.probes._lib import acquire as _acquire
+from customized.probes._amp_limits import MAX_AMP_SCALE
+from customized.probes._flux_limits import check_flux_pulse_relative, declared_idle_offset_v
 
-# Largest magnitude QUA accepts for a dynamic `amplitude_scale` (the fixed-point range is (-2, 2)).
-_MAX_AMP_SCALE = 2.0
+# MAX_AMP_SCALE is still needed here for the PREFACTOR branch, whose sweep values
+# ARE amplitude_scale and so never reach the volts-based helpers.
 
 
 def build_program(
@@ -43,24 +45,21 @@ def build_program(
     u = unit(coerce_to_integer=True)
     num_qubits = len(qubits)
 
-    # Validate the sweep stays within QUA's (-2, 2) amplitude_scale range. In "absolute" mode
-    # the emitted scale is a/ref, so the bound depends on each qubit's z 'const' op amplitude.
+    # In "absolute" mode the swept volts are a z-pulse excursion on the standing bias
+    # initialize_qpu applied (no flux_point argument here, so the declaration runs):
+    # the shared helper does the `const` contract, QUA's amplitude_scale bound and the
+    # idle + excursion sum, which nothing checked before.
     if amp_mode == "absolute":
         for qubit in qubits:
-            ref = float(qubit.z.operations["const"].amplitude)
-            max_scale = float(np.max(np.abs(r_amps))) / abs(ref)
-            if max_scale >= _MAX_AMP_SCALE:
-                raise ValueError(
-                    f"Absolute amplitude sweep for {qubit.name} exceeds QUA's amplitude_scale range: "
-                    f"max |a/ref| = {max_scale:.3f} >= {_MAX_AMP_SCALE} (ref = {ref} V). "
-                    f"Reduce the amplitude range or use amp_mode='prefactor'."
-                )
+            check_flux_pulse_relative(
+                qubit.z, name=qubit.name, idle_v=declared_idle_offset_v(qubit.z),
+                amps_v=r_amps, operation="const")
     else:  # prefactor
         max_scale = float(np.max(np.abs(r_amps)))
-        if max_scale >= _MAX_AMP_SCALE:
+        if max_scale >= MAX_AMP_SCALE:
             raise ValueError(
                 f"Prefactor amplitude sweep exceeds QUA's amplitude_scale range: "
-                f"max |a| = {max_scale:.3f} >= {_MAX_AMP_SCALE}."
+                f"max |a| = {max_scale:.3f} >= {MAX_AMP_SCALE}."
             )
 
     amp_units = "V" if amp_mode == "absolute" else "arb."

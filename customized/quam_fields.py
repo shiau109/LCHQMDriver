@@ -326,6 +326,132 @@ def flux_point_problems(machine: Any) -> list[str]:
     return problems
 
 
+#: Every named standing-bias attribute a flux channel can carry — the qubit
+#: FluxLine vocabulary plus the TunableCoupler one. Audited together because the
+#: DAC does not care which name a bias arrived under.
+_IDLE_OFFSET_ATTRS = (
+    "joint_offset", "independent_offset", "min_offset", "arbitrary_offset",
+    "decouple_offset", "interaction_offset",
+)
+
+
+def _flux_channels(machine: Any):
+    """(label, channel) for every flux-emitting channel in the tree."""
+    for name, qubit in getattr(machine, "qubits", {}).items():
+        z = getattr(qubit, "z", None)
+        if z is not None:
+            yield f"qubits.{name}.z", z
+    for name, pair in getattr(machine, "qubit_pairs", {}).items():
+        coupler = getattr(pair, "coupler", None)
+        if coupler is not None:
+            yield f"qubit_pairs.{name}.coupler", coupler
+
+
+def _amplitude_of(op: Any):
+    """A stored op's amplitude as a float, or None when it is not a number.
+
+    QUAM references (``'#./const'``) and unset fields are legitimately
+    non-numeric — the audit skips them rather than inventing a verdict.
+    """
+    try:
+        return float(getattr(op, "amplitude", None))
+    except (TypeError, ValueError):
+        return None
+
+
+def _flux_headroom_findings(machine: Any):
+    """(clips, message) for every flux-headroom finding in the tree.
+
+    ``clips`` separates the two severities, and the split is the whole design:
+
+    * **clips=True** — the hardware emits something OTHER than what was asked. A
+      stored op peak or a standing bias at/past the rail is truncated by the DAC,
+      the fit still converges, and the simulator shows nothing. Fatal.
+    * **clips=False** — the hardware emits exactly what was asked, there is just
+      less of it available than there could be. An undersized ``const`` caps how
+      far any volts-based sweep on that line can reach; it corrupts nothing, and
+      the ``amplitude_scale`` bound in ``probes/_flux_limits.py`` already refuses
+      the moment a probe actually asks for more than the reach. Advisory.
+
+    Making the second one fatal would break every session on configs that work:
+    the live 5Q4C couplers sit at 0.15 V and have always run.
+    """
+    from customized.probes._flux_limits import (
+        _CONST_AMP_RAIL_FRACTION,
+        dac_rail_v,
+        rail_remedy,
+    )
+
+    for label, channel in _flux_channels(machine):
+        rail = dac_rail_v(channel)
+
+        operations = getattr(channel, "operations", None) or {}
+        for op_name, op in operations.items():
+            amplitude = _amplitude_of(op)
+            if amplitude is None:
+                continue
+            if abs(amplitude) >= rail:
+                yield True, (
+                    f"{label}.operations['{op_name}'].amplitude = {amplitude} V, "
+                    f"at or past the port's {rail} V full scale: the stored "
+                    f"waveform peak is clipped on hardware and the simulator "
+                    f"hides it. "
+                    + rail_remedy(channel, name=f"{label} '{op_name}'",
+                                  needed_v=abs(amplitude), rail=rail))
+
+        const = _amplitude_of(operations.get("const")) if "const" in operations else None
+        expected = rail * _CONST_AMP_RAIL_FRACTION
+        if const is not None and abs(const) < rail and abs(const - expected) > 1e-6 * rail:
+            yield False, (
+                f"{label}.operations['const'].amplitude = {const} V, but the flux "
+                f"convention is half the port's full scale, {expected} V (rail "
+                f"{rail} V). Nothing clips - but no volts-based sweep on this line "
+                f"can reach the rail, because QUA caps amplitude_scale at +/-2, so "
+                f"the reachable excursion is +/-{2 * abs(const)} V instead of "
+                f"+/-{rail} V. Set it to {expected}.")
+
+        for attr in _IDLE_OFFSET_ATTRS:
+            value = getattr(channel, attr, None)
+            if value is None:
+                continue
+            try:
+                offset = float(value)
+            except (TypeError, ValueError):
+                continue
+            if abs(offset) > rail:
+                yield True, (
+                    f"{label}.{attr} = {offset} V, past the port's {rail} V full "
+                    f"scale: the standing bias alone already clips, before any "
+                    f"pulse rides on it. "
+                    + rail_remedy(channel, name=f"{label}.{attr}",
+                                  needed_v=abs(offset), rail=rail))
+
+
+def flux_headroom_problems(machine: Any) -> list[str]:
+    """Every way this tree's flux config would CLIP — the fatal half.
+
+    The per-sweep checks in ``probes/_flux_limits.py`` refuse ONE probe when it
+    asks for too much. This is the other half: a whole-tree audit run once at
+    session start, so a config that cannot work is reported completely and up
+    front — "these three ports need amplified mode" — instead of one probe dying
+    on the first one it happens to touch.
+
+    Pure (no I/O, no QUA); the caller decides how loudly to fail.
+    """
+    return [msg for clips, msg in _flux_headroom_findings(machine) if clips]
+
+
+def flux_headroom_warnings(machine: Any) -> list[str]:
+    """Flux config that works but is leaving range on the table — advisory.
+
+    Today that is exactly the ``const`` = rail/2 convention. This is the ONE
+    place it is enforced: the per-sweep helpers deliberately do not, because an
+    undersized ``const`` clips nothing and refusing there would reject working
+    configs.
+    """
+    return [msg for clips, msg in _flux_headroom_findings(machine) if not clips]
+
+
 def get_idle_flux(qubit: Any) -> float:
     """Standing z-line idle bias (V): the offset SELECTED by ``z.flux_point``
     (joint/independent/min/arbitrary; ``zero`` reads as 0.0). Which named point

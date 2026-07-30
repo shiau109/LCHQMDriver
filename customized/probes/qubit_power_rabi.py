@@ -13,6 +13,7 @@ from qm.qua import *
 
 from qualang_tools.loops import from_array
 
+from customized.probes._amp_limits import check_amp_scale_window
 from customized.probes._lib import acquire as _acquire
 
 
@@ -30,9 +31,10 @@ def build_program(
 ):
     """Build the power-Rabi QUA program. Returns (program, sweep_axes).
 
-    `amps` is the amplitude pre-factor sweep (must be within [-2; 2));
-    `qubits` is a BatchableList (see `_lib.select_qubits`).
+    `amps` is the amplitude pre-factor sweep (must be within [-2; 2), refused by
+    name below); `qubits` is a BatchableList (see `_lib.select_qubits`).
     """
+    check_amp_scale_window(amps, name=", ".join(qubits.get_names()))
     num_qubits = len(qubits)
 
     sweep_axes = {

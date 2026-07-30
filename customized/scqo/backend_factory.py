@@ -44,19 +44,48 @@ def build_backend(cfg: LabConfig, setup: dict, roster: "Roster") -> Backend:
             f"qm setup: {', '.join(missing)} not found in {folder} — "
             "canonical QUAM filenames required"
         )
-    from customized.quam_fields import flux_point_problems
+    import warnings
+
+    from customized.quam_fields import (
+        flux_headroom_problems,
+        flux_headroom_warnings,
+        flux_point_problems,
+    )
     from customized.scqo.backend import QMBackend
 
     backend = QMBackend.load(state_path=str(folder), roster=roster)
 
-    # The governed knob must BE the applied bias. Checked once, here, rather than
-    # inside get/set_idle_flux: that getter runs during pull-seeding, so refusing
-    # there would abort session construction with no context, and the accessor is
-    # shared with the qualibrate path where a different point is legitimate.
-    problems = flux_point_problems(backend.machine)
-    if problems:
-        raise SystemExit(
-            f"qm setup: flux points in {folder / 'state.json'} disagree with the "
-            f"bias every probe applies, so idle_flux would be a knob the hardware "
-            f"never sees:\n  - " + "\n  - ".join(problems))
+    # Two whole-tree flux audits, reported TOGETHER so one `scqo run` surfaces
+    # every config problem at once rather than one per attempt.
+    #
+    # flux_point_problems: the governed knob must BE the applied bias. Checked
+    # here rather than inside get/set_idle_flux, because that getter runs during
+    # pull-seeding (refusing there would abort session construction with no
+    # context) and the accessor is shared with the qualibrate path where a
+    # different point is legitimate.
+    #
+    # flux_headroom_problems: the port must be able to EMIT what the tree
+    # declares. Per-sweep refusals live in probes/_flux_limits.py; this catches
+    # the config before any probe runs, so "this chip needs three ports in
+    # amplified mode" arrives as one message. Only CLIPPING is fatal here —
+    # config that merely leaves range on the table warns instead, or the live
+    # 5Q4C couplers (const 0.15 V, which have always run) would block every
+    # session.
+    for advisory in flux_headroom_warnings(backend.machine):
+        warnings.warn(advisory, RuntimeWarning, stacklevel=2)
+
+    complaints = [
+        ("flux points", "disagree with the bias every probe applies, so idle_flux "
+                        "would be a knob the hardware never sees",
+         flux_point_problems(backend.machine)),
+        ("flux headroom", "declares voltages its ports cannot emit, which the DAC "
+                          "clips silently and the simulator does not show",
+         flux_headroom_problems(backend.machine)),
+    ]
+    report = "\n".join(
+        f"{what} in {folder / 'state.json'} {why}:\n  - " + "\n  - ".join(problems)
+        for what, why, problems in complaints if problems
+    )
+    if report:
+        raise SystemExit(f"qm setup: {report}")
     return backend
