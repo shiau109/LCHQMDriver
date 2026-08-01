@@ -698,6 +698,45 @@ def test_power_amp_probe_builds_with_new_loop_order(machine, live_roster):
     assert default != overridden  # the relaxation override reaches the QUA program
 
 
+def test_readout_fidelity_probe_state_selection_compiles(machine, live_roster):
+    """The one probe now serves three experiments by prepared_states alone. All
+    three must COMPILE against the live config — the |f> branch plays inside a
+    switch_ and retunes the drive element mid-case, which is where a QUA build
+    would break — and the two-state default must stay byte-identical to what it
+    generated before the parameter existed."""
+    from qm import generate_qua_script
+
+    from customized.probes._lib import select_qubits
+    from customized.probes import readout_fidelity as fidelity_probe
+
+    config = machine.generate_config()
+
+    def script(prog):
+        return "\n".join(
+            ln for ln in generate_qua_script(prog, config).splitlines() if "generated at" not in ln
+        )
+
+    names = ["q1"]
+    if not machine.qubits[names[0]].xy.operations.get("EF_x180"):
+        pytest.skip("q1 has no calibrated EF_x180 in the live state")
+    qubits = select_qubits(machine, names, multiplexed=True)
+    common = dict(operation="readout", num_shots=10, reset_type="thermal")
+
+    default, axes = fidelity_probe.build_program(machine, qubits, **common)
+    explicit, _ = fidelity_probe.build_program(machine, qubits, prepared_states=(0, 1), **common)
+    assert script(default) == script(explicit)
+    assert list(axes["prepared_state"].values) == [0, 1]
+
+    gef, gef_axes = fidelity_probe.build_program(
+        machine, qubits, prepared_states=(0, 1, 2), readout_freq_shift_hz=-600e3, **common)
+    assert script(gef)  # the EF case + the resonator shift assemble
+    assert list(gef_axes["prepared_state"].values) == [0, 1, 2]
+
+    ground, ground_axes = fidelity_probe.build_program(machine, qubits, prepared_states=(0,), **common)
+    assert script(ground)
+    assert list(ground_axes["prepared_state"].values) == [0]
+
+
 # ------------------------------------------- the pair swap maps, live QUAM tree
 
 def _live_pair(machine) -> tuple[str, object]:
