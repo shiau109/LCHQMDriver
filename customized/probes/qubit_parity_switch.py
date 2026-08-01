@@ -9,10 +9,13 @@ cos and see no parity at all.
 Two deliberate absences, both load-bearing:
 
 * **No `qubit.reset(...)`.** Between shots only the RESONATOR is waited out
-  (its depletion time). The sequence re-prepares the equator every shot
-  regardless of the starting pole, and the shot cadence IS the telegraph
-  timebase the switching rate is fitted against — a thermal wait would stretch
-  it by orders of magnitude and scale every reported rate with it.
+  (its depletion time), and the absence of a qubit reset is REQUIRED rather
+  than an optimization: the sequence inverts with the pole the previous shot
+  left behind, so the readout is the running XOR of the parity and the
+  consecutive-pair difference is the parity telegraph the rate is fitted from.
+  Resetting to |0> each shot would sever that chain. The shot cadence is also
+  the telegraph timebase — a thermal wait would stretch it by orders of
+  magnitude and scale every reported rate with it.
 * **No `.average()` in the stream processing.** Every shot is its own sample of
   the telegraph; averaging them is exactly the information being measured.
   (The legacy `calibrations/exclude/LCH_parity_switch_ramsey.py` node carried a
