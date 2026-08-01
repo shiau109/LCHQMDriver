@@ -69,14 +69,21 @@ def build_program(
                     align()
                     # Qubit manipulation
                     for i, qubit in multiplexed_qubits.items():
-                        # The ramp is NEGATED on purpose -- this is not a typo. QUA's
-                        # frame_rotation_2pi rotates the ELEMENT FRAME, the opposite
-                        # handedness to a pulse-axis phase (Qblox's X90(phase=...)).
-                        # scqo's contract is that the effective drive sits
-                        # +detuning_hz ABOVE drive_freq_hz, so the frame ramp has to
-                        # run the other way to mean the same thing on both backends.
-                        # Get this wrong and every accepted update DOUBLES the residual
-                        # detuning instead of cancelling it (the fit still looks clean).
+                        # The ramp is NEGATED on purpose -- this is not a typo. The
+                        # second pi/2's phase must run BACKWARD relative to the free
+                        # precession of a qubit sitting above its drive, so that the
+                        # observed fringe is (applied + err) -- the quantity scqo's
+                        # shared estimate() subtracts `applied` from. Get this wrong and
+                        # every accepted update DOUBLES the residual detuning instead of
+                        # cancelling it (the fit still looks clean).
+                        #
+                        # This is the SAME sign the Qblox backend needs, for the same
+                        # reason. An earlier version of this comment claimed a frame
+                        # rotation is "the opposite handedness to a pulse-axis phase" --
+                        # that is FALSE (frame_rotation_2pi documents its argument as
+                        # "the angle to add to the current phase", and applies
+                        # envelope x e^{+i phi}, exactly like a pulse phase). The sign
+                        # was right, the stated reason was not; do not propagate it.
                         assign(
                             virtual_detuning_phases[i],
                             Cast.mul_fixed_by_int(-detuning_hz * 1e-9, 4 * idle_time),

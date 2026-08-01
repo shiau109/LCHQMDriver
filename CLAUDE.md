@@ -42,11 +42,17 @@ LCH nodes are being refactored so qualibrate is a thin shell, not the architectu
 Shared probe helpers (`select_qubits` — the node-free `get_qubits`; `acquire` — the shared
 execute-and-fetch) live in `customized/probes/_lib.py`.
 
-**Virtual-detuning sign — a SILENT failure.** QUA's `frame_rotation_2pi` rotates the ELEMENT
-FRAME, the opposite handedness to a pulse-axis phase (Qblox's `X90(phase=...)`). A probe
-realizing scqo's `frequency_detuning_hz` must therefore ramp the frame **negative**, so the
-effective drive sits `+detuning` ABOVE `drive_freq_hz` exactly as it does on Qblox — scqo's
-shared `estimate()` writes `drive_freq += (f_fit − applied)` for both backends. Get it backwards
+**Virtual-detuning sign — a SILENT failure.** A probe realizing scqo's
+`frequency_detuning_hz` must ramp the phase **negative on EVERY backend**: the second pi/2's
+phase has to run BACKWARD relative to the free precession of a qubit sitting above its drive,
+so the observed fringe is `applied + err` — scqo's shared `estimate()` writes
+`drive_freq += (f_fit − applied)` for both backends. A frame rotation and a pulse-axis phase
+are the SAME handedness (`frame_rotation_2pi` documents its argument as "the angle to add to
+the current phase" and applies `envelope × e^{+iφ}`, exactly like Qblox's `Rxy(phi=…)`), so
+the negation is not compensating a cross-vendor asymmetry — it is genuinely required on both.
+An earlier version of this note claimed the opposite handedness; that claim was false and it
+is what produced the Qblox sign confusion (fixed 2026-08-01, pinned by
+`LCHQBDriver/tests/test_ramsey_detuning.py`). Get it backwards
 and every accepted update DOUBLES the residual detuning instead of cancelling it, while the fit
 still converges and looks clean (chipA q1, 2026-07-28: +47.9 k → +95.7 k → +191.5 k Hz).
 BOTH frame-ramping probes carry the negation: `customized/probes/qubit_ramsey.py`
