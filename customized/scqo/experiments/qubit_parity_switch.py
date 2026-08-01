@@ -64,7 +64,9 @@ class QMQubitParitySwitch(QubitParitySwitch):
             qubits,
             idle_cycles=idle_cycles,
             depletion_cycles=depletion_cycles,
-            num_shots=int(self.params.num_shots),
+            # resolved by the neutral layer from record_time_s (or an explicit
+            # override); params.num_shots is None in the normal case
+            num_shots=self.resolved_num_shots(),
             use_state_discrimination=bool(self.params.use_state_discrimination),
         )
 
