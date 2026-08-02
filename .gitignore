@@ -13,6 +13,7 @@ assets
 **/calibration_data
 /.img
 tempCodeRunnerFile.python
+temp/
 
 # Official qua-libs files are vendored (copied) into calibrations/ and
 # calibration_utils/ by sync_official.py and ARE tracked in git, so they are
