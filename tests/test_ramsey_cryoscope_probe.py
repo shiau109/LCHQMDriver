@@ -1,4 +1,4 @@
-"""``qubit_cryoscope.validate_inputs`` — the cryoscope probe's pre-flight gate.
+"""``qubit_ramsey_cryoscope.validate_inputs`` — the ramsey cryoscope probe's pre-flight gate.
 
 The probe builds a single-qubit phase-tomography sequence that sweeps EVERY
 nanosecond and plays an idle-relative flux pulse. All the ways that can be wrong
@@ -16,7 +16,7 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
-from customized.probes.qubit_cryoscope import validate_inputs
+from customized.probes.qubit_ramsey_cryoscope import validate_inputs
 
 
 class _Qubits(list):

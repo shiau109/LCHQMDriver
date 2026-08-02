@@ -1,4 +1,4 @@
-"""Cryoscope acquisition probe: vendor code only (qm/quam) — no qualibrate, no scqo.
+"""Ramsey cryoscope acquisition probe: vendor code only (qm/quam) — no qualibrate, no scqo.
 
 Flux-line step response via Ramsey phase tomography. Sequence per (duration,
 frame): ``x90`` -> flux pulse of ``duration`` ns -> fixed total idle ->
@@ -71,7 +71,7 @@ def validate_inputs(qubits, durations_ns, flux_amp_v: float, flux_point: str) ->
     if len(qubits) != 1:
         names = list(qubits.get_names())
         raise ValueError(
-            f"qubit_cryoscope builds its phase-tomography sequence per qubit and "
+            f"qubit_ramsey_cryoscope builds its phase-tomography sequence per qubit and "
             f"supports one target at a time, got {len(qubits)}: {names}. "
             f"Run them one at a time.")
     durations_ns = np.asarray(durations_ns)
@@ -79,7 +79,7 @@ def validate_inputs(qubits, durations_ns, flux_amp_v: float, flux_point: str) ->
     if durations_ns.size != expected.size or not np.array_equal(
             durations_ns.astype(int), expected):
         raise ValueError(
-            "qubit_cryoscope sweeps EVERY nanosecond 1..max (the QUA loop "
+            "qubit_ramsey_cryoscope sweeps EVERY nanosecond 1..max (the QUA loop "
             "enumerates each ns and the derivative assumes a uniform 1 ns step); "
             f"got a {durations_ns.size}-point axis that is not arange(1, "
             f"{int(durations_ns[-1]) + 1}).")
@@ -88,10 +88,10 @@ def validate_inputs(qubits, durations_ns, flux_amp_v: float, flux_point: str) ->
     z = getattr(qubit, "z", None)
     if z is None:
         raise ValueError(
-            f"{qubit.name}: no flux line, but cryoscope plays a z pulse — it "
+            f"{qubit.name}: no flux line, but the ramsey cryoscope plays a z pulse — it "
             f"cannot measure a flux step response on a qubit with no z channel.")
     return check_flux_pulse_relative(
-        z, name=f"{qubit.name} cryoscope flux pulse",
+        z, name=f"{qubit.name} ramsey cryoscope flux pulse",
         idle_v=idle_offset_v(z, flux_point), amps_v=[float(flux_amp_v)])
 
 

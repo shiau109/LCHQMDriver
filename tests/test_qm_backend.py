@@ -878,7 +878,7 @@ def test_swap_flux_map_probe_builds(machine, live_roster):
 
 def _live_flux_qubit(machine):
     """The first live QUAM qubit carrying both a flux `const` op and an `x90` —
-    everything the cryoscope sequence plays. Roster mode name == QUAM name."""
+    everything the ramsey cryoscope sequence plays. Roster mode name == QUAM name."""
     for name, q in machine.qubits.items():
         z = getattr(q, "z", None)
         if (z is not None and "const" in getattr(z, "operations", {})
@@ -887,16 +887,16 @@ def _live_flux_qubit(machine):
     return None
 
 
-def test_cryoscope_probe_builds_against_the_baked_config(machine, live_roster,
+def test_ramsey_cryoscope_probe_builds_against_the_baked_config(machine, live_roster,
                                                          monkeypatch):
-    """Like the swap chevron, the cryoscope acquires itself: its 1..16 ns baked
+    """Like the swap chevron, the ramsey cryoscope acquires itself: its 1..16 ns baked
     segments live only in the probe's own config. Pin that the baked config
     travels, the canonical axes come back, and the phase-tomography program
     COMPILES against the live QUAM (the pure validate_inputs test cannot)."""
     from qm import generate_qua_script
 
-    from customized.probes import qubit_cryoscope as cryoscope_probe
-    from customized.scqo.experiments.qubit_cryoscope import QMQubitCryoscope
+    from customized.probes import qubit_ramsey_cryoscope as ramsey_cryoscope_probe
+    from customized.scqo.experiments.qubit_ramsey_cryoscope import QMQubitRamseyCryoscope
 
     name = _live_flux_qubit(machine)
     if name is None:
@@ -909,12 +909,12 @@ def test_cryoscope_probe_builds_against_the_baked_config(machine, live_roster,
                         num_shots=num_shots)
         return xr.Dataset()
 
-    monkeypatch.setattr(cryoscope_probe, "acquire", fake_acquire)
+    monkeypatch.setattr(ramsey_cryoscope_probe, "acquire", fake_acquire)
 
     backend = QMBackend(machine, roster=live_roster)
-    exp = QMQubitCryoscope(
+    exp = QMQubitRamseyCryoscope(
         backend,
-        QMQubitCryoscope.Parameters(targets=[name], max_duration_ns=32,
+        QMQubitRamseyCryoscope.Parameters(targets=[name], max_duration_ns=32,
                                     num_frames=8, num_averages=10,
                                     flux_pulse_amp_v=0.02),
     )

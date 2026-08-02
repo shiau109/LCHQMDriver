@@ -1,7 +1,7 @@
-"""QM cryoscope for scqo — supplies only ``probe()``.
+"""QM ramsey cryoscope for scqo — supplies only ``probe()``.
 
 Parameters, the step-response estimator and the paired-fact writeback are
-inherited from ``scqo.experiments.QubitCryoscope``. scqo sweeps the flux-pulse
+inherited from ``scqo.experiments.QubitRamseyCryoscope``. scqo sweeps the flux-pulse
 DURATION (``duration_ns``, every ns) x the closing-pulse FRAME (turns); the LCHQM
 probe realizes the 1 ns duration resolution with baking (<=16 ns baked, a
 stretched ``const`` plus a baked remainder above) and plays the flux pulse
@@ -25,15 +25,15 @@ from typing import Any
 
 import numpy as np
 from scqo import register
-from scqo.experiments import QubitCryoscope
+from scqo.experiments import QubitRamseyCryoscope
 
 
 @register
-class QMQubitCryoscope(QubitCryoscope):
-    """Build, run and fetch the cryoscope phase-tomography sequence on the QM OPX."""
+class QMQubitRamseyCryoscope(QubitRamseyCryoscope):
+    """Build, run and fetch the ramsey cryoscope phase-tomography sequence on the QM OPX."""
 
     def probe(self) -> Any:
-        from customized.probes import qubit_cryoscope as cryoscope_probe
+        from customized.probes import qubit_ramsey_cryoscope as ramsey_cryoscope_probe
         from customized.probes._lib import select_qubits
         from customized.quam_fields import GOVERNED_FLUX_POINT
 
@@ -43,7 +43,7 @@ class QMQubitCryoscope(QubitCryoscope):
         qubits = select_qubits(machine, self.params.targets, multiplexed=True)
         durations_ns = np.round(self.sweep_axes["duration_ns"]).astype(int)
 
-        prog, sweep_axes, baked_config = cryoscope_probe.build_program(
+        prog, sweep_axes, baked_config = ramsey_cryoscope_probe.build_program(
             machine,
             qubits,
             durations_ns=durations_ns,
@@ -56,7 +56,7 @@ class QMQubitCryoscope(QubitCryoscope):
         )
         # Acquire here: the baked config is per-call and cannot be reached through
         # the backend's (program, axes, module) shape.
-        return cryoscope_probe.acquire(
+        return ramsey_cryoscope_probe.acquire(
             machine, prog, sweep_axes,
             num_shots=int(self.params.num_averages),
             timeout=self.backend._timeout,
