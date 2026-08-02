@@ -936,3 +936,41 @@ def test_ramsey_cryoscope_probe_builds_against_the_baked_config(machine, live_ro
     assert len(captured["sweep_axes"]["frame"]) == 8
 
     assert generate_qua_script(captured["prog"], captured["config"])
+
+
+def test_spectroscopy_cryoscope_probe_builds_against_the_live_quam(machine, live_roster):
+    """The long-time (spectroscopy) cryoscope needs no baking, so it returns the
+    ordinary (program, sweep_axes) pair and the backend's shared fetch runs it.
+    Pin the canonical axes and that the parked spectroscopy program COMPILES
+    against the live QUAM (the pure validate_inputs test cannot)."""
+    from qm import generate_qua_script
+
+    from customized.scqo.experiments.qubit_spectroscopy_cryoscope import (
+        QMQubitSpectroscopyCryoscope,
+    )
+
+    name = _live_flux_qubit(machine)
+    if name is None:
+        pytest.skip("no flux-tunable qubit with a const op in the live state")
+
+    backend = QMBackend(machine, roster=live_roster)
+    exp = QMQubitSpectroscopyCryoscope(
+        backend,
+        QMQubitSpectroscopyCryoscope.Parameters(
+            targets=[name], num_freq_points=11, min_wait_ns=16, max_wait_ns=2000,
+            num_wait_points=8, num_averages=10, flux_pulse_amp_v=0.02,
+        ),
+    )
+    exp.sweep_axes = exp.define_sweep()
+    prog, sweep_axes = exp.probe()
+
+    # canonical axes in raw nesting order, with their units — no baking, so the
+    # adapter returns (program, sweep_axes) rather than self-acquiring
+    assert set(sweep_axes) == {"qubit", "detuning_hz", "wait_time_ns"}
+    assert list(sweep_axes["qubit"].values) == [name]
+    assert sweep_axes["detuning_hz"].attrs["units"] == "Hz"
+    assert sweep_axes["wait_time_ns"].attrs["units"] == "ns"
+    assert len(sweep_axes["detuning_hz"]) == 11
+    assert 2 <= len(sweep_axes["wait_time_ns"]) <= 8  # log axis dedups on the 4 ns grid
+
+    assert generate_qua_script(prog, machine.generate_config())
