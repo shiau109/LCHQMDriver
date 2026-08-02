@@ -828,3 +828,65 @@ def test_swap_flux_map_probe_builds(machine, live_roster):
     # that, so result.fit reports what actually played, not what was asked for
     assert exp._flux_time_ns == 44.0
     assert generate_qua_script(prog, machine.generate_config())
+
+
+def _live_flux_qubit(machine):
+    """The first live QUAM qubit carrying both a flux `const` op and an `x90` —
+    everything the cryoscope sequence plays. Roster mode name == QUAM name."""
+    for name, q in machine.qubits.items():
+        z = getattr(q, "z", None)
+        if (z is not None and "const" in getattr(z, "operations", {})
+                and "x90" in q.xy.operations):
+            return name
+    return None
+
+
+def test_cryoscope_probe_builds_against_the_baked_config(machine, live_roster,
+                                                         monkeypatch):
+    """Like the swap chevron, the cryoscope acquires itself: its 1..16 ns baked
+    segments live only in the probe's own config. Pin that the baked config
+    travels, the canonical axes come back, and the phase-tomography program
+    COMPILES against the live QUAM (the pure validate_inputs test cannot)."""
+    from qm import generate_qua_script
+
+    from customized.probes import qubit_cryoscope as cryoscope_probe
+    from customized.scqo.experiments.qubit_cryoscope import QMQubitCryoscope
+
+    name = _live_flux_qubit(machine)
+    if name is None:
+        pytest.skip("no flux-tunable qubit with a const op in the live state")
+
+    captured = {}
+
+    def fake_acquire(m, prog, sweep_axes, *, num_shots, timeout, log=None, config=None):
+        captured.update(prog=prog, sweep_axes=sweep_axes, config=config,
+                        num_shots=num_shots)
+        return xr.Dataset()
+
+    monkeypatch.setattr(cryoscope_probe, "acquire", fake_acquire)
+
+    backend = QMBackend(machine, roster=live_roster)
+    exp = QMQubitCryoscope(
+        backend,
+        QMQubitCryoscope.Parameters(targets=[name], max_duration_ns=32,
+                                    num_frames=8, num_averages=10,
+                                    flux_pulse_amp_v=0.02),
+    )
+    exp.sweep_axes = exp.define_sweep()
+    exp.probe()
+
+    # the 16 baked segments exist in the passed config, absent from a fresh one
+    fresh = machine.generate_config()
+    baked = set(captured["config"]["pulses"]) - set(fresh["pulses"])
+    assert len(baked) == 16, sorted(baked)
+    assert captured["num_shots"] == 10
+
+    # canonical axes in raw nesting order, with their units
+    assert set(captured["sweep_axes"]) == {"qubit", "duration_ns", "frame"}
+    assert list(captured["sweep_axes"]["qubit"].values) == [name]
+    assert captured["sweep_axes"]["duration_ns"].attrs["units"] == "ns"
+    assert captured["sweep_axes"]["frame"].attrs["units"] == "turn"
+    assert len(captured["sweep_axes"]["duration_ns"]) == 32
+    assert len(captured["sweep_axes"]["frame"]) == 8
+
+    assert generate_qua_script(captured["prog"], captured["config"])
