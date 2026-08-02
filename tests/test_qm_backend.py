@@ -312,7 +312,7 @@ def test_snapshot_reports_the_bound_knobs_per_entity(backend):
     snap = backend.device.snapshot()
     assert set(snap["q1_xy"]) == set(FIELD_BINDINGS["drive"])
     assert set(snap["q1_ro"]) == set(FIELD_BINDINGS["readout"])
-    assert set(snap["q1_z"]) == {"idle_flux"}
+    assert set(snap["q1_z"]) == set(FIELD_BINDINGS["flux"])
     # the composite's names are per-OPERATION, instantiated from the roster
     assert "cz_coupler_flux" in snap["q1_q2"]
     assert snap["q1_q2"]["cz_coupler_flux"] == pytest.approx(-0.125)
@@ -804,6 +804,52 @@ def test_swap_chevron_probe_builds_against_the_baked_config(machine, live_roster
     assert captured["sweep_axes"]["flux_amp_v"].attrs["units"] == "V"
     assert float(captured["sweep_axes"]["flux_amp_v"].values.max()) == pytest.approx(0.05)
 
+    assert generate_qua_script(captured["prog"], captured["config"])
+
+
+def test_xyz_delay_probe_builds_against_the_baked_config(machine, live_roster,
+                                                         monkeypatch):
+    """XY-Z delay acquires itself against its OWN baked config: every relative
+    shift bakes an x180 + flux_pulse segment together, which a freshly generated
+    config lacks. Pin that the baked ops travel and the program compiles."""
+    from qm import generate_qua_script
+
+    from customized.probes import qubit_xyz_delay as xyz_probe
+    from customized.scqo.experiments.qubit_xyz_delay import QMQubitXyzDelay
+
+    captured = {}
+
+    def fake_acquire(m, prog, sweep_axes, *, num_shots, timeout, log=None, config=None):
+        captured.update(prog=prog, sweep_axes=sweep_axes, config=config,
+                        num_shots=num_shots)
+        return xr.Dataset()
+
+    monkeypatch.setattr(xyz_probe, "acquire", fake_acquire)
+
+    backend = QMBackend(machine, roster=live_roster)
+    exp = QMQubitXyzDelay(
+        backend,
+        QMQubitXyzDelay.Parameters(
+            targets=["q4", "q5"], half_scan_ns=5, z_pulse_amp_v=0.0, num_averages=10
+        ),
+    )
+    exp.sweep_axes = exp.define_sweep()
+    exp.probe()
+
+    # both the flux and the XY line carry baked segments in the passed config, and
+    # a freshly generated one has none of them — the reason this probe self-acquires
+    fresh = machine.generate_config()
+    baked = set(captured["config"]["pulses"]) - set(fresh["pulses"])
+    assert baked, "no baked segments travelled in the config"
+    q4 = machine.qubits["q4"]
+    assert any(name.startswith(f"{q4.z.name}_baked") for name in baked)
+    assert any(name.startswith(f"{q4.xy.name}_baked") for name in baked)
+    assert captured["num_shots"] == 10
+
+    # canonical scqo axis names, [0, 1] prep, the full 2*half relative-time grid
+    assert set(captured["sweep_axes"]) == {"qubit", "prepared_state", "relative_time_ns"}
+    assert list(captured["sweep_axes"]["prepared_state"].values) == [0, 1]
+    assert len(captured["sweep_axes"]["relative_time_ns"].values) == 10  # 2 * half_scan_ns
     assert generate_qua_script(captured["prog"], captured["config"])
 
 

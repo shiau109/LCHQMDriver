@@ -24,6 +24,7 @@ from . import qubit_spectroscopy_overlap  # noqa: F401  (import side effect: @re
 from . import qubit_sqrb  # noqa: F401  (import side effect: @register)
 from . import qubit_thermal_population  # noqa: F401  (import side effect: @register)
 from . import qubit_tomography  # noqa: F401  (import side effect: @register)
+from . import qubit_xyz_delay  # noqa: F401  (import side effect: @register)
 from . import qubit_spectroscopy_flux_pulse  # noqa: F401  (import side effect: @register)
 from . import readout_frequency  # noqa: F401  (import side effect: @register)
 from . import readout_power  # noqa: F401  (import side effect: @register)

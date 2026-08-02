@@ -210,6 +210,22 @@ FIELD_BINDINGS: dict[str, dict[str, VendorBinding]] = {
                  "fixed-frequency machine the qubit has no z, so the roster "
                  "declares no flux rider for it and the channel does not exist",
         ),
+        "flux_delay_s": VendorBinding(
+            path="q.z.opx_output.delay  |  coupler.opx_output.delay",
+            unit="ns",
+            convert="seconds -> int ns (1 ns resolution, rounded; negative "
+                    "refused). ABSOLUTE, not incremental: qubit_xyz_delay writes "
+                    "old + fitted peak, unlike the vendored 16a node which did "
+                    "q.z.opx_output.delay += fit",
+            note="output-path delay of the flux line vs the drive line, "
+                 "calibrated so a Z pulse and the XY drive it accompanies "
+                 "coincide. PORT-level (LFFEMAnalogOutputPort.delay, shared by "
+                 "everything on that DAC output) - same class as "
+                 "full_scale_power_dbm; on a per-qubit z wire it is per-qubit in "
+                 "practice. Qblox counterpart: "
+                 "hardware_options.latency_corrections[<port-clock>] (s), "
+                 "Unrealized there until a Qblox xyz-delay probe exists",
+        ),
     },
 }
 

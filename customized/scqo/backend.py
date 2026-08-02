@@ -349,7 +349,10 @@ class QMFluxChannel(_QMChannelView, make_view_base("flux")):
     ``coupler_decouple_v`` / ``coupler_interaction_v`` fields are gone.
 
     The transfer-function FACTS (flux_offset, flux_per_phi0, distortion taps) are
-    physical.json content and never push, so this view carries exactly one knob.
+    physical.json content and never push, so this view carries two knobs:
+    ``idle_flux`` (the standing bias) and ``flux_delay_s`` (the line's output
+    delay). Both resolve against ``self._vendor``, the flux-carrying channel —
+    ``q.z`` for a qubit, the ``TunableCoupler`` for a coupler (both SingleChannels).
     """
 
     _SUBTREE = "z"
@@ -366,6 +369,16 @@ class QMFluxChannel(_QMChannelView, make_view_base("flux")):
             quam_fields.set_coupler_idle_flux(self._vendor, value)
         else:
             quam_fields.set_idle_flux(self._q, value)
+
+    @property
+    def flux_delay_s(self) -> float:
+        # _vendor is the flux SingleChannel in BOTH shapes (q.z / TunableCoupler),
+        # and the delay lives on its shared output port — no _q branch needed.
+        return quam_fields.get_flux_delay(self._vendor)
+
+    @flux_delay_s.setter
+    def flux_delay_s(self, value: float) -> None:
+        quam_fields.set_flux_delay(self._vendor, value)
 
 
 #: channel kind -> the view class this backend serves for it. A kind absent here

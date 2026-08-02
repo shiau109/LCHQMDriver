@@ -527,6 +527,32 @@ def set_coupler_idle_flux(coupler: Any, value: float) -> None:
     setattr(coupler, attr, float(value))
 
 
+# --------------------------------------------------------------- flux line delay
+def get_flux_delay(flux_channel: Any) -> float:
+    """Output-path delay of a flux SingleChannel, ns -> seconds.
+
+    ``flux_channel`` is the FLUX-carrying QUAM channel the scqo flux view wraps —
+    a qubit's ``z`` FluxLine or a ``TunableCoupler`` (both SingleChannels with an
+    ``opx_output`` port). The delay is a PORT-level ``int`` ns field
+    (``LFFEMAnalogOutputPort.delay``, 0 by default), shared by everything on that
+    physical DAC output; on a per-qubit z wire that is per-qubit in practice.
+    """
+    return float(flux_channel.opx_output.delay) / 1e9
+
+
+def set_flux_delay(flux_channel: Any, value: float) -> None:
+    """Write the flux line's output-port delay (seconds -> int ns).
+
+    Calibrated by qubit_xyz_delay so a Z pulse and the XY drive it accompanies
+    arrive together. The port field is typed ``int`` ns (1 ns resolution, not the
+    4 ns wait grid), so the write rounds to the nearest nanosecond. A negative
+    delay is refused (a port delay only pushes operations LATER)."""
+    ns = float(value) * 1e9
+    if ns < 0:
+        raise ValueError(f"flux_delay_s={value!r} s: must not be negative")
+    flux_channel.opx_output.delay = int(round(ns))
+
+
 # ------------------------------------------------------------------------- pi amplitude
 #: The QUAM storage nodes each drive-amplitude family owns. ``x180``/``x90``/``y90``
 #: etc. are usually reference ALIASES that follow their DragCosine node (``_set_op_amp``
