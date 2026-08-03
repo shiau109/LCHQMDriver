@@ -3,10 +3,19 @@
 Flux-line step response by qubit spectroscopy vs wait-time INTO a parked flux
 pulse. Sequence per (detuning, wait): reset -> set the drive near the parked
 qubit frequency (``df + IF + center_offset_hz``) -> play a long flux ``const``
-pulse -> wait ``t`` into it -> play an ``x180`` spectroscopy pulse -> readout.
-Per wait-time the spectroscopy peak center gives the qubit frequency, which maps
-to the delivered flux; the flux settling is fit downstream to a sum of
+pulse -> wait ``t`` into it -> play a long, weak ``saturation`` spectroscopy pulse
+-> readout. Per wait-time the spectroscopy peak center gives the qubit frequency,
+which maps to the delivered flux; the flux settling is fit downstream to a sum of
 exponentials. This reaches the microsecond tails the Ramsey cryoscope cannot.
+
+SPECTROSCOPY DRIVE: the tone is the square ``saturation`` op stretched to
+``operation_len_ns`` (on the 4 ns grid), played at an amplitude that holds the
+calibrated x180 pulse AREA (``x180.amplitude * x180.length``), so a longer pulse
+is a proportionally weaker one. The line is then Fourier-limited (FWHM ~
+0.8 / operation_len_ns) with little power broadening — a bare x180 (16 ns) gives
+a tens-of-MHz line that a few-MHz settling tail cannot be tracked against. The
+flux ``const`` is held for the wait PLUS this drive length plus a fixed tail, so
+it always fully brackets the drive.
 
 PULSE CONTRACT: ``flux_amp_v`` is the parked flux amplitude in VOLTS measured
 from the standing DC bias ``initialize_qpu`` applies — the z ``const`` rides on
@@ -30,6 +39,7 @@ import xarray as xr
 from qm.qua import *
 from qualang_tools.loops import from_array
 
+from customized.probes._amp_limits import check_amp_scale_window
 from customized.probes._flux_limits import check_flux_pulse_relative, idle_offset_v
 from customized.probes._lib import acquire as _acquire
 
@@ -63,6 +73,28 @@ def validate_inputs(qubits, flux_amp_v: float, flux_point: str) -> float:
         idle_v=idle_offset_v(z, flux_point), amps_v=[float(flux_amp_v)])
 
 
+def resolve_drive_scale(qubit, *, operation: str, operation_len_ns: float,
+                        operation_amp: float = 1.0) -> float:
+    """Amplitude scale for the spectroscopy tone that holds the calibrated x180
+    pulse AREA (peak-amplitude x time) over ``operation_len_ns``, times an extra
+    ``operation_amp`` multiplier.
+
+    The spectroscopy line width is Fourier-limited by the pulse duration
+    (FWHM ~ 0.8 / operation_len_ns); holding the x180 area means a longer pulse is
+    a proportionally weaker one, so lengthening it narrows the line without power
+    broadening. Pure (no QUA), so the arithmetic is unit-tested; refuses BY NAME a
+    scale QUA's ``amp()`` cannot express (``|scale| >= 2``).
+    """
+    x180 = qubit.xy.operations["x180"]
+    drive = qubit.xy.operations[operation]
+    area_scale = float(operation_amp) * (x180.amplitude * x180.length) / (
+        drive.amplitude * float(operation_len_ns))
+    check_amp_scale_window(
+        [area_scale], name=f"{qubit.name} spectroscopy cryoscope drive",
+        knob="operation_amp")
+    return area_scale
+
+
 def build_program(
     machine,
     qubits,
@@ -73,7 +105,8 @@ def build_program(
     center_offset_hz: float,
     num_shots: int,
     reset_type: str = "thermal",
-    operation: str = "x180",
+    operation: str = "saturation",
+    operation_len_ns: int = 400,
     operation_amp: float = 1.0,
     use_state_discrimination: bool = False,
     simulate: bool = False,
@@ -86,8 +119,11 @@ def build_program(
     wait-into-the-flux sweep in clock cycles (4 ns), swept INNER (typically
     log-spaced). ``flux_amp_v`` is the idle-relative parked amplitude and
     ``center_offset_hz`` the arch-predicted parked detuning the drive is shifted
-    by. No baking — a plain stretched ``const`` plus a fixed spectroscopy pulse —
-    so the shared ``_lib.acquire`` fetches it (the adapter returns ``(prog, axes)``).
+    by. ``operation`` (default ``saturation``) is stretched to ``operation_len_ns``
+    and played at an amplitude holding the x180 pulse area, times the extra
+    ``operation_amp`` multiplier. No baking — a plain stretched ``const`` plus the
+    stretched spectroscopy pulse — so the shared ``_lib.acquire`` fetches it (the
+    adapter returns ``(prog, axes)``).
     """
     amp_ref = validate_inputs(qubits, flux_amp_v, flux_point)
     qubit = qubits[0]
@@ -95,7 +131,13 @@ def build_program(
     wait_cycles = np.unique(np.asarray(wait_cycles).astype(int))
     const_scale = float(flux_amp_v) / amp_ref
     offset_hz = int(round(float(center_offset_hz)))
-    op_len_cycles = qubit.xy.operations[operation].length // 4
+    # Long, weak spectroscopy tone: stretch the square `saturation` op to
+    # operation_len_ns (the flux `const` below brackets it) and scale its amplitude
+    # to hold the calibrated x180 pulse area (see resolve_drive_scale).
+    op_len_cycles = int(operation_len_ns) // 4
+    area_scale = resolve_drive_scale(
+        qubit, operation=operation, operation_len_ns=operation_len_ns,
+        operation_amp=operation_amp)
 
     sweep_axes = {
         "qubit": xr.DataArray(qubits.get_names()),
@@ -129,7 +171,8 @@ def build_program(
                     qubit.z.play("const", amplitude_scale=const_scale,
                                  duration=t + op_len_cycles + _FLUX_TAIL_CYCLES)
                     qubit.xy.wait(t)
-                    qubit.xy.play(operation, amplitude_scale=operation_amp)
+                    qubit.xy.play(operation, amplitude_scale=area_scale,
+                                  duration=op_len_cycles)
                     align()
                     if use_state_discrimination:
                         qubit.readout_state(state)

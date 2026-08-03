@@ -51,6 +51,7 @@ class QMQubitSpectroscopyCryoscope(QubitSpectroscopyCryoscope):
             wait_cycles=wait_cycles,
             flux_amp_v=float(self.params.flux_pulse_amp_v),
             center_offset_hz=self.resolved_center_offset_hz(target),
+            operation_len_ns=int(self.params.drive_len_ns),
             num_shots=self.params.num_averages,
             reset_type=reset_type(self),
             use_state_discrimination=bool(self.params.use_state_discrimination),

@@ -1,11 +1,14 @@
-"""``qubit_spectroscopy_cryoscope.validate_inputs`` — the long-time cryoscope probe's gate.
+"""``qubit_spectroscopy_cryoscope`` probe helpers — the long-time cryoscope's gates.
 
 The probe builds a single-qubit spectroscopy sequence that parks an idle-relative
-flux pulse and drives at each wait-time into it. The pre-flight checks are pure
-over stub qubits (no QOP, no config): more than one target, a missing flux line,
-and a parked flux whose ``idle + excursion`` clips the port or needs an
-``amplitude_scale`` QUA cannot express. A legal call returns the ``const``
-reference amplitude the volts->scale conversion divides by.
+flux pulse and drives at each wait-time into it. Two pure helpers are checked here
+(no QOP, no config): ``validate_inputs`` (more than one target, a missing flux
+line, and a parked flux whose ``idle + excursion`` clips the port or needs an
+``amplitude_scale`` QUA cannot express — a legal call returns the ``const``
+reference amplitude the volts->scale conversion divides by) and
+``resolve_drive_scale`` (the area-preserving spectroscopy-drive amplitude: a
+longer pulse is a proportionally weaker one, and a scale QUA's ``amp()`` cannot
+express is refused by name).
 """
 
 from __future__ import annotations
@@ -14,7 +17,10 @@ from types import SimpleNamespace
 
 import pytest
 
-from customized.probes.qubit_spectroscopy_cryoscope import validate_inputs
+from customized.probes.qubit_spectroscopy_cryoscope import (
+    resolve_drive_scale,
+    validate_inputs,
+)
 
 
 class _Qubits(list):
@@ -34,8 +40,17 @@ def _z(const_amp: float = 0.2, *, output_mode: str = "direct",
     )
 
 
-def _qubit(name: str = "q0", **z_kwargs) -> SimpleNamespace:
-    return SimpleNamespace(name=name, z=_z(**z_kwargs))
+def _xy(*, x180_amp: float = 0.2, x180_len: float = 16.0,
+        sat_amp: float = 0.4, sat_len: float = 1000.0) -> SimpleNamespace:
+    return SimpleNamespace(operations={
+        "x180": SimpleNamespace(amplitude=x180_amp, length=x180_len),
+        "saturation": SimpleNamespace(amplitude=sat_amp, length=sat_len),
+    })
+
+
+def _qubit(name: str = "q0", *, xy: SimpleNamespace | None = None,
+           **z_kwargs) -> SimpleNamespace:
+    return SimpleNamespace(name=name, z=_z(**z_kwargs), xy=xy or _xy())
 
 
 def test_legal_call_returns_the_const_reference():
@@ -63,3 +78,25 @@ def test_amplitude_scale_out_of_range_refused():
     # const 0.2 V, excursion 0.5 V -> scale 2.5 >= QUA's +/-2 range (rail fine at 0.5).
     with pytest.raises(ValueError, match="amplitude_scale"):
         validate_inputs(_Qubits([_qubit(const_amp=0.2)]), flux_amp_v=0.5, flux_point="joint")
+
+
+def test_drive_scale_holds_the_x180_area():
+    # x180 area = 0.2 * 16; saturation amp 0.4 over 400 ns -> 3.2 / 160 = 0.02.
+    q = _qubit()
+    scale = resolve_drive_scale(q, operation="saturation", operation_len_ns=400)
+    assert scale == pytest.approx(0.2 * 16 / (0.4 * 400))
+    # a longer pulse is a proportionally weaker one (area held constant).
+    longer = resolve_drive_scale(q, operation="saturation", operation_len_ns=800)
+    assert longer == pytest.approx(scale / 2)
+    # operation_amp is a plain extra multiplier on top.
+    boosted = resolve_drive_scale(q, operation="saturation", operation_len_ns=400,
+                                  operation_amp=1.5)
+    assert boosted == pytest.approx(scale * 1.5)
+
+
+def test_drive_scale_out_of_range_refused_by_name():
+    # a pathological config (tiny stored saturation amplitude) drives the
+    # area-preserving scale past QUA's +/-2 amp() range -> refused before building.
+    q = _qubit(xy=_xy(x180_amp=0.5, x180_len=16, sat_amp=0.005))
+    with pytest.raises(ValueError, match="amplitude_scale"):
+        resolve_drive_scale(q, operation="saturation", operation_len_ns=16)

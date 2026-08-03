@@ -957,7 +957,8 @@ def test_spectroscopy_cryoscope_probe_builds_against_the_live_quam(machine, live
     exp = QMQubitSpectroscopyCryoscope(
         backend,
         QMQubitSpectroscopyCryoscope.Parameters(
-            targets=[name], num_freq_points=11, min_wait_ns=16, max_wait_ns=2000,
+            targets=[name], min_detuning_hz=-150e6, max_detuning_hz=0.0,
+            num_freq_points=11, drive_len_ns=400, min_wait_ns=16, max_wait_ns=2000,
             num_wait_points=8, num_averages=10, flux_pulse_amp_v=0.02,
         ),
     )
@@ -971,6 +972,9 @@ def test_spectroscopy_cryoscope_probe_builds_against_the_live_quam(machine, live
     assert sweep_axes["detuning_hz"].attrs["units"] == "Hz"
     assert sweep_axes["wait_time_ns"].attrs["units"] == "ns"
     assert len(sweep_axes["detuning_hz"]) == 11
+    # the asymmetric window flows through define_sweep -> probe, ascending edges
+    assert sweep_axes["detuning_hz"].values[0] == pytest.approx(-150e6)
+    assert sweep_axes["detuning_hz"].values[-1] == pytest.approx(0.0)
     assert 2 <= len(sweep_axes["wait_time_ns"]) <= 8  # log axis dedups on the 4 ns grid
 
     assert generate_qua_script(prog, machine.generate_config())
