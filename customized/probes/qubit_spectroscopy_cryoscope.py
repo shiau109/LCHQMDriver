@@ -10,12 +10,13 @@ exponentials. This reaches the microsecond tails the Ramsey cryoscope cannot.
 
 SPECTROSCOPY DRIVE: the tone is the square ``saturation`` op stretched to
 ``operation_len_ns`` (on the 4 ns grid), played at an amplitude that holds the
-calibrated x180 pulse AREA (``x180.amplitude * x180.length``), so a longer pulse
-is a proportionally weaker one. The line is then Fourier-limited (FWHM ~
-0.8 / operation_len_ns) with little power broadening — a bare x180 (16 ns) gives
-a tens-of-MHz line that a few-MHz settling tail cannot be tracked against. The
-flux ``const`` is held for the wait PLUS this drive length plus a fixed tail, so
-it always fully brackets the drive.
+calibrated x180 ROTATION AREA (peak amplitude x length x envelope average/peak —
+the envelope factor matters: see :func:`resolve_drive_scale`), so a longer pulse
+is a proportionally weaker one and the tone stays a true pi pulse. The line is
+then Fourier-limited (FWHM ~ 0.8 / operation_len_ns) with little power broadening
+— a bare x180 (16 ns) gives a tens-of-MHz line that a few-MHz settling tail
+cannot be tracked against. The flux ``const`` is held for the wait PLUS this
+drive length plus a fixed tail, so it always fully brackets the drive.
 
 PULSE CONTRACT: ``flux_amp_v`` is the parked flux amplitude in VOLTS measured
 from the standing DC bias ``initialize_qpu`` applies — the z ``const`` rides on
@@ -73,22 +74,47 @@ def validate_inputs(qubits, flux_amp_v: float, flux_point: str) -> float:
         idle_v=idle_offset_v(z, flux_point), amps_v=[float(flux_amp_v)])
 
 
+def _area_ratio(pulse, default: float) -> float:
+    """``average/peak`` of the pulse's I-quadrature envelope — the rotation area
+    a pulse delivers per unit (peak amplitude x length). 1.0 for a square pulse,
+    0.5 for the lab's (Drag)Cosine x180. Sampled from the pulse's own
+    ``waveform_function()`` so a different envelope stays correct; ``default``
+    covers objects that cannot render samples (bare test stubs).
+    """
+    try:
+        wf = np.asarray(pulse.waveform_function())
+    except Exception:
+        return default
+    env = np.abs(np.real(wf)) if np.iscomplexobj(wf) else np.abs(wf)
+    peak = float(np.max(env))
+    if not np.isfinite(peak) or peak == 0.0:
+        return default
+    return float(np.mean(env) / peak)
+
+
 def resolve_drive_scale(qubit, *, operation: str, operation_len_ns: float,
                         operation_amp: float = 1.0) -> float:
     """Amplitude scale for the spectroscopy tone that holds the calibrated x180
-    pulse AREA (peak-amplitude x time) over ``operation_len_ns``, times an extra
-    ``operation_amp`` multiplier.
+    ROTATION AREA (peak amplitude x length x envelope average/peak) over
+    ``operation_len_ns``, times an extra ``operation_amp`` multiplier.
 
-    The spectroscopy line width is Fourier-limited by the pulse duration
-    (FWHM ~ 0.8 / operation_len_ns); holding the x180 area means a longer pulse is
-    a proportionally weaker one, so lengthening it narrows the line without power
-    broadening. Pure (no QUA), so the arithmetic is unit-tested; refuses BY NAME a
-    scale QUA's ``amp()`` cannot express (``|scale| >= 2``).
+    The envelope factor is load-bearing: the x180 is a cosine-envelope DRAG pulse
+    that delivers only HALF its peak x length, so transplanting the bare product
+    onto the square saturation op doubles the area — an exact 2*pi pulse, whose
+    spectroscopy response is DARK on resonance with two bright shoulders at
+    ``+/- sqrt(1.25)/operation_len_ns`` (seen on hardware as a split line). With
+    the ratio in, the tone is a true pi pulse: full contrast on resonance and a
+    Fourier-limited line (FWHM ~ 0.8 / operation_len_ns), and holding the area
+    means a longer pulse is a proportionally weaker one (no power broadening).
+    Pure (no QUA), so the arithmetic is unit-tested; refuses BY NAME a scale QUA's
+    ``amp()`` cannot express (``|scale| >= 2``).
     """
     x180 = qubit.xy.operations["x180"]
     drive = qubit.xy.operations[operation]
-    area_scale = float(operation_amp) * (x180.amplitude * x180.length) / (
-        drive.amplitude * float(operation_len_ns))
+    # sample-less stubs fall back to the lab shapes: cosine x180, square drive.
+    area_scale = float(operation_amp) * (
+        _area_ratio(x180, default=0.5) * x180.amplitude * x180.length
+    ) / (_area_ratio(drive, default=1.0) * drive.amplitude * float(operation_len_ns))
     check_amp_scale_window(
         [area_scale], name=f"{qubit.name} spectroscopy cryoscope drive",
         knob="operation_amp")

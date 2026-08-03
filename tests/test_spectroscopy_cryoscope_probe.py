@@ -15,6 +15,7 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
+import numpy as np
 import pytest
 
 from customized.probes.qubit_spectroscopy_cryoscope import (
@@ -80,11 +81,13 @@ def test_amplitude_scale_out_of_range_refused():
         validate_inputs(_Qubits([_qubit(const_amp=0.2)]), flux_amp_v=0.5, flux_point="joint")
 
 
-def test_drive_scale_holds_the_x180_area():
-    # x180 area = 0.2 * 16; saturation amp 0.4 over 400 ns -> 3.2 / 160 = 0.02.
+def test_drive_scale_holds_the_x180_rotation_area():
+    # sample-less stubs fall back to the lab envelopes (cosine x180 -> 0.5,
+    # square drive -> 1.0): x180 rotation area = 0.5 * 0.2 * 16; saturation amp
+    # 0.4 over 400 ns -> 1.6 / 160 = 0.01.
     q = _qubit()
     scale = resolve_drive_scale(q, operation="saturation", operation_len_ns=400)
-    assert scale == pytest.approx(0.2 * 16 / (0.4 * 400))
+    assert scale == pytest.approx(0.5 * 0.2 * 16 / (0.4 * 400))
     # a longer pulse is a proportionally weaker one (area held constant).
     longer = resolve_drive_scale(q, operation="saturation", operation_len_ns=800)
     assert longer == pytest.approx(scale / 2)
@@ -94,9 +97,30 @@ def test_drive_scale_holds_the_x180_area():
     assert boosted == pytest.approx(scale * 1.5)
 
 
+def test_drive_scale_samples_the_real_envelopes():
+    """Ops that can render their waveform are weighted by the SAMPLED envelope
+    (average/peak of the I quadrature), not the fallback: a cosine-envelope DRAG
+    x180 delivers half its peak x length — miss that factor and the played tone is
+    an exact 2*pi pulse whose spectroscopy response splits into two lobes (seen on
+    hardware, 2026-08-03)."""
+    t = np.arange(16.0)
+    cos_env = 0.2 * (1 - np.cos(2 * np.pi * t / 16)) / 2  # DragCosine I quadrature
+    x180 = SimpleNamespace(
+        amplitude=0.2, length=16.0,
+        # complex I + iQ, pinning the real-part-only reduction (Q integrates ~0)
+        waveform_function=lambda: cos_env + 0.05j * np.gradient(cos_env))
+    sat = SimpleNamespace(amplitude=0.4, length=1000.0,
+                          waveform_function=lambda: 0.4)  # SquarePulse: a scalar
+    q = SimpleNamespace(name="q0", xy=SimpleNamespace(
+        operations={"x180": x180, "saturation": sat}))
+    scale = resolve_drive_scale(q, operation="saturation", operation_len_ns=400)
+    # cosine mean/peak over a whole period is exactly 0.5; square is 1.0
+    assert scale == pytest.approx(0.5 * 0.2 * 16 / (0.4 * 400))
+
+
 def test_drive_scale_out_of_range_refused_by_name():
     # a pathological config (tiny stored saturation amplitude) drives the
     # area-preserving scale past QUA's +/-2 amp() range -> refused before building.
-    q = _qubit(xy=_xy(x180_amp=0.5, x180_len=16, sat_amp=0.005))
+    q = _qubit(xy=_xy(x180_amp=0.5, x180_len=16, sat_amp=0.002))
     with pytest.raises(ValueError, match="amplitude_scale"):
         resolve_drive_scale(q, operation="saturation", operation_len_ns=16)
