@@ -978,3 +978,28 @@ def test_spectroscopy_cryoscope_probe_builds_against_the_live_quam(machine, live
     assert 2 <= len(sweep_axes["wait_time_ns"]) <= 8  # log axis dedups on the 4 ns grid
 
     assert generate_qua_script(prog, machine.generate_config())
+
+
+def test_apply_exponential_filter_extends_a_live_quam_port(machine):
+    """apply_exponential_filter's EXTEND path must mutate the live QuamList IN PLACE.
+    Reassigning old+new re-parents the existing QuamList children and QUAM refuses
+    ("Cannot overwrite parent attribute") — a plain-list stub cannot see this, so
+    pin it against the real QUAM (snapshot + restore as plain lists, never saved)."""
+    from customized.scqo._distortion import apply_exponential_filter
+
+    name = _live_flux_qubit(machine)
+    if name is None:
+        pytest.skip("no flux-tunable qubit with a const op in the live state")
+    port = machine.qubits[name].z.opx_output
+    saved = [list(pair) for pair in port.exponential_filter]  # plain-list snapshot
+    try:
+        out = apply_exponential_filter(machine, name, [0.05, -0.03], [100e-9, 3000e-9])
+        assert [list(p) for p in port.exponential_filter] == [
+            [0.05, 100.0], [-0.03, 3000.0]]  # replace + tau s->ns
+        assert out["scale"] == 1.0
+        # the gotcha: extend must not raise on the live QuamList
+        apply_exponential_filter(machine, name, [0.02], [50e-9], replace=False)
+        assert [list(p) for p in port.exponential_filter] == [
+            [0.05, 100.0], [-0.03, 3000.0], [0.02, 50.0]]  # appended, not re-parented
+    finally:
+        port.exponential_filter = saved  # restore (plain lists -> no re-parent)

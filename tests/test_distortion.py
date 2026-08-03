@@ -1,16 +1,29 @@
 """The QM flux-distortion config-value wrapper (facts -> exponential_filter).
 
 Pure unit tests: the SUM mapping is amplitudes-verbatim + tau s->ns; the CASCADE
-path threads scqat's decomposition. No QOP / instrument needed.
+path threads scqat's decomposition; apply_exponential_filter writes onto a stub
+QUAM (duck-typed qubits[t].z.opx_output). No QOP / instrument needed.
 """
+
+from types import SimpleNamespace
 
 import numpy as np
 import pytest
 
 from customized.scqo._distortion import (
+    apply_exponential_filter,
     to_exponential_filter,
     to_exponential_filter_cascade,
 )
+
+
+def _machine(existing=None, *, with_z=True):
+    """A duck-typed QUAM: machine.qubits['q1'].z.opx_output.exponential_filter."""
+    z = None
+    if with_z:
+        port = SimpleNamespace(exponential_filter=list(existing) if existing else [])
+        z = SimpleNamespace(opx_output=port)
+    return SimpleNamespace(qubits={"q1": SimpleNamespace(z=z)})
 
 
 def test_sum_form_maps_tau_to_ns_and_amps_verbatim():
@@ -37,3 +50,61 @@ def test_cascade_taus_are_nanoseconds():
     out = to_exponential_filter_cascade([0.05], [100e-9])
     tau_ns = out["exponential_filter"][0][1]
     assert 1.0 < tau_ns < 1e5
+
+
+def test_apply_replaces_by_default_and_maps_tau_to_ns():
+    m = _machine(existing=[[0.9, 999.0]])  # a pre-existing tap to be overwritten
+    out = apply_exponential_filter(m, "q1", [0.05, -0.03], [100e-9, 3000e-9])
+    written = m.qubits["q1"].z.opx_output.exponential_filter
+    assert written == [[0.05, 100.0], [-0.03, 3000.0]]  # tau s->ns, amps verbatim
+    assert out == {"exponential_filter": written, "scale": 1.0}  # sum form => scale 1
+
+
+def test_apply_extends_when_replace_false():
+    m = _machine(existing=[[0.9, 999.0]])
+    apply_exponential_filter(m, "q1", [0.05], [100e-9], replace=False)
+    assert m.qubits["q1"].z.opx_output.exponential_filter == [
+        [0.9, 999.0], [0.05, 100.0]]  # the old tap kept, the new one appended
+
+
+def test_apply_does_not_persist():
+    """The helper never calls machine.save() — the stub has no save, so a call that
+    tried would AttributeError."""
+    m = _machine()
+    apply_exponential_filter(m, "q1", [0.05], [100e-9])
+    assert not hasattr(m, "save")  # nothing added a save; caller owns persistence
+
+
+def test_apply_unknown_target_refused_by_name():
+    m = _machine()
+    with pytest.raises(ValueError, match="q9"):
+        apply_exponential_filter(m, "q9", [0.05], [100e-9])
+
+
+def test_apply_target_without_flux_line_refused():
+    m = _machine(with_z=False)
+    with pytest.raises(ValueError, match="no flux"):
+        apply_exponential_filter(m, "q1", [0.05], [100e-9])
+
+
+def test_apply_cascade_sets_filter_and_returns_finite_scale():
+    m = _machine()
+    out = apply_exponential_filter(m, "q1", [0.05, 0.02], [100e-9, 12e-9],
+                                   form="cascade")
+    ef = m.qubits["q1"].z.opx_output.exponential_filter
+    assert ef == out["exponential_filter"]
+    assert len(ef) == 2 and all(tau_ns > 0 for _, tau_ns in ef)
+    assert np.isfinite(out["scale"]) and out["scale"] > 0
+
+
+def test_apply_cascade_cannot_extend():
+    m = _machine(existing=[[0.9, 999.0]])
+    with pytest.raises(ValueError, match="cascade"):
+        apply_exponential_filter(m, "q1", [0.05], [100e-9], form="cascade",
+                                 replace=False)
+
+
+def test_apply_unknown_form_refused():
+    m = _machine()
+    with pytest.raises(ValueError, match="unknown form"):
+        apply_exponential_filter(m, "q1", [0.05], [100e-9], form="fir")
