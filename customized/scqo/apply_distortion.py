@@ -47,7 +47,10 @@ import argparse
 import warnings
 from typing import Any
 
-from customized.scqo._distortion import apply_exponential_filter
+from customized.scqo._distortion import (
+    apply_exponential_filter,
+    clear_exponential_filter,
+)
 
 #: the roster channel kind of a qubit's flux line (catalog CHANNELS).
 FLUX_KIND = "flux"
@@ -85,6 +88,53 @@ def _run_taps(session: Any, run_id: str, target: str) -> tuple[list, list]:
             f"for {target!r}"
         )
     return amps, taus_s
+
+
+def clear_distortion(
+    target: str,
+    *,
+    config_path: str | None = None,
+    session: Any = None,
+    cfg: Any = None,
+    save: bool = True,
+    dry_run: bool = False,
+) -> dict[str, Any]:
+    """Remove ALL exponential_filter taps from ``target``'s z output — the
+    fresh-line reset before a clean-slate cryoscope characterization (measure
+    the TOTAL response on the bare line, then apply once). Resolves the ACTIVE
+    scqo selection like :func:`apply_distortion_from_state`; returns
+    ``{"target", "removed", "state_dir", "saved"}``. OFFLINE.
+    """
+    if session is None:
+        from scqo.cli import build_session  # lazy: keep module import scqo-free
+
+        session, cfg = build_session(config_path)
+    machine = session.backend.machine
+    if dry_run:
+        try:
+            taps = list(machine.qubits[target].z.opx_output.exponential_filter or [])
+        except (KeyError, TypeError, AttributeError):
+            taps = []
+        removed = [list(p) for p in taps]
+    else:
+        removed = clear_exponential_filter(machine, target)["removed"]
+    state_dir = None
+    if cfg is not None:
+        from scqo.datastore import setup_backend_config_dir
+
+        state_dir = str(
+            setup_backend_config_dir(
+                cfg.data_root, cfg.device, session.cooldown_id, session.setup_name
+            )
+        )
+    did_save = bool(save and not dry_run)
+    if did_save:
+        if state_dir:
+            machine.save(path=state_dir)
+        else:
+            machine.save()
+    return {"target": target, "removed": removed,
+            "state_dir": state_dir, "saved": did_save}
 
 
 def apply_distortion_from_state(
@@ -215,11 +265,33 @@ def main(argv: list[str] | None = None) -> int:
         "--config", default=None, help="scqo config.toml path (default: active selection)"
     )
     p.add_argument(
+        "--clear",
+        action="store_true",
+        help="remove ALL exponential_filter taps from the target's z output "
+        "(the fresh-line reset before a clean-slate characterization)",
+    )
+    p.add_argument(
         "--dry-run",
         action="store_true",
         help="resolve + preview what would be written; save nothing",
     )
     args = p.parse_args(argv)
+
+    if args.clear:
+        if args.run or args.extend or args.form != "sum":
+            p.error("--clear takes no --run/--extend/--form")
+        out = clear_distortion(args.target, config_path=args.config,
+                               dry_run=args.dry_run)
+        verb = "would remove" if args.dry_run else "removed"
+        print(f"{args.target}: {verb} {len(out['removed'])} exponential_filter tap(s)")
+        for pair in out["removed"]:
+            a, tau_ns = list(pair)
+            print(f"    A={a:+.5g}  tau={tau_ns:.4g} ns")
+        if out["state_dir"]:
+            print(f"  {'target' if args.dry_run else 'saved to'}: {out['state_dir']}")
+        if args.dry_run:
+            print("  --dry-run: nothing written")
+        return 0
 
     out = apply_distortion_from_state(
         args.target,

@@ -56,6 +56,32 @@ def to_exponential_filter_cascade(
     }
 
 
+def clear_exponential_filter(machine, target: str) -> dict[str, Any]:
+    """Remove ALL taps from ``machine.qubits[target].z.opx_output.exponential_filter``
+    — the fresh-line reset before a clean-slate cryoscope characterization (a
+    full correction must be MEASURED on a cleared line). Returns
+    ``{"removed": [the taps that were set]}``; does NOT persist (caller saves).
+    Same target/z guards as :func:`apply_exponential_filter`.
+    """
+    try:
+        qubit = machine.qubits[target]
+    except (KeyError, TypeError):
+        try:
+            have = sorted(machine.qubits)
+        except Exception:
+            have = "?"
+        raise ValueError(
+            f"{target!r} is not a qubit in this machine (have {have})") from None
+    z = getattr(qubit, "z", None)
+    if z is None:
+        raise ValueError(
+            f"{target!r} has no flux (z) line — no exponential_filter to clear")
+    port = z.opx_output
+    removed = [list(pair) for pair in (port.exponential_filter or [])]
+    port.exponential_filter = []
+    return {"removed": removed}
+
+
 def apply_exponential_filter(
     machine, target: str, amps: Sequence[float], taus_s: Sequence[float], *,
     replace: bool = True, form: str = "sum", ts_s: float = OPX_TS_S,

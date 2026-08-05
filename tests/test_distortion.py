@@ -12,6 +12,7 @@ import pytest
 
 from customized.scqo._distortion import (
     apply_exponential_filter,
+    clear_exponential_filter,
     to_exponential_filter,
     to_exponential_filter_cascade,
 )
@@ -108,3 +109,20 @@ def test_apply_unknown_form_refused():
     m = _machine()
     with pytest.raises(ValueError, match="unknown form"):
         apply_exponential_filter(m, "q1", [0.05], [100e-9], form="fir")
+
+
+def test_clear_removes_all_taps_and_reports_them():
+    m = _machine(existing=[[0.9, 999.0], [0.1, 5.0]])
+    out = clear_exponential_filter(m, "q1")
+    assert m.qubits["q1"].z.opx_output.exponential_filter == []
+    assert out["removed"] == [[0.9, 999.0], [0.1, 5.0]]
+
+
+def test_clear_unknown_target_refused_by_name():
+    with pytest.raises(ValueError, match="q9"):
+        clear_exponential_filter(_machine(), "q9")
+
+
+def test_clear_target_without_flux_line_refused():
+    with pytest.raises(ValueError, match="no flux"):
+        clear_exponential_filter(_machine(with_z=False), "q1")

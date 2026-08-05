@@ -7,7 +7,10 @@ from types import SimpleNamespace
 
 import pytest
 
-from customized.scqo.apply_distortion import apply_distortion_from_state
+from customized.scqo.apply_distortion import (
+    apply_distortion_from_state,
+    clear_distortion,
+)
 
 
 def _machine(existing=None):
@@ -144,6 +147,22 @@ def test_run_mode_accepts_the_ramsey_cryoscope():
         "r1": _run([-0.04], [17e-9], experiment="qubit_ramsey_cryoscope")})
     out = apply_distortion_from_state("q1", session=sess, run_id="r1")
     assert out["exponential_filter"] == [[-0.04, 17.0]]
+
+
+def test_clear_empties_the_filter_and_saves():
+    m = _machine(existing=[[0.9, 999.0], [0.1, 5.0]])
+    out = clear_distortion("q1", session=_session(m, {}))
+    assert m.qubits["q1"].z.opx_output.exponential_filter == []
+    assert out["removed"] == [[0.9, 999.0], [0.1, 5.0]]
+    assert out["saved"] is True and len(m._saves) == 1
+
+
+def test_clear_dry_run_removes_nothing():
+    m = _machine(existing=[[0.9, 999.0]])
+    out = clear_distortion("q1", session=_session(m, {}), dry_run=True)
+    assert m.qubits["q1"].z.opx_output.exponential_filter == [[0.9, 999.0]]
+    assert out["removed"] == [[0.9, 999.0]]  # previewed, not touched
+    assert out["saved"] is False and m._saves == []
 
 
 def test_cascade_warns_about_manual_scale():
