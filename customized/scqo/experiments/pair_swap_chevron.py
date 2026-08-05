@@ -32,7 +32,7 @@ class QMPairSwapChevron(JointPopulationMixin, PairSwapChevron):
     """Build, run and fetch the multiplexed swap chevron on the QM OPX."""
 
     def probe(self) -> Any:
-        from ._reset import reset_type
+        from ._reset import check_reset_method
         from ._vendor import role_side, vendor_pair_name
         from customized.probes import pair_qq_chevron as chevron_probe
         from customized.probes._lib import select_qubit_pairs
@@ -62,7 +62,7 @@ class QMPairSwapChevron(JointPopulationMixin, PairSwapChevron):
             amplitudes=self.sweep_axes["flux_amp_v"],
             times_cycles=times_ns,
             num_shots=self.params.num_averages,
-            reset_type=reset_type(self),
+            reset_type=check_reset_method(self),
             use_state_discrimination=True,
             amp_mode="absolute",
             flux_role=flux_role,

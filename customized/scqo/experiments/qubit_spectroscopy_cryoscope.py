@@ -11,7 +11,7 @@ a fixed pulse — so ``probe()`` returns ``(program, sweep_axes)`` and the backe
 shared fetch path runs it (no per-call baked config to thread through).
 
 Single target: the probe refuses more than one qubit (one parked drive + one flux
-line + one wait axis); reset is resolved through ``_reset.reset_type`` so
+line + one wait axis); reset is resolved through ``_reset.check_reset_method`` so
 ``reset_method="active"`` is refused by name. The drive is centered on the
 arch-predicted parked detuning ``resolved_center_offset_hz`` (no LO shift —
 band-limited v1).
@@ -35,7 +35,7 @@ class QMQubitSpectroscopyCryoscope(QubitSpectroscopyCryoscope):
         from customized.probes._lib import select_qubits
         from customized.quam_fields import GOVERNED_FLUX_POINT
 
-        from ._reset import reset_type
+        from ._reset import check_reset_method
 
         machine = self.backend.machine  # type: ignore[attr-defined]
         qubits = select_qubits(machine, self.params.targets, multiplexed=True)
@@ -53,7 +53,7 @@ class QMQubitSpectroscopyCryoscope(QubitSpectroscopyCryoscope):
             center_offset_hz=self.resolved_center_offset_hz(target),
             operation_len_ns=int(self.params.drive_len_ns),
             num_shots=self.params.num_averages,
-            reset_type=reset_type(self),
+            reset_type=check_reset_method(self),
             use_state_discrimination=bool(self.params.use_state_discrimination),
             flux_point=GOVERNED_FLUX_POINT,
         )

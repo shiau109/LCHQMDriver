@@ -103,6 +103,7 @@ def build_program(
     depths: list[int],
     num_sequences: int,
     num_shots: int,
+    reset_type: str,
     use_state_discrimination: bool = False,
     seed: int | None = None,
     simulate: bool = False,
@@ -165,7 +166,7 @@ def build_program(
                     # Averaging shots loop
                     with for_(n, 0, n < num_shots, n + 1):
                         for i_q, qubit in multiplexed_qubits.items():
-                            qubit.reset("thermal", simulate)
+                            qubit.reset(reset_type, simulate)
                         align()
 
                         for i_q, qubit in multiplexed_qubits.items():

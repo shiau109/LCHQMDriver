@@ -24,6 +24,7 @@ def build_program(
     idle_times_cycles,
     num_shots: int,
     reset_type: str,
+    reset_max_attempts: int = 15,
     use_state_discrimination: bool = False,
     simulate: bool = False,
     log: Optional[Callable] = None,
@@ -65,7 +66,8 @@ def build_program(
                 with for_each_(t, idle_times_cycles):
                     # Qubit initialization
                     for i, qubit in multiplexed_qubits.items():
-                        qubit.reset(reset_type, simulate, log_callable=log)
+                        qubit.reset(reset_type, simulate, log_callable=log,
+                                    max_attempts=reset_max_attempts)
                     align()
                     # Echo: x90 - tau/2 - x180 - tau/2 - x90 (official 06b_echo core)
                     for i, qubit in multiplexed_qubits.items():

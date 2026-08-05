@@ -26,7 +26,7 @@ class QMQubitXyzDelay(QubitXyzDelay):
     """Build, run and fetch the multiplexed XY-Z delay scan on the QM OPX."""
 
     def probe(self) -> Any:
-        from ._reset import reset_type
+        from ._reset import check_reset_method
         from customized.quam_fields import GOVERNED_FLUX_POINT
         from customized.probes._lib import select_qubits
         from customized.probes import qubit_xyz_delay as xyz_probe
@@ -40,7 +40,7 @@ class QMQubitXyzDelay(QubitXyzDelay):
             half_scan_ns=int(self.params.half_scan_ns),
             z_pulse_amp_v=float(self.params.z_pulse_amp_v),
             num_shots=int(self.params.num_averages),
-            reset_type=reset_type(self),
+            reset_type=check_reset_method(self),
             use_state_discrimination=bool(self.params.use_state_discrimination),
             flux_point=GOVERNED_FLUX_POINT,
         )

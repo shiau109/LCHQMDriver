@@ -9,7 +9,7 @@ tau/2, 4 ns per cycle -> cycles = tau_ns / 8) and builds the same sweep on coord
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, ClassVar
 
 import numpy as np
 
@@ -21,8 +21,12 @@ from scqo.experiments import QubitEcho
 class QMQubitEcho(QubitEcho):
     """Build a multiplexed Hahn-echo QUA program on the QM OPX."""
 
+    #: Readout is held at the calibrated point for the whole run and the reset is
+    #: a genuine state reset, so reset_method='active' is valid here (_reset.py).
+    supports_active_reset: ClassVar[bool] = True
+
     def probe(self) -> Any:
-        from ._reset import reset_type
+        from ._reset import check_reset_method, reset_max_attempts
         from customized.probes._lib import select_qubits
         from customized.probes import qubit_echo as echo_probe
 
@@ -39,6 +43,7 @@ class QMQubitEcho(QubitEcho):
             qubits,
             idle_times_cycles=arm_cycles,
             num_shots=self.params.num_averages,
-            reset_type=reset_type(self),
+            reset_type=check_reset_method(self),
+            reset_max_attempts=reset_max_attempts(self),
             use_state_discrimination=bool(self.params.use_state_discrimination),
         )

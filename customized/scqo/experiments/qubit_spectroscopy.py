@@ -25,7 +25,7 @@ class QMQubitSpectroscopy(QubitSpectroscopy):
     """Build a multiplexed two-tone spectroscopy QUA program on the QM OPX."""
 
     def probe(self) -> Any:
-        from ._reset import reset_type
+        from ._reset import check_reset_method
         from customized.probes._lib import select_qubits
         from customized.probes import qubit_spectroscopy as spec_probe
 
@@ -40,5 +40,5 @@ class QMQubitSpectroscopy(QubitSpectroscopy):
             operation_len=int(self.params.drive_len_ns) if self.params.drive_len_ns else None,
             operation_amp=1.0,  # run() parked the exact amplitude on the saturation op
             num_shots=self.params.num_averages,
-            reset_type=reset_type(self),
+            reset_type=check_reset_method(self),
         )

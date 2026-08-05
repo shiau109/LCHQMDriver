@@ -16,6 +16,7 @@ class QMQubitDragAlternating(QubitDragAlternating):
     """Build a multiplexed DRAG alternating QUA program on the QM OPX."""
 
     def probe(self) -> Any:
+        from ._reset import check_reset_method
         from customized.probes._lib import select_qubits
         from customized.probes import qubit_drag_alternating as alternating_probe
 
@@ -32,6 +33,7 @@ class QMQubitDragAlternating(QubitDragAlternating):
             num_shots=int(self.params.num_averages),
             beta_array=beta_array,
             nb_pulses_array=nb_pulses_array,
+            reset_type=check_reset_method(self),
             use_state_discrimination=False,
             target_gate=getattr(self.params, "target_gate", "x180"),
         )

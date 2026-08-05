@@ -781,6 +781,27 @@ class QMDeviceModel(DeviceModel):
         return state
 
 
+def _progress_shot_total(experiment: "Experiment") -> int:
+    """Denominator for the acquisition progress counter.
+
+    The averaging count or the explicit shot count when the params carry one;
+    otherwise -- for a record_time_s-derived experiment (qubit_parity_switch)
+    whose ``params.num_shots`` is present but ``None`` -- the resolved count the
+    probe actually buffered (``experiment.resolved_num_shots()``). NEVER None:
+    ``qualang_tools.progress_counter`` divides an int by this, so a None here
+    is a hard ``TypeError: ... for /: 'int' and 'NoneType'`` after the whole
+    program has already run (the crash is in the Python progress display, not
+    the sequence). A present-but-None attr does NOT trip ``getattr``'s default,
+    which is why the raw ``getattr(params, "num_shots", 1)`` returned None.
+    """
+    params = experiment.params
+    total = getattr(params, "num_averages", None) or getattr(params, "num_shots", None)
+    if total is None:
+        resolver = getattr(experiment, "resolved_num_shots", None)
+        total = resolver() if callable(resolver) else 1
+    return int(total)
+
+
 class QMBackend(Backend):
     """scqo Backend over a Quantum Machines OPX (via QUAM + the LCHQM probes)."""
 
@@ -962,12 +983,21 @@ class QMBackend(Backend):
         return out
 
     def acquire(self, experiment: "Experiment") -> xr.Dataset:
+        # The reset-method backstop. Every shell resolves reset_method through
+        # check_reset_method in its probe(), but only if it remembers to; this
+        # fires for anything carrying the neutral field, before any vendor import
+        # and before _thermalization_override — which the checker protects, since
+        # it refuses the thermalization_time_ns + 'active' combination by name.
+        # Side-effect free, so being called twice costs nothing.
+        from customized.scqo.experiments._reset import check_reset_method
+        check_reset_method(experiment)
         from customized.probes._lib import acquire as run_acquire
 
         # Progress denominator: per-shot experiments (single_shot_readout) declare
-        # `num_shots` instead of the averaging mixin's `num_averages`.
-        params = experiment.params
-        shots = getattr(params, "num_averages", None) or getattr(params, "num_shots", 1)
+        # `num_shots` instead of the averaging mixin's `num_averages`; a
+        # record_time_s-derived experiment (qubit_parity_switch) leaves
+        # `num_shots` None and exposes the real count via resolved_num_shots().
+        shots = _progress_shot_total(experiment)
         # A probe returns ONE of three shapes:
         #  - a ready-made xr.Dataset (drag_equator acquires itself with a baked config);
         #  - (program, sweep_axes, probe_module): the module's own acquire() fetches

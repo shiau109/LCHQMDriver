@@ -205,6 +205,21 @@ root).
   probes' one door out of the neutral surface). How to run it: **## Tests** below.
 - **External analysis dependency.** LCH analysis nodes lazily import `scqat` (`D:\github\scqat`, the lab's analysis tool that **replaced** the older `qcat`/`D:\github\QCAT`), installed editable. It is **not declared in `pyproject.toml`** and must be installed in the runtime env — now present (editable) in both `LCHQM` and `LCHQM_test` (the launcher env; verified 2026-06-07) — or those nodes raise `ImportError` at plot time. Official (non-`LCH_`) nodes do not depend on it and run regardless. The qcat→scqat migration of the active `LCH_*` nodes is complete (`calibrations/exclude/` still references qcat); see `ANALYSIS_MIGRATION.md`.
 
+- **Active reset** (`reset_method="active"`) lives in `customized/scqo/experiments/_reset.py`, the
+  ONE door every shell resolves its `reset_type` through (`check_reset_method`), with `QMBackend.acquire`
+  re-checking before `probe()`. Opt-in is per shell (`supports_active_reset`, default DENY) and limited to
+  the four coherent-drive carriers (relaxation/ramsey/echo/power_rabi); everything else refuses BY NAME —
+  the readout-sweep probes, `single_shot_readout` (it IS the discriminator calibration), the driven-dwell
+  spectroscopies. The sequence is QUAM's `BaseTransmon.reset_qubit_active` (repeat-until-success). Four
+  QM-specific rules, each a SILENT failure if broken: (1) `active_reset_rounds` → QUAM `max_attempts` is an
+  UPPER bound (the loop exits early), not Qblox's exactly-N; (2) BOTH `readout_threshold` AND
+  `readout_rus_threshold` are required even at rounds=1 (the `while_` exit is built regardless), and an
+  uncalibrated value is `None` on QM — `I > None` dies deep in the QUA DSL naming nothing, so the guard
+  refuses first; (3) `readout_depletion_s` must be governed — QUAM's 16 ns factory default is refused
+  (never `None` on QM, so a None-only guard would be dead code); (4) `thermalization_time_ns` + `active`
+  is refused, not ignored. Offline proves the policy and that the QUA program builds; the feedback loop
+  is hardware, and the chipA walkthrough that closes that gap is the REMAINING step (the QUA path has
+  mileage through the `LCH_graph_*` qualibrate scripts, but the scqo shells need their own validation).
 - **Placement rule** (`scqo state --rule`; SCQO TUTORIAL §9): QUAM-tree copies of physics that the
   tree operationally CONSUMES (T1 for thermalization waits, anharmonicity for DRAG) are CACHES with
   scqo's physical.json as truth; QUAM's stored measured artifacts (confusion_matrix, gate_fidelity,
@@ -227,7 +242,7 @@ uv pip install -e D:\github\SCQO -e D:\github\scqat
 (LCHQBDriver has no such trap — it declares `scqo` as a hard dependency, so plain `uv run` is
 safe there. Do not copy its command over here.)
 
-**Then just run the whole suite: 201 tests, ~47 s.** At this size a per-file selection map would
+**Then just run the whole suite: ~258 tests, ~40 s.** At this size a per-file selection map would
 cost more attention than it saves — unlike SCQO (618 tests, ~10 min) and scqat (329 / ~84 s), the full
 suite IS the targeted run. Run it before every commit.
 
@@ -239,11 +254,11 @@ so they are instant — loop on those while iterating, and take the full suite b
 | `test_quam_fields.py` | the single neutral-field ↔ QUAM mapping (stub qubit) | no |
 | `test_flux_pulse_amplitude.py` | `probes/_flux_limits.py`: the two frames, the rail per port, the idle sum, the remedy messages | no |
 | `test_flux_headroom_guard.py` | the whole-tree audit + the clipping-vs-reach severity split | no |
-| `test_reset_method.py` | `reset_method="active"` is REFUSED by name, never downgraded to thermal | no |
+| `test_reset_method.py` | the active-reset door: the opt-in census (4 carriers), the refusals (opt-in, thermalization override, uncalibrated discriminator/depletion), the `acquire()` backstop | no |
 | `test_qc_populations.py` | shared swap-reset population helpers | no |
 | `test_power_rabi_update.py`, `test_ramsey_update.py`, `test_readout_frequency_update.py` | the pure `update()` decisions of the matching `LCH_*` node | no |
 | `test_experiment_surface.py` | `customized/scqo/experiments/_vendor.py` — the probes' one door out of the neutral surface | yes |
-| `test_qm_backend.py` | entity surface on the stub; probe equivalence + absolute-power chain on the LIVE quam_state (skips when the root-class toggle disagrees) | yes |
+| `test_qm_backend.py` | entity surface on the stub; probe equivalence, absolute-power chain + active-reset program build on the LIVE quam_state | yes |
 | `test_scqo_glue.py` | the `scqo` CLI works in THIS venv + the qm factory (slowest, ~7 s) | yes |
 
 ## Workspace Packages (Read-Only)

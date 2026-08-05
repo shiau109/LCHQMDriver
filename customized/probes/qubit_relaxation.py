@@ -20,6 +20,7 @@ def build_program(
     wait_times_cycles,
     num_shots: int,
     reset_type: str,
+    reset_max_attempts: int = 15,
     use_state_discrimination: bool = False,
     simulate: bool = False,
     log: Optional[Callable] = None,
@@ -57,7 +58,8 @@ def build_program(
                 with for_each_(t, wait_times_cycles):
                     # Qubit initialization
                     for i, qubit in multiplexed_qubits.items():
-                        qubit.reset(reset_type, simulate, log_callable=log)
+                        qubit.reset(reset_type, simulate, log_callable=log,
+                                    max_attempts=reset_max_attempts)
                     align()
                     # pi pulse, then let the qubit decay for t (official 05_T1 core)
                     for i, qubit in multiplexed_qubits.items():

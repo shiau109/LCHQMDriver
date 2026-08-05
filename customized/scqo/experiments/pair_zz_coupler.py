@@ -49,7 +49,7 @@ class QMPairZZCoupler(PairZZCoupler):
         return vendor_pair(self, name)
 
     def probe(self) -> Any:
-        from ._reset import reset_type
+        from ._reset import check_reset_method
         from customized.probes import pair_qcq_zz_coupler_freq as zz_probe
         from customized.probes._lib import select_qubit_pairs
 
@@ -76,7 +76,7 @@ class QMPairZZCoupler(PairZZCoupler):
             durations=cycles,
             detuning_hz=int(self.params.detuning_hz),
             num_shots=self.params.num_averages,
-            reset_type=reset_type(self),
+            reset_type=check_reset_method(self),
             use_state_discrimination=True,
             measure_qubit=self._side,
         )

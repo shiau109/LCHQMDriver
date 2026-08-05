@@ -39,7 +39,7 @@ class QMReadoutFrequency(ReadoutFrequency):
     """Build a multiplexed per-shot readout-frequency-scan QUA program on the QM OPX."""
 
     def probe(self) -> Any:
-        from ._reset import reset_type
+        from ._reset import check_reset_method
         from customized.probes._lib import select_qubits
         from customized.probes import readout_frequency as freq_probe
 
@@ -51,7 +51,7 @@ class QMReadoutFrequency(ReadoutFrequency):
             qubits,
             dfs=self.sweep_axes["detuning_hz"],
             num_shots=self.params.num_shots,
-            reset_type=reset_type(self),
+            reset_type=check_reset_method(self),
         )
         # Canonical names in RAW nesting order (shot outer, detuning, prepared
         # state inner — see module docstring); the DataArray values are reused

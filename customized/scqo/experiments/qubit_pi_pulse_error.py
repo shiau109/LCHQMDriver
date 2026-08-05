@@ -13,6 +13,7 @@ class QMQubitPiPulseError(QubitPiPulseError):
     """Build a multiplexed Pi-pulse error amplification QUA program on the QM OPX."""
 
     def probe(self) -> Any:
+        from ._reset import check_reset_method
         from customized.probes._lib import select_qubits
         from customized.probes import qubit_pi_pulse_error as pi_pulse_error_probe
 
@@ -28,5 +29,6 @@ class QMQubitPiPulseError(QubitPiPulseError):
             amp_prefactors=list(self.sweep_axes["amp_prefactor"]),
             gate_counts=list(self.sweep_axes["gate_count"]),
             num_shots=int(self.params.num_averages),
+            reset_type=check_reset_method(self),
             use_state_discrimination=False,
         )

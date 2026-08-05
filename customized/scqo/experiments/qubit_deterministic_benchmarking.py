@@ -13,6 +13,7 @@ class QMQubitDeterministicBenchmarking(QubitDeterministicBenchmarking):
     """Build a multiplexed Deterministic Benchmarking QUA program on the QM OPX."""
 
     def probe(self) -> Any:
+        from ._reset import check_reset_method
         from customized.probes._lib import select_qubits
         from customized.probes import qubit_deterministic_benchmarking as db_probe
 
@@ -29,6 +30,7 @@ class QMQubitDeterministicBenchmarking(QubitDeterministicBenchmarking):
             # window (explicit list / single-point mode / linspace) into the axis
             amp_prefactors=list(self.sweep_axes["amp_prefactor"]),
             target_gate=self.params.target_gate,
+            reset_type=check_reset_method(self),
             use_state_discrimination=self.params.use_state_discrimination,
         )
 

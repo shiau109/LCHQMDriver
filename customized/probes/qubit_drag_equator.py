@@ -15,6 +15,7 @@ def build_program(
     num_shots: int,
     beta_array: List[float],
     pulse_repetitions: int,
+    reset_type: str,
     use_state_discrimination: bool,
     target_gate: str = "x180",
     simulate: bool = False,
@@ -66,7 +67,7 @@ def build_program(
                     with for_each_(a, scale_array):
                         # Qubit initialization
                         for i_q, qubit in multiplexed_qubits.items():
-                            qubit.reset("thermal", simulate, log_callable=log)
+                            qubit.reset(reset_type, simulate, log_callable=log)
                         align()
 
                         # Play sequence

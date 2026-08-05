@@ -36,7 +36,7 @@ class QMReadoutPower(ReadoutPower):
     """Build a multiplexed per-shot readout-amplitude-scan QUA program on the QM OPX."""
 
     def probe(self) -> Any:
-        from ._reset import reset_type
+        from ._reset import check_reset_method
         from customized.probes._lib import select_qubits
         from customized.probes import readout_power as power_probe
 
@@ -48,5 +48,5 @@ class QMReadoutPower(ReadoutPower):
             qubits,
             amps=self.sweep_axes["amp_prefactor"],
             num_shots=self.params.num_shots,
-            reset_type=reset_type(self),
+            reset_type=check_reset_method(self),
         )

@@ -12,11 +12,13 @@ Three tiers:
   alike, so there is no root class left for them to disagree about.
 """
 
+from types import SimpleNamespace
+
 import numpy as np
 import pytest
 import xarray as xr
 
-from customized.scqo.backend import QMBackend
+from customized.scqo.backend import QMBackend, _progress_shot_total
 
 
 # --------------------------------------------------------------------------- pure
@@ -32,6 +34,45 @@ def _raw(sweep_dim: str, n_qubits: int = 2, n_sweep: int = 5) -> xr.Dataset:
 class _FakeExp:
     def __init__(self, sweep_axes):
         self.sweep_axes = sweep_axes
+
+
+# ---------------------------------------------- progress-counter denominator
+# The progress counter divides an int by this total, so a None here is a hard
+# TypeError AFTER the whole QUA program has run (qubit_parity_switch on QM,
+# 2026-08-04): its num_shots is None because the count is derived from
+# record_time_s, and getattr(params, "num_shots", 1) returns the present None,
+# not the default. The total must fall back to resolved_num_shots().
+
+def test_progress_total_falls_back_to_resolved_for_derived_shots():
+    """qubit_parity_switch: params.num_shots is None (record_time_s-derived),
+    the count lives in resolved_num_shots(). The total must be that, not None."""
+    exp = SimpleNamespace(params=SimpleNamespace(num_shots=None),
+                          resolved_num_shots=lambda: 2_951_594)
+    total = _progress_shot_total(exp)
+    assert total == 2_951_594
+    assert total is not None            # the exact regression: never None
+
+
+def test_progress_total_prefers_num_averages():
+    """A sweep experiment declares num_averages; the resolver is never consulted."""
+    exp = SimpleNamespace(
+        params=SimpleNamespace(num_averages=200),
+        resolved_num_shots=lambda: pytest.fail("resolver must not be called"),
+    )
+    assert _progress_shot_total(exp) == 200
+
+
+def test_progress_total_uses_explicit_num_shots():
+    """single_shot_readout et al. pass a concrete num_shots straight through."""
+    exp = SimpleNamespace(params=SimpleNamespace(num_shots=4000))
+    assert _progress_shot_total(exp) == 4000
+
+
+def test_progress_total_defaults_to_one_without_a_resolver():
+    """Neither averaging nor shots nor a resolver -> the original 1 default,
+    so nothing that used to work now divides by None or zero."""
+    exp = SimpleNamespace(params=SimpleNamespace())
+    assert _progress_shot_total(exp) == 1
 
 
 def test_to_canonical_renames_ramsey_axis():
@@ -1003,3 +1044,43 @@ def test_apply_exponential_filter_extends_a_live_quam_port(machine):
             [0.05, 100.0], [-0.03, 3000.0], [0.02, 50.0]]  # appended, not re-parented
     finally:
         port.exponential_filter = saved  # restore (plain lists -> no re-parent)
+
+
+def test_active_reset_program_builds_on_live_state(machine, live_roster):
+    """Building the ramsey program with reset_type='active' EXECUTES QUAM's
+    reset_qubit_active, so this proves offline everything offline can: the kwarg
+    threads through to max_attempts, the discriminator thresholds are consumed,
+    and the whole QUA program serialises against the live config. It deliberately
+    BYPASSES check_reset_method — a build test must not be gated on whether the
+    live state happens to be calibrated; the feedback loop itself is hardware.
+    Thresholds are written in memory and restored (the module-scoped fixture is
+    never saved)."""
+    from qm import generate_qua_script
+
+    from customized.probes._lib import select_qubits
+    from customized.probes import qubit_ramsey as ramsey_probe
+
+    # a live qubit whose xy carries both x90 (ramsey) and x180 (the reset pi)
+    name = next((n for n, q in machine.qubits.items()
+                 if "x90" in q.xy.operations and "x180" in q.xy.operations
+                 and "readout" in q.resonator.operations), None)
+    if name is None:
+        pytest.skip("no live qubit with x90/x180 and a readout op")
+
+    pulse = machine.qubits[name].resonator.operations["readout"]
+    saved = (pulse.threshold, pulse.rus_exit_threshold)
+    try:
+        pulse.threshold = -1.0e-4
+        pulse.rus_exit_threshold = -2.0e-4
+        qubits = select_qubits(machine, [name], multiplexed=True)
+        # reset_max_attempts=2 -> reset_qubit_active(max_attempts=2): a wrong
+        # kwarg name is a TypeError right here, before serialisation.
+        prog, _ = ramsey_probe.build_program(
+            machine, qubits, idle_times_cycles=np.array([4, 8, 12]),
+            detuning_hz=1_000_000, num_shots=10,
+            reset_type="active", reset_max_attempts=2,
+            use_state_discrimination=False,
+        )
+        assert generate_qua_script(prog, machine.generate_config())
+    finally:
+        pulse.threshold, pulse.rus_exit_threshold = saved

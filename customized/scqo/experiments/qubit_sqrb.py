@@ -16,6 +16,7 @@ class QMQubitSQRB(QubitSQRB):
     """Build a multiplexed SQRB QUA program on the QM OPX."""
 
     def probe(self) -> Any:
+        from ._reset import check_reset_method
         from customized.probes._lib import select_qubits
         from customized.probes import qubit_sqrb as sqrb_probe
 
@@ -30,6 +31,7 @@ class QMQubitSQRB(QubitSQRB):
             depths=depths,
             num_sequences=int(self.params.num_random_sequences),
             num_shots=int(self.params.num_averages),
+            reset_type=check_reset_method(self),
             use_state_discrimination=bool(self.params.use_state_discrimination),
             seed=self.params.seed,
         )

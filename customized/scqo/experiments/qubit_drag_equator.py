@@ -16,6 +16,7 @@ class QMQubitDragEquator(QubitDragEquator):
     """Build a multiplexed DRAG equator QUA program on the QM OPX."""
 
     def probe(self) -> Any:
+        from ._reset import check_reset_method
         from customized.probes._lib import select_qubits
         from customized.probes import qubit_drag_equator as equator_probe
 
@@ -35,6 +36,7 @@ class QMQubitDragEquator(QubitDragEquator):
             num_shots=int(self.params.num_averages),
             beta_array=beta_array,
             pulse_repetitions=int(self.params.pulse_repetitions),
+            reset_type=check_reset_method(self),
             use_state_discrimination=False,
             target_gate=getattr(self.params, "target_gate", "x180"),
         )

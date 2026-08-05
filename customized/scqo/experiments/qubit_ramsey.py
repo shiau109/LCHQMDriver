@@ -7,7 +7,7 @@ compiles the scqo sweep into a QUA program via the shared LCHQM Ramsey probe.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, ClassVar
 
 import numpy as np
 from scqo import register
@@ -18,8 +18,14 @@ from scqo.experiments import QubitRamsey
 class QMQubitRamsey(QubitRamsey):
     """Build a multiplexed Ramsey QUA program on the QM OPX."""
 
+    #: Readout is held at the calibrated point for the whole run and the reset is
+    #: a genuine state reset, so reset_method='active' is valid here (_reset.py).
+    #: Ramsey is also the sensitive test of the settle: residual readout photons
+    #: Stark-shift the first y90 and surface as a fitted-detuning error.
+    supports_active_reset: ClassVar[bool] = True
+
     def probe(self) -> Any:
-        from ._reset import reset_type
+        from ._reset import check_reset_method, reset_max_attempts
         from customized.probes._lib import select_qubits
         from customized.probes import qubit_ramsey as ramsey_probe
 
@@ -36,6 +42,7 @@ class QMQubitRamsey(QubitRamsey):
             idle_times_cycles=idle_times_cycles,
             detuning_hz=int(self.params.frequency_detuning_hz),
             num_shots=self.params.num_averages,
-            reset_type=reset_type(self),
+            reset_type=check_reset_method(self),
+            reset_max_attempts=reset_max_attempts(self),
             use_state_discrimination=bool(self.params.use_state_discrimination),
         )

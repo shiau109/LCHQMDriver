@@ -25,6 +25,7 @@ def build_program(
     operation: str,
     num_shots: int,
     reset_type: str,
+    reset_max_attempts: int = 15,
     use_state_discrimination: bool,
     drive_qubit: Optional[str] = None,
     simulate: bool = False,
@@ -60,7 +61,8 @@ def build_program(
                 with for_(*from_array(a, amps)):
                     # Qubit initialization
                     for i, qubit in multiplexed_qubits.items():
-                        qubit.reset(reset_type, simulate)
+                        qubit.reset(reset_type, simulate,
+                                    max_attempts=reset_max_attempts)
                     align()
 
                     # Qubit manipulation: play the operation once (no error amplification).

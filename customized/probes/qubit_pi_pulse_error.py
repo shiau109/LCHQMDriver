@@ -20,6 +20,7 @@ def build_program(
     amp_prefactors: List[float],
     gate_counts: List[int],
     num_shots: int,
+    reset_type: str,
     use_state_discrimination: bool = False,
     simulate: bool = False,
     log: Optional[Callable] = None,
@@ -57,7 +58,7 @@ def build_program(
                     with for_each_(a, amp_arr):
                         # Qubit reset
                         for i_q, qubit in multiplexed_qubits.items():
-                            qubit.reset("thermal", simulate, log_callable=log)
+                            qubit.reset(reset_type, simulate, log_callable=log)
                         align()
 
                         # Repeat X180 gate gc times

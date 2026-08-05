@@ -21,6 +21,7 @@ def build_program(
     detuning_hz: int,
     num_shots: int,
     reset_type: str,
+    reset_max_attempts: int = 15,
     use_state_discrimination: bool,
     simulate: bool = False,
     log: Optional[Callable] = None,
@@ -65,7 +66,8 @@ def build_program(
                 with for_each_(idle_time, idle_times_cycles):
                     # Qubit initialization
                     for i, qubit in multiplexed_qubits.items():
-                        qubit.reset(reset_type, simulate, log_callable=log)
+                        qubit.reset(reset_type, simulate, log_callable=log,
+                                    max_attempts=reset_max_attempts)
                     align()
                     # Qubit manipulation
                     for i, qubit in multiplexed_qubits.items():

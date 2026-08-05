@@ -15,7 +15,7 @@ canonical scqo names in raw nesting order (``duration_ns`` outer, ``frame``
 inner), so ``_to_canonical`` takes its name-based path.
 
 Single target: the probe refuses more than one qubit (the sequence is built per
-qubit); reset is resolved through ``_reset.reset_type`` so ``reset_method
+qubit); reset is resolved through ``_reset.check_reset_method`` so ``reset_method
 ="active"`` is refused by name rather than silently thermalized.
 """
 
@@ -37,7 +37,7 @@ class QMQubitRamseyCryoscope(QubitRamseyCryoscope):
         from customized.probes._lib import select_qubits
         from customized.quam_fields import GOVERNED_FLUX_POINT
 
-        from ._reset import reset_type
+        from ._reset import check_reset_method
 
         machine = self.backend.machine  # type: ignore[attr-defined]
         qubits = select_qubits(machine, self.params.targets, multiplexed=True)
@@ -50,7 +50,7 @@ class QMQubitRamseyCryoscope(QubitRamseyCryoscope):
             frames=self.sweep_axes["frame"],
             flux_amp_v=float(self.params.flux_pulse_amp_v),
             num_shots=self.params.num_averages,
-            reset_type=reset_type(self),
+            reset_type=check_reset_method(self),
             use_state_discrimination=bool(self.params.use_state_discrimination),
             flux_point=GOVERNED_FLUX_POINT,
         )

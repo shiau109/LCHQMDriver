@@ -21,6 +21,7 @@ def build_program(
     repetitions: List[int],
     amp_prefactors: Optional[List[float]] = None,
     target_gate: str = "x180",
+    reset_type: str,
     use_state_discrimination: bool = True,
     simulate: bool = False,
     log: Optional[Callable] = None,
@@ -75,7 +76,7 @@ def build_program(
                     with for_each_(rep_var, rep_arr):
                         # Qubit reset
                         for i_q, qubit in multiplexed_qubits.items():
-                            qubit.reset("thermal", simulate, log_callable=log)
+                            qubit.reset(reset_type, simulate, log_callable=log)
                         align()
 
                         # Repeat target gate N times with amplitude scaling factor a

@@ -9,7 +9,7 @@ that same axis NAME, ``_to_canonical`` matches it by name instead of by position
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, ClassVar
 
 from scqo import register
 from scqo.experiments import QubitPowerRabi
@@ -19,8 +19,12 @@ from scqo.experiments import QubitPowerRabi
 class QMQubitPowerRabi(QubitPowerRabi):
     """Build a multiplexed power-Rabi QUA program on the QM OPX."""
 
+    #: Readout is held at the calibrated point for the whole run and the reset is
+    #: a genuine state reset, so reset_method='active' is valid here (_reset.py).
+    supports_active_reset: ClassVar[bool] = True
+
     def probe(self) -> Any:
-        from ._reset import reset_type
+        from ._reset import check_reset_method, reset_max_attempts
         from customized.probes._lib import select_qubits
         from customized.probes import qubit_power_rabi as power_rabi_probe
 
@@ -33,7 +37,8 @@ class QMQubitPowerRabi(QubitPowerRabi):
             amps=self.sweep_axes["amp_prefactor"],
             operation="x180",
             num_shots=self.params.num_averages,
-            reset_type=reset_type(self),
+            reset_type=check_reset_method(self),
+            reset_max_attempts=reset_max_attempts(self),
             use_state_discrimination=bool(self.params.use_state_discrimination),
             drive_qubit=None,
         )
