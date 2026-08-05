@@ -20,14 +20,31 @@ def _machine(existing=None):
     return m
 
 
-def _session(machine, facts):
+def _session(machine, facts, runs=None):
     """A fake scqo Session exposing exactly what the helper reads."""
     roster = SimpleNamespace(default_channel=lambda t, k: f"{t}_{'z' if k == 'flux' else k}")
     backend = SimpleNamespace(machine=machine, roster=roster)
     physical = SimpleNamespace(get=lambda entity, field: facts.get((entity, field)))
+
+    def load_run(run_id):
+        if runs is None or run_id not in runs:
+            raise KeyError(f"unknown run_id {run_id!r}")
+        return runs[run_id]
+
     return SimpleNamespace(
-        backend=backend, physical=physical, cooldown_id="cd1", setup_name="s1"
+        backend=backend, physical=physical, cooldown_id="cd1", setup_name="s1",
+        load_run=load_run,
     )
+
+
+def _run(amps, taus, *, experiment="qubit_spectroscopy_cryoscope",
+         outcome="successful", target="q1"):
+    """A fake DataStore.load_run payload (record + result, the parts read)."""
+    return {
+        "record": {"experiment": experiment, "outcomes": {target: outcome}},
+        "result": {"fit": {target: {"distortion_amp": amps,
+                                    "distortion_tau_s": taus}}},
+    }
 
 
 def _facts(amps, taus):
@@ -85,6 +102,48 @@ def test_only_one_paired_fact_present_still_raises():
     sess = _session(m, {("q1_z", "distortion_amp"): [0.05]})  # taus missing -> None
     with pytest.raises(SystemExit, match="no accepted distortion facts"):
         apply_distortion_from_state("q1", session=sess)
+
+
+def test_run_mode_applies_the_run_taps_not_the_fact_slot():
+    """--run reads the named run's fit — the fact slot (holding DIFFERENT
+    values, e.g. the other cryoscope's accept) must not be touched."""
+    m = _machine()
+    sess = _session(m, _facts([0.9], [9e-9]),  # facts deliberately different
+                    runs={"r1": _run([0.05, -0.03], [100e-9, 3000e-9])})
+    out = apply_distortion_from_state("q1", session=sess, run_id="r1")
+    assert m.qubits["q1"].z.opx_output.exponential_filter == [
+        [0.05, 100.0], [-0.03, 3000.0]]  # the run's taps, s->ns
+    assert out["run_id"] == "r1"
+
+
+def test_run_mode_refuses_a_failed_outcome():
+    m = _machine()
+    sess = _session(m, {}, runs={"r1": _run([0.05], [1e-7], outcome="failed")})
+    with pytest.raises(SystemExit, match="failed"):
+        apply_distortion_from_state("q1", session=sess, run_id="r1")
+    assert m._saves == []
+
+
+def test_run_mode_refuses_a_non_cryoscope_run():
+    m = _machine()
+    sess = _session(m, {}, runs={"r1": _run([0.05], [1e-7], experiment="qubit_ramsey")})
+    with pytest.raises(SystemExit, match="qubit_ramsey"):
+        apply_distortion_from_state("q1", session=sess, run_id="r1")
+
+
+def test_run_mode_unknown_run_exits_cleanly():
+    m = _machine()
+    with pytest.raises(SystemExit, match="unknown run_id"):
+        apply_distortion_from_state("q1", session=_session(m, {}, runs={}),
+                                    run_id="nope")
+
+
+def test_run_mode_accepts_the_ramsey_cryoscope():
+    m = _machine()
+    sess = _session(m, {}, runs={
+        "r1": _run([-0.04], [17e-9], experiment="qubit_ramsey_cryoscope")})
+    out = apply_distortion_from_state("q1", session=sess, run_id="r1")
+    assert out["exponential_filter"] == [[-0.04, 17.0]]
 
 
 def test_cascade_warns_about_manual_scale():

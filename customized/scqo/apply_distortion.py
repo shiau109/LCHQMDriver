@@ -19,6 +19,26 @@ Run it (in ``.venv-qm``)::
 It never runs automatically on ``scqo accept`` — applying predistortion is a
 deliberate, opt-in step (measure a fresh full correction on a filter-CLEARED line;
 ``--extend`` refines a residual measured with the current filter active).
+
+Two sources for the taps:
+
+* ``--run <run_id>`` reads the fit straight from that run's ``result.json`` —
+  the recommended door for ITERATION (``run -> apply --run <id> --extend ->
+  verify``), because it names exactly which measurement feeds the filter. The
+  two cryoscopes share ONE fact slot with REPLACE semantics (accepting one
+  overwrites the other's taps), so run-addressed apply makes ``scqo accept``
+  order irrelevant to the vendor filter.
+* No ``--run``: the accepted facts (``physical.json``) — fine when the latest
+  accepted cryoscope IS what you want applied.
+
+Facts vs filter — they are DIFFERENT quantities and diverge by design: the facts
+hold the latest accepted MEASUREMENT (mid-iteration, a residual as seen through
+the then-active filter); the vendor ``exponential_filter`` holds the accumulated
+applied CORRECTION. The accumulated total lives in the setup's state.json (itself
+a neutral exp-sum, convertible to other backends). We deliberately never write a
+composed total back into the facts: scqo accept's staleness guard compares each
+pending suggestion's ``before`` to the CURRENT fact value, so a write-back would
+strand every pending cryoscope suggestion behind ``--force``.
 """
 
 from __future__ import annotations
@@ -32,10 +52,45 @@ from customized.scqo._distortion import apply_exponential_filter
 #: the roster channel kind of a qubit's flux line (catalog CHANNELS).
 FLUX_KIND = "flux"
 
+#: experiments whose result.fit carries the distortion taps.
+CRYOSCOPE_EXPERIMENTS = ("qubit_spectroscopy_cryoscope", "qubit_ramsey_cryoscope")
+
+
+def _run_taps(session: Any, run_id: str, target: str) -> tuple[list, list]:
+    """The fitted ``(amps, taus_s)`` from one saved run — refuses BY NAME a
+    non-cryoscope run, a failed target, or a run without the fit fields."""
+    try:
+        data = session.load_run(run_id)
+    except KeyError as err:
+        raise SystemExit(err.args[0] if err.args else str(err)) from None
+    record = data["record"]
+    experiment = record.get("experiment")
+    if experiment not in CRYOSCOPE_EXPERIMENTS:
+        raise SystemExit(
+            f"run {run_id} is a {experiment!r} run — distortion taps come from "
+            f"one of {', '.join(CRYOSCOPE_EXPERIMENTS)}"
+        )
+    outcome = (record.get("outcomes") or {}).get(target)
+    if outcome != "successful":
+        raise SystemExit(
+            f"run {run_id}: {target!r} outcome is {outcome!r}, not 'successful' "
+            f"— refusing to apply a failed fit"
+        )
+    fit = (data.get("result", {}).get("fit") or {}).get(target) or {}
+    amps = fit.get("distortion_amp")
+    taus_s = fit.get("distortion_tau_s")
+    if amps is None or taus_s is None:
+        raise SystemExit(
+            f"run {run_id}: no distortion_amp/distortion_tau_s in result.fit "
+            f"for {target!r}"
+        )
+    return amps, taus_s
+
 
 def apply_distortion_from_state(
     target: str,
     *,
+    run_id: str | None = None,
     replace: bool = True,
     form: str = "sum",
     config_path: str | None = None,
@@ -44,17 +99,19 @@ def apply_distortion_from_state(
     save: bool = True,
     dry_run: bool = False,
 ) -> dict[str, Any]:
-    """Apply the accepted distortion facts for ``target`` to the QM z filter.
+    """Apply distortion taps for ``target`` to the QM z filter.
 
-    Resolves the ACTIVE scqo selection (unless ``session`` is injected — for tests),
-    reads ``distortion_amp``/``distortion_tau_s`` for the target's flux channel from
-    the physical store, writes them to the QUAM z-output ``exponential_filter``, and
-    (unless ``dry_run`` or ``save=False``) saves the setup's ``state.json``. OFFLINE.
+    Resolves the ACTIVE scqo selection (unless ``session`` is injected — for tests)
+    and takes the taps from ``run_id``'s saved fit when given (the run-addressed
+    door — accept order becomes irrelevant), else from the accepted facts
+    (``distortion_amp``/``distortion_tau_s`` on the target's flux channel). Writes
+    them to the QUAM z-output ``exponential_filter`` and (unless ``dry_run`` or
+    ``save=False``) saves the setup's ``state.json``. OFFLINE.
 
-    Returns a summary dict: ``target``, ``channel``, ``amps``, ``taus_s``,
-    ``existing_taps``, ``state_dir``, ``saved``, plus ``apply_exponential_filter``'s
-    ``exponential_filter`` + ``scale``. Raises ``SystemExit`` when the target has no
-    accepted distortion facts yet.
+    Returns a summary dict: ``target``, ``channel``, ``run_id``, ``amps``,
+    ``taus_s``, ``existing_taps``, ``state_dir``, ``saved``, plus
+    ``apply_exponential_filter``'s ``exponential_filter`` + ``scale``. Raises
+    ``SystemExit`` when no taps are available (no accepted facts / bad run).
     """
     if session is None:
         from scqo.cli import build_session  # lazy: keep module import scqo-free
@@ -62,14 +119,18 @@ def apply_distortion_from_state(
         session, cfg = build_session(config_path)
 
     channel = session.backend.roster.default_channel(target, FLUX_KIND)  # q1 -> q1_z
-    amps = session.physical.get(channel, "distortion_amp")
-    taus_s = session.physical.get(channel, "distortion_tau_s")
-    if amps is None or taus_s is None:
-        raise SystemExit(
-            f"no accepted distortion facts for {channel} — run and accept a "
-            f"cryoscope for {target!r} first (distortion_amp/distortion_tau_s are "
-            f"unset in physical.json)"
-        )
+    if run_id is not None:
+        amps, taus_s = _run_taps(session, run_id, target)
+    else:
+        amps = session.physical.get(channel, "distortion_amp")
+        taus_s = session.physical.get(channel, "distortion_tau_s")
+        if amps is None or taus_s is None:
+            raise SystemExit(
+                f"no accepted distortion facts for {channel} — run and accept a "
+                f"cryoscope for {target!r} first (distortion_amp/distortion_tau_s "
+                f"are unset in physical.json), or apply straight from a run with "
+                f"--run <run_id>"
+            )
 
     machine = session.backend.machine
     try:
@@ -114,6 +175,7 @@ def apply_distortion_from_state(
     return {
         "target": target,
         "channel": channel,
+        "run_id": run_id,
         "amps": list(amps),
         "taus_s": list(taus_s),
         "existing_taps": existing,
@@ -130,6 +192,13 @@ def main(argv: list[str] | None = None) -> int:
         "exponential_filter for the ACTIVE scqo device/setup.",
     )
     p.add_argument("--target", required=True, help="qubit/mode name, e.g. q1")
+    p.add_argument(
+        "--run",
+        default=None,
+        metavar="RUN_ID",
+        help="take the taps from this saved run's fit instead of the accepted "
+        "facts (the iteration door; accept order becomes irrelevant)",
+    )
     p.add_argument(
         "--extend",
         action="store_true",
@@ -154,6 +223,7 @@ def main(argv: list[str] | None = None) -> int:
 
     out = apply_distortion_from_state(
         args.target,
+        run_id=args.run,
         replace=not args.extend,
         form=args.form,
         config_path=args.config,
@@ -161,8 +231,9 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     verb = "would write" if args.dry_run else ("appended" if args.extend else "wrote")
+    source = f"run {out['run_id']}" if out["run_id"] else "accepted facts"
     print(
-        f"{args.target} ({out['channel']}): {verb} "
+        f"{args.target} ({out['channel']}, from {source}): {verb} "
         f"{len(out['exponential_filter'])} exponential_filter tap(s)"
     )
     for pair in out["exponential_filter"]:
