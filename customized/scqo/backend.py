@@ -1019,11 +1019,23 @@ class QMBackend(Backend):
                 num_shots=shots, timeout=self._timeout,
             )
         # Optional per-experiment raw reduction (e.g. joint two-qubit state
-        # populations -> the pair experiment's canonical `signal` variable),
+        # populations -> the pair experiment's joint_population variable),
         # applied BEFORE canonicalization so the contract sees final variables.
         reduce = getattr(experiment, "reduce_raw", None)
         if reduce is not None:
             raw = reduce(raw)
+        # The readout schema's naming: the QUA probes' averaged discriminated
+        # stream arrives as `state`, but `state` canonically means a PER-SHOT
+        # outcome — when this experiment's contract accepts `population` (the
+        # averaged form) and none of its forms accepts `state`, rename. An
+        # experiment with a per-shot `state` form (qubit_parity_switch,
+        # qc_n_swap_amp shot mode) keeps the name.
+        contract = experiment.Contract
+        accepted = set(contract.variables).union(*contract.alt_variables) \
+            if contract.alt_variables else set(contract.variables)
+        if ("state" in raw.data_vars and "state" not in accepted
+                and "population" in accepted):
+            raw = raw.rename({"state": "population"})
         return self._to_canonical(raw, experiment)
 
     @staticmethod

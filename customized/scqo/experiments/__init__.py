@@ -6,6 +6,7 @@ Add a line here for each new experiment module so its ``@register`` runs.
 from . import pair_swap_chevron  # noqa: F401  (import side effect: @register)
 from . import pair_swap_flux_map  # noqa: F401  (import side effect: @register)
 from . import pair_zz_coupler  # noqa: F401  (import side effect: @register)
+from . import qc_n_swap_amp  # noqa: F401  (import side effect: @register)
 from . import qubit_ramsey_cryoscope  # noqa: F401  (import side effect: @register)
 from . import qubit_deterministic_benchmarking  # noqa: F401  (import side effect: @register)
 from . import qubit_drag_alternating  # noqa: F401  (import side effect: @register)

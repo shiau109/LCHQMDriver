@@ -233,32 +233,80 @@ def _reduce(high_side, raw):
 
 
 @pytest.mark.parametrize("high_side", ["control", "target"])
-def test_reduce_raw_labels_the_marginals_by_roster_role(high_side):
-    """The probes label the joint populations by VENDOR side; scqo's contract is
-    role-named. Which marginal is p_high therefore follows the orientation, and
-    getting it backwards would mislabel every map without changing its shape."""
+def test_reduce_raw_orders_the_joint_digits_by_roster_role(high_side):
+    """The probes label the joint populations by VENDOR side (first digit =
+    control); scqo's joint_state digit order is the roster's (high, low).
+    Which single-excitation var lands on which label therefore follows the
+    orientation, and getting it backwards would mislabel every map without
+    changing its shape."""
     raw = _joint_raw()
     out = _reduce(high_side, raw)
 
-    assert set(out.data_vars) == {"p_high", "p_low", "p_ee", "p_gg"}
-    p_control = raw["state_eg"] + raw["state_ee"]
-    p_target = raw["state_ge"] + raw["state_ee"]
-    expect_high = p_control if high_side == "control" else p_target
-    expect_low = p_target if high_side == "control" else p_control
-    xr.testing.assert_allclose(out["p_high"], expect_high)
-    xr.testing.assert_allclose(out["p_low"], expect_low)
-    xr.testing.assert_allclose(out["p_ee"], raw["state_ee"])
+    assert set(out.data_vars) == {"joint_population"}
+    jp = out["joint_population"]
+    assert [str(v) for v in jp["joint_state"].values] == ["00", "01", "10", "11"]
+    # "10" = high excited: state_eg (control-excited) iff high IS control.
+    expect_10 = raw["state_eg"] if high_side == "control" else raw["state_ge"]
+    expect_01 = raw["state_ge"] if high_side == "control" else raw["state_eg"]
+    xr.testing.assert_allclose(jp.sel(joint_state="10", drop=True), expect_10)
+    xr.testing.assert_allclose(jp.sel(joint_state="01", drop=True), expect_01)
+    xr.testing.assert_allclose(jp.sel(joint_state="11", drop=True), raw["state_ee"])
+    xr.testing.assert_allclose(jp.sel(joint_state="00", drop=True), raw["state_gg"])
 
 
-def test_reduce_raw_marginals_satisfy_the_inclusion_exclusion_identity():
-    """p_gg = 1 - p_high - p_low + p_ee exactly — which is why the contract
-    requires only two marginals plus the |ee> witness, not all four."""
+def test_reduce_raw_distribution_sums_to_one():
+    """The four FPGA vars ARE the joint distribution — stacking them must
+    preserve normalization exactly (the synthetic rows sum to 1)."""
     out = _reduce("target", _joint_raw())
-    derived = 1.0 - out["p_high"] - out["p_low"] + out["p_ee"]
-    xr.testing.assert_allclose(out["p_gg"], derived)
+    total = out["joint_population"].sum("joint_state")
+    xr.testing.assert_allclose(total, xr.ones_like(total))
 
 
 def test_reduce_raw_refuses_an_undiscriminated_probe_with_the_fix():
     raw = _joint_raw().drop_vars("state_ee").rename({"state_eg": "I_control"})
     with pytest.raises(ValueError, match="single_shot_readout"):
         _reduce("control", raw)
+
+
+# --------------------------------------- the qc_n_swap_amp per-shot member path
+
+def _per_shot_state() -> xr.DataArray:
+    """A probe-shaped per-shot state array (qubit, shot, qubit_amplitude, round):
+    qubit order = READOUT order = [control, target]; deterministic outcomes so
+    the joint distribution is exact."""
+    # shots: (control, target) = (1,0), (1,0), (0,1), (1,1)  -> P10=.5 P01=.25 P11=.25
+    control = np.array([1, 1, 0, 1])
+    target = np.array([0, 0, 1, 1])
+    data = np.stack([control, target])[:, :, None, None]      # (qubit, shot, 1, 1)
+    data = np.broadcast_to(data, (2, 4, 2, 3)).copy()          # (qubit, shot, amp, round)
+    return xr.DataArray(
+        data, dims=("qubit", "shot", "qubit_amplitude", "round"),
+        coords={"qubit": ["qc", "qt"], "shot": np.arange(4),
+                "qubit_amplitude": [0.0, 0.1], "round": [0, 1, 2]})
+
+
+@pytest.mark.parametrize("high_side", ["control", "target"])
+def test_member_states_reorder_and_rename_to_the_schema(high_side):
+    """_member_states maps the vendor readout order onto the schema's ROLE order
+    (member=[high, low]) and renames every axis to the neutral names."""
+    from customized.scqo.experiments.qc_n_swap_amp import _member_states
+
+    da = _member_states(_per_shot_state(), high_side)
+    assert da.dims == ("member", "shot_idx", "flux_amp_v", "swap_count")
+    assert [str(m) for m in da["member"].values] == ["high", "low"]
+    raw = _per_shot_state()
+    expect_high = raw.sel(qubit="qc") if high_side == "control" else raw.sel(qubit="qt")
+    np.testing.assert_array_equal(da.sel(member="high").values, expect_high.values)
+
+
+def test_member_states_reduce_to_the_exact_joint_distribution():
+    """The per-shot path and scqo's shared reducer together yield the joint
+    distribution the average mode would have stored — same numbers, same labels."""
+    from customized.scqo.experiments.qc_n_swap_amp import _member_states
+    from scqo.experiments import states_to_joint_population
+
+    da = _member_states(_per_shot_state(), "control")
+    jp = states_to_joint_population(da, member_dim="member", shot_dim="shot_idx")
+    assert [str(v) for v in jp["joint_state"].values] == ["00", "01", "10", "11"]
+    point = jp.isel(flux_amp_v=0, swap_count=0)
+    np.testing.assert_allclose(point.values, [0.0, 0.25, 0.5, 0.25])

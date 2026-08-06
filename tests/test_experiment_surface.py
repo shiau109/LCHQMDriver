@@ -133,6 +133,23 @@ def test_swap_map_high_side_orientation_drives_the_reduction(backend, roster, mo
     assert role_side(exp, "high", field="targets") == "target"  # roster high=q2
 
 
+def test_qc_n_swap_amp_refuses_non_control_roles(backend, roster):
+    """The qc_N_swap_amp vendor probe excites AND flux-drives the vendor
+    CONTROL member only (the swap macro's ctrl_amp is the one swept knob), so a
+    role selection resolving elsewhere is refused BY NAME before any QUA is
+    built. The stub pair is control=q1 while the roster's high=q2, so
+    drive_side='high' resolves to the vendor target — the refusing case."""
+    from customized.scqo.experiments.qc_n_swap_amp import QMQcNSwapAmp
+
+    exp = make_experiment(QMQcNSwapAmp, backend, roster,
+                          QMQcNSwapAmp.Parameters(targets=["q1_q2"],
+                                                  drive_side="high",
+                                                  flux_side="high"))
+    exp.sweep_axes = exp.define_sweep()
+    with pytest.raises(ValueError, match="CONTROL member"):
+        exp.probe()
+
+
 def test_role_side_refuses_the_selected_member_without_a_flux_channel(backend):
     """The params-AWARE half of the gate: ``validate_targets`` is a classmethod
     over (roster, targets) and cannot see ``flux_side``, so it can only ask

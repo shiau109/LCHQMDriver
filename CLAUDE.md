@@ -134,6 +134,20 @@ node cannot run on them — it used to die on a bare `ZeroDivisionError`, and no
 missing field. Absolute mode never reads it and works on all nine, which is why scqo drives it that
 way. Fix the underlying gap by measuring the flux arch (`qubit_spectroscopy_flux_pulse`).
 
+The partial-swap calibration workflow (pair_swap_flux_map → the `quam_config/register_*.py`
+scripts → qc_n_swap_amp) is documented in SCQO TUTORIAL §12.
+
+**Readout output at the scqo boundary (the readout schema — SCQO TUTORIAL §11 / CLAUDE.md digest):**
+the shot axis is `shot_idx`; per-shot discriminated data stays `state` (integer LEVELS, qutrit-capable);
+FPGA-averaged discriminated data is `population` — the backend renames the averaged `state` stream when
+the experiment's contract accepts `population` and no accepted form carries per-shot `state`. The pair
+maps store `joint_population` over role-ordered `joint_state` labels ("00".."11", digits high,low):
+`_pair_roles.JointPopulationMixin` reorders the FPGA `state_gg/ge/eg/ee` digits (control,target) →
+(high,low), while `qc_n_swap_amp` keeps per-shot member states and reduces through scqo's shared
+`states_to_joint_population` (its `readout_mode="shot"` skips the reduction and stores every shot).
+A combo a probe cannot realize is refused by name — `qc_n_swap_amp` refuses non-control
+`drive_side`/`flux_side` (the swap macro's `ctrl_amp` is the only swept knob).
+
 **Migration status:** qualibrate-node migration is in progress; the `customized/` split into a
 standalone QM-backend repo (symmetric with LCHQBDriver) is decided but deferred until migration
 completes — the shells→probes import rule above is the boundary the split will cut along.
