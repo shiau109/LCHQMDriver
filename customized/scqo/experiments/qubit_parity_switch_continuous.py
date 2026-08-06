@@ -1,11 +1,12 @@
-"""QM charge-parity monitor for scqo - supplies only ``probe()``.
+"""QM continuous charge-parity monitor for scqo - supplies only ``probe()``.
 
 Parameters, the REFUSE gates (a stored ``parity_delta_f_hz`` for the fixed
 idle, a governed depletion wait for the shot cadence, stored blob centers for
 the trace discrimination), the telegraph-PSD fit and the ``parity_rate_hz``
-writeback are all inherited from ``scqo.experiments.QubitParitySwitch``. This
-class only converts the resolved ns values into QUA clock cycles and reports
-the scheduled shot period back to the neutral layer.
+writeback are all inherited from
+``scqo.experiments.QubitParitySwitchContinuous``. This class only converts the
+resolved ns values into QUA clock cycles and reports the scheduled shot period
+back to the neutral layer.
 
 PER-SHOT contract: every shot is recorded individually — the probe's streams
 are ``buffer(num_shots)`` with NO ``.average()``.
@@ -21,7 +22,7 @@ from __future__ import annotations
 from typing import Any
 
 from scqo import register
-from scqo.experiments import QubitParitySwitch
+from scqo.experiments import QubitParitySwitchContinuous
 from scqo.experiments._depletion import depletion_wait_ns
 
 #: QUA plays waits on a 4 ns clock with a 16 ns (4-cycle) floor.
@@ -34,12 +35,12 @@ def _cycles(ns: float) -> int:
 
 
 @register
-class QMQubitParitySwitch(QubitParitySwitch):
+class QMQubitParitySwitchContinuous(QubitParitySwitchContinuous):
     """Build a per-shot parity-monitor QUA program on the QM OPX."""
 
     def probe(self) -> Any:
         from customized.probes._lib import select_qubits
-        from customized.probes import qubit_parity_switch as parity_probe
+        from customized.probes import qubit_parity_switch_continuous as parity_probe
 
         machine = self.backend.machine  # type: ignore[attr-defined]
         # one qubit per batch: independent shot cadences (see the module docstring)

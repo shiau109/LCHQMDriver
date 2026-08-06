@@ -1,7 +1,8 @@
-"""Charge-parity monitor acquisition probe: vendor code only (qm/quam) - no qualibrate, no scqo, no scqat.
+"""Continuous charge-parity monitor acquisition probe: vendor code only (qm/quam) - no qualibrate, no scqo, no scqat.
 
 y90 - fixed idle - x90 - measure, repeated as `num_shots` back-to-back single
-shots. The 90-degree-SHIFTED second pulse measures sin of the parity-dependent
+shots. (The two-measurement-per-cycle sibling is
+`customized/probes/qubit_parity_switch_discrete.py`.) The 90-degree-SHIFTED second pulse measures sin of the parity-dependent
 phase (+/- pi/2 at the intended idle), which is ODD in parity, so the two charge
 parities land on opposite readout poles; a same-axis pair would measure the even
 cos and see no parity at all.

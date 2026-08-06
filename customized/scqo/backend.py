@@ -785,8 +785,8 @@ def _progress_shot_total(experiment: "Experiment") -> int:
     """Denominator for the acquisition progress counter.
 
     The averaging count or the explicit shot count when the params carry one;
-    otherwise -- for a record_time_s-derived experiment (qubit_parity_switch)
-    whose ``params.num_shots`` is present but ``None`` -- the resolved count the
+    otherwise -- for a record_time_s-derived experiment (the parity-switch
+    monitors) whose ``params.num_shots`` is present but ``None`` -- the resolved count the
     probe actually buffered (``experiment.resolved_num_shots()``). NEVER None:
     ``qualang_tools.progress_counter`` divides an int by this, so a None here
     is a hard ``TypeError: ... for /: 'int' and 'NoneType'`` after the whole
@@ -995,7 +995,7 @@ class QMBackend(Backend):
 
         # Progress denominator: per-shot experiments (single_shot_readout) declare
         # `num_shots` instead of the averaging mixin's `num_averages`; a
-        # record_time_s-derived experiment (qubit_parity_switch) leaves
+        # record_time_s-derived experiment (the parity-switch monitors) leaves
         # `num_shots` None and exposes the real count via resolved_num_shots().
         shots = _progress_shot_total(experiment)
         # A probe returns ONE of three shapes:
@@ -1028,7 +1028,7 @@ class QMBackend(Backend):
         # stream arrives as `state`, but `state` canonically means a PER-SHOT
         # outcome — when this experiment's contract accepts `population` (the
         # averaged form) and none of its forms accepts `state`, rename. An
-        # experiment with a per-shot `state` form (qubit_parity_switch,
+        # experiment with a per-shot `state` form (the parity-switch monitors,
         # qc_n_swap_amp shot mode) keeps the name.
         contract = experiment.Contract
         accepted = set(contract.variables).union(*contract.alt_variables) \
