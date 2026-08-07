@@ -148,6 +148,17 @@ maps store `joint_population` over role-ordered `joint_state` labels ("00".."11"
 A combo a probe cannot realize is refused by name — `qc_n_swap_amp` refuses non-control
 `drive_side`/`flux_side` (the swap macro's `ctrl_amp` is the only swept knob).
 
+**T1-tracking probes (`qubit_t1_ade` / `qubit_t1_bayesian`):** the repo's first on-FPGA-arithmetic
+probes (`Math.div/ln/sqrt/exp` on `fixed` ∈ [-8, 8); the numeric-range rationale — clip floors,
+TIME_SCALE_US, the u = 1/k reparametrization — lives in each probe's docstring). Their streams are
+heterogeneous (per-block scalars + per-shot arrays + timestamp streams), which `XarrayDataFetcher`
+refuses, so each ships its OWN `acquire()` (the tomography pattern) and the shell returns the
+3-tuple `(prog, sweep_axes, probe_module)`. ms→cycles conversions MUST use `Cast.mul_int_by_fixed`
+— the fixed-arithmetic product wraps modulo 16 to a garbage wait (pinned by
+`tests/test_t1_tracking_shells.py`). The Bayesian probe reads QUAM's `confusion_matrix` directly
+off the tree (dead to SCQO per the placement rule); both shells refuse a missing readout
+threshold, and the Bayesian one a missing confusion matrix, BY NAME before any QUA is built.
+
 **Migration status:** qualibrate-node migration is in progress; the `customized/` split into a
 standalone QM-backend repo (symmetric with LCHQBDriver) is decided but deferred until migration
 completes — the shells→probes import rule above is the boundary the split will cut along.
@@ -222,7 +233,8 @@ root).
 - **Active reset** (`reset_method="active"`) lives in `customized/scqo/experiments/_reset.py`, the
   ONE door every shell resolves its `reset_type` through (`check_reset_method`), with `QMBackend.acquire`
   re-checking before `probe()`. Opt-in is per shell (`supports_active_reset`, default DENY) and limited to
-  the four coherent-drive carriers (relaxation/ramsey/echo/power_rabi); everything else refuses BY NAME —
+  the six coherent-drive carriers (relaxation/ramsey/echo/power_rabi + the two T1 trackers
+  qubit_t1_ade/qubit_t1_bayesian); everything else refuses BY NAME —
   the readout-sweep probes, `single_shot_readout` (it IS the discriminator calibration), the driven-dwell
   spectroscopies. The sequence is QUAM's `BaseTransmon.reset_qubit_active` (repeat-until-success). Four
   QM-specific rules, each a SILENT failure if broken: (1) `active_reset_rounds` → QUAM `max_attempts` is an

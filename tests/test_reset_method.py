@@ -43,7 +43,8 @@ from customized.scqo.experiments._reset import (
 REPO = Path(__file__).resolve().parents[1]
 SHELLS = REPO / "customized" / "scqo" / "experiments"
 PROBES = REPO / "customized" / "probes"
-CARRIERS = {"qubit_relaxation", "qubit_ramsey", "qubit_echo", "qubit_power_rabi"}
+CARRIERS = {"qubit_relaxation", "qubit_ramsey", "qubit_echo", "qubit_power_rabi",
+            "qubit_t1_ade", "qubit_t1_bayesian"}
 
 
 def _shell(name, **params):
@@ -104,9 +105,10 @@ def test_thermal_passes_through_unchanged():
 
 
 def test_only_the_named_shells_opt_in():
-    """The census: exactly the four coherent-drive carriers opt in. Widening this
-    set is a hardware-gated decision (a new sequence must be validated on the
-    instrument), so it is pinned here and an addition must edit this line."""
+    """The census: exactly the six coherent-drive carriers opt in (the four
+    originals plus the two T1 trackers). Widening this set is a hardware-gated
+    decision (a new sequence must be validated on the instrument), so it is
+    pinned here and an addition must edit this line."""
     from scqo.experiments import get
 
     opted = {n for n in _registered_names()

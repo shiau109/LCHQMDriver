@@ -1084,3 +1084,80 @@ def test_active_reset_program_builds_on_live_state(machine, live_roster):
         assert generate_qua_script(prog, machine.generate_config())
     finally:
         pulse.threshold, pulse.rus_exit_threshold = saved
+
+
+def test_ade_tracking_program_builds_on_live_state(machine, live_roster):
+    """The repo's first on-FPGA-arithmetic probe: Math.div/sqrt/ln and the relu
+    clamps only serialise against a real config, so a successful
+    generate_qua_script IS the maximum offline proof. Built with
+    reset_type='active' and adaptive_dt=True so the whole surface (the reset
+    door, the Cast.mul_int_by_fixed dt retune) threads. Thresholds are written
+    in memory and restored (the module-scoped fixture is never saved)."""
+    from qm import generate_qua_script
+
+    from customized.probes._lib import select_qubits
+    from customized.probes import qubit_t1_ade as ade_probe
+
+    name = next((n for n, q in machine.qubits.items()
+                 if "x180" in q.xy.operations and "readout" in q.resonator.operations),
+                None)
+    if name is None:
+        pytest.skip("no live qubit with x180 and a readout op")
+
+    pulse = machine.qubits[name].resonator.operations["readout"]
+    saved = (pulse.threshold, pulse.rus_exit_threshold)
+    try:
+        pulse.threshold = -1.0e-4
+        pulse.rus_exit_threshold = -2.0e-4
+        qubits = select_qubits(machine, [name], multiplexed=False)
+        prog, _ = ade_probe.build_program(
+            machine, qubits, num_blocks=3, n_avg=5,
+            t0_cycles=4, dt_cycles=2500, adaptive_dt=True, dt_factor=1.0,
+            min_dt_cycles=4, max_dt_cycles=50_000,
+            reset_type="active", reset_max_attempts=2,
+        )
+        assert generate_qua_script(prog, machine.generate_config())
+    finally:
+        pulse.threshold, pulse.rus_exit_threshold = saved
+
+
+def test_bayesian_tracking_program_builds_on_live_state(machine, live_roster):
+    """The u = 1/k posterior update (Math.inv/ln/exp, both phi branches) and
+    the QUAM confusion-matrix reads serialise against the live config.
+    Thresholds — and the confusion matrix when the live state lacks one — are
+    written in memory and restored as plain lists (no QuamList re-parenting)."""
+    from qm import generate_qua_script
+
+    from customized.probes._lib import select_qubits
+    from customized.probes import qubit_t1_bayesian as bayes_probe
+
+    name = next((n for n, q in machine.qubits.items()
+                 if "x180" in q.xy.operations and "readout" in q.resonator.operations),
+                None)
+    if name is None:
+        pytest.skip("no live qubit with x180 and a readout op")
+
+    qubit = machine.qubits[name]
+    pulse = qubit.resonator.operations["readout"]
+    cm = qubit.resonator.confusion_matrix
+    saved_cm = None if cm is None else [list(row) for row in cm]
+    saved = (pulse.threshold, pulse.rus_exit_threshold)
+    try:
+        pulse.threshold = -1.0e-4
+        pulse.rus_exit_threshold = -2.0e-4
+        if qubit.resonator.confusion_matrix is None:
+            qubit.resonator.confusion_matrix = [[0.95, 0.05], [0.09, 0.91]]
+        qubits = select_qubits(machine, [name], multiplexed=False)
+        prog, _ = bayes_probe.build_program(
+            machine, qubits, num_blocks=2, num_probes=5,
+            c_adaptive=0.51, k0=1.0, t1_prior_s={name: 35e-6},
+            t1_min_s=1e-6, t1_max_s=100e-6, k_min=0.2, k_max=100.0,
+            interleaved=True,
+            lin_wait_cycles=np.array([4, 50, 500, 5000, 50000]),
+            active_reset_per_probe=False,
+            reset_type="active", reset_max_attempts=2,
+        )
+        assert generate_qua_script(prog, machine.generate_config())
+    finally:
+        pulse.threshold, pulse.rus_exit_threshold = saved
+        qubit.resonator.confusion_matrix = saved_cm
